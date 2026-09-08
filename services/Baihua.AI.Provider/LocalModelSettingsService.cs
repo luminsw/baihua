@@ -82,10 +82,10 @@ public class LocalModelSettingsService
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return Path.Combine(home, ".ollama", "models");
+            return Path.Combine(home, ".baihua", "models");
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            return Path.Combine(home, ".ollama", "models");
-        return Path.Combine(home, ".ollama", "models");
+            return Path.Combine(home, ".baihua", "models");
+        return Path.Combine(home, ".baihua", "models");
     }
 
     public void LoadLocalModelConfigFromFile()

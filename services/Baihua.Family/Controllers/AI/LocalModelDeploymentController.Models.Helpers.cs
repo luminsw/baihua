@@ -10,6 +10,6 @@ public partial class LocalModelDeploymentController
     private static string GetPlatformDefaultDirectory()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return Path.Combine(home, ".ollama", "models");
+        return Path.Combine(home, ".baihua", "models");
     }
 }

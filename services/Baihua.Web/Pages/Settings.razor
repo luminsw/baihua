@@ -1357,12 +1357,12 @@
             Logger.LogWarning(ex, "加载本地模型配置失败");
         }
 
-        // 兜底：当后端未返回默认下载目录时，前端计算用户主目录下的 ollama models 路径
+        // 兜底：当后端未返回默认下载目录时，前端计算用户主目录下的 baihua models 路径
         if (string.IsNullOrEmpty(platformDefaultDownloadDir))
         {
             platformDefaultDownloadDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                ".ollama",
+                ".baihua",
                 "models");
         }
         if (string.IsNullOrEmpty(localModelDownloadDir))
