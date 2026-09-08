@@ -51,16 +51,7 @@ public class VramTierDto
 }
 
 /// <summary>
-/// 显存等级推荐表响应
-/// </summary>
-public class VramTierResponse
-{
-    public List<VramTierDto> Tiers { get; set; } = new();
-    public double? AvailableVramGiB { get; set; }
-    public int? RecommendedTierVramGb { get; set; }
-}
 
-/// <summary>
 /// 单个测试提示词定义
 /// </summary>
 public class BenchmarkPrompt

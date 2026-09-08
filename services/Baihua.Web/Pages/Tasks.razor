@@ -18,48 +18,6 @@
 
 <h1>📊 @L["Tasks_Title"]</h1>
 
-@if (openVinoDownloads.Any())
-{
-    <div class="openvino-downloads mb-3">
-        <h4>⬇️ @L["LocalModels_DownloadTasks"]</h4>
-        @foreach (var t in openVinoDownloads)
-        {
-            var active = t.Status is "running" or "pending";
-            <div class="mb-2 p-2 border rounded">
-                <div class="d-flex justify-content-between small">
-                    <span><b>@t.ModelName</b>
-                        <span class="badge @(t.Status == "completed" ? "bg-success" : t.Status == "failed" ? "bg-danger" : t.Status == "cancelled" ? "bg-secondary" : "bg-primary")">@t.Status</span>
-                    </span>
-                    <span>
-                        @if (active)
-                        {
-                            <span class="text-muted">@t.ProgressPercent%@(t.SpeedMBps > 0 ? $" ({t.SpeedMBps:F1}MB/s)" : "")</span>
-                            <button class="btn btn-sm btn-outline-secondary ms-2" @onclick='() => CancelDownloadAsync(t.TaskId)'>@L["Common_Cancel"]</button>
-                        }
-                        else if (t.CompletedAt.HasValue)
-                        {
-                            <span class="text-muted">@t.CompletedAt.Value.ToString("HH:mm:ss")</span>
-                        }
-                    </span>
-                </div>
-                @if (t.TotalBytes > 0)
-                {
-                    <div class="progress mt-1" style="height:6px">
-                        <div class="progress-bar @(t.Status == "failed" ? "bg-danger" : "") " style="width:@(t.ProgressPercent)%"></div>
-                    </div>
-                }
-                @if (!string.IsNullOrEmpty(t.CurrentFile))
-                {
-                    <div class="small text-muted mt-1">@t.CurrentFile</div>
-                }
-                @if (!string.IsNullOrEmpty(t.ErrorMessage))
-                {
-                    <div class="text-danger small mt-1">@t.ErrorMessage</div>
-                }
-            </div>
-        }
-    </div>
-}
 
 <div class="task-controls">
     <span class="connection-status">
@@ -324,8 +282,7 @@ else
     private readonly SemaphoreSlim _loadTasksLock = new(1, 1);
     private HubConnection? _hubConnection;
     private Timer? _pollTimer;
-    private List<OpenVinoDownloadTaskDto> openVinoDownloads = new();
-    private Timer? _downloadTimer;
+
     
     // 节流控制：收到 TaskUpdated 后延迟 500ms 再刷新，避免频繁请求
     private CancellationTokenSource? _refreshDebounceCts;
@@ -337,7 +294,7 @@ else
         // 勿在 OnInitializedAsync 内 await LoadTasks：交互式 Server 组件会等本方法结束后才首次渲染，
         // 等于整页白屏/无骨架直到 /api/tasks 返回。REST 与 Hub 均在后台跑，首屏立即显示加载态。
         _ = LoadTasks();
-        _ = LoadDownloadsAsync();
+
         _ = StartHubConnectionFireAndForgetAsync();
         // 兜底轮询：WebSocket 未连接时静默轮询刷新任务进度（避免任务页永远停在旧状态）
         _pollTimer = new Timer(async _ =>
@@ -465,50 +422,6 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task LoadDownloadsAsync()
-    {
-        try
-        {
-            openVinoDownloads = await ApiService.GetOpenVinoDownloadsAsync();
-            if (openVinoDownloads.Any(t => t.Status is "running" or "pending"))
-                EnsureDownloadTimer();
-            await InvokeAsync(StateHasChanged);
-        }
-        catch { }
-    }
-
-    private void EnsureDownloadTimer()
-    {
-        if (_downloadTimer != null) return;
-        _downloadTimer = new Timer(async _ =>
-        {
-            if (_disposeCts.IsCancellationRequested) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    openVinoDownloads = await ApiService.GetOpenVinoDownloadsAsync();
-                    StateHasChanged();
-                    if (!openVinoDownloads.Any(t => t.Status is "running" or "pending"))
-                    {
-                        _downloadTimer?.Dispose();
-                        _downloadTimer = null;
-                    }
-                });
-            }
-            catch { }
-        }, null, 3000, 3000);
-    }
-
-    private async Task CancelDownloadAsync(string taskId)
-    {
-        try
-        {
-            await ApiService.CancelOpenVinoDownloadAsync(taskId);
-            await LoadDownloadsAsync();
-        }
-        catch { }
-    }
 
     public async ValueTask DisposeAsync()
     {
@@ -518,7 +431,7 @@ else
         _refreshDebounceCts?.Cancel();
         _refreshDebounceCts?.Dispose();
         _pollTimer?.Dispose();
-        _downloadTimer?.Dispose();
+
         if (_hubConnection != null)
         {
             await _hubConnection.DisposeAsync();

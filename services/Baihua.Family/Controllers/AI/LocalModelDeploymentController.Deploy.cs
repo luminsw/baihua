@@ -7,25 +7,6 @@ namespace Baihua.Family.Controllers;
 
 public partial class LocalModelDeploymentController
 {
-        public async Task<ActionResult<DeployLocalModelResult>> Deploy([FromBody] DeployLocalModelRequest request)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(request.ModelId))
-                    return BadRequest(new { error = _loc["LocalModel_ModelIdRequired"] });
-
-                var result = await _deploymentService.DeployAsync(request);
-                if (!result.Success)
-                    return BadRequest(new { error = result.Message });
-
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "启动部署失败");
-                return StatusCode(500, new { error = _loc["LocalModel_StartDeployFailed"], message = ex.Message });
-            }
-        }
 
         /// <summary>
         /// 查询部署任务状态

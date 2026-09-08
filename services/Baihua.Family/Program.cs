@@ -174,7 +174,7 @@ builder.Services.AddSingleton<StockAdvisorService>();
 builder.Services.AddSingleton<TopicSuggestionService>();
 builder.Services.AddSingleton<FamilyBudgetService>();
 builder.Services.Configure<LocalAiOptions>(builder.Configuration.GetSection("LocalAI"));
-builder.Services.AddSingleton<ModelDownloadService>();
+
 builder.Services.AddSingleton<Baihua.AI.Provider.ILocalRuntimeManager, Baihua.AI.Provider.OpenVino.OpenVinoRuntimeManager>();
 builder.Services.AddSingleton<AssistantService>();
 builder.Services.AddSingleton<UserActivityService>();
@@ -283,12 +283,8 @@ builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSingleton<SystemHealthService>();
 builder.Services.AddSingleton<HardwareInfoService>();
 builder.Services.AddSingleton<CapabilityService>();
-builder.Services.AddSingleton<OllamaLibraryClient>();
-builder.Services.AddSingleton<ModelRecommendationEngine>();
-builder.Services.AddSingleton<OllamaService>();
-builder.Services.AddSingleton<LmStudioDownloadService>();
-builder.Services.AddSingleton<LmStudioService>();
-builder.Services.AddSingleton<LlamaCppService>();
+
+
 builder.Services.Configure<Baihua.AI.Provider.OpenVino.OpenVinoToolOptions>(
     builder.Configuration.GetSection("LocalVision"));
 // OVMS（OpenVINO Model Server）端点：统一承载 OpenVINO 推理
@@ -1048,32 +1044,6 @@ app.Lifetime.ApplicationStarted.Register(() =>
             logger.LogWarning(ex, "后台启动自检或 Obsidian 初始化未完成");
         }
 
-        // 后台刷新 Ollama Library 模型列表
-        try
-        {
-            var ollamaLibrary = app.Services.GetService<OllamaLibraryClient>();
-            if (ollamaLibrary != null)
-            {
-                await ollamaLibrary.RefreshAsync();
-                // 每 4 小时自动刷新一次
-                _ = Task.Run(async () =>
-                {
-                    using var timer = new PeriodicTimer(TimeSpan.FromHours(4));
-                    while (await timer.WaitForNextTickAsync())
-                    {
-                        try { await ollamaLibrary.RefreshAsync(); }
-                        catch (Exception ex)
-                        {
-                            logger.LogWarning(ex, "Ollama Library 后台刷新失败");
-                        }
-                    }
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Ollama Library 后台刷新初始化失败");
-        }
     });
 });
 

@@ -14,73 +14,27 @@ public partial class LocalModelDeploymentService
 
         public async Task<bool> LoadModelAsync(string toolId, string modelName, int keepAliveMinutes, CancellationToken ct = default)
         {
-            bool result;
-            if (toolId.Equals("ollama", StringComparison.OrdinalIgnoreCase))
-            {
-                var running = await _autoStarter.TryEnsureRunningAsync("ollama", "http://localhost:11434/v1");
-                if (!running)
-                    throw new InvalidOperationException(_loc["LocalModel_Lifecycle_OllamaNotRunning"]);
-                result = await _ollama.LoadModelAsync(modelName, keepAliveMinutes, ct);
-            }
-            else if (toolId.Equals("lmstudio", StringComparison.OrdinalIgnoreCase))
-            {
-                var running = await _autoStarter.TryEnsureRunningAsync("lmstudio", "http://localhost:1234/v1");
-                if (!running)
-                    throw new InvalidOperationException(_loc["LocalModel_Lifecycle_LmStudioNotRunning"]);
-                result = await _lmStudio.LoadModelAsync(modelName, ct);
-            }
-            else if (toolId.Equals("llamacpp", StringComparison.OrdinalIgnoreCase))
-            {
-                result = await _llamaCpp.LoadModelAsync(modelName, ct);
-            }
-            else if (toolId.Equals("openvino", StringComparison.OrdinalIgnoreCase))
+            if (toolId.Equals("openvino", StringComparison.OrdinalIgnoreCase))
             {
                 await _openVino.EnsureServerRunningAsync(ct);
-                result = await _openVino.LoadModelAsync(modelName, ct);
-            }
-            else
-            {
-                return false;
+                var result = await _openVino.LoadModelAsync(modelName, ct);
+                if (result) InvalidateCaches();
+                return result;
             }
 
-            if (result) InvalidateCaches();
-            return result;
+            return false;
         }
 
         public async Task<bool> UnloadModelAsync(string toolId, string modelName, CancellationToken ct = default)
         {
-            bool result;
-            if (toolId.Equals("ollama", StringComparison.OrdinalIgnoreCase))
-                result = await _ollama.UnloadModelAsync(modelName, ct);
-            else if (toolId.Equals("lmstudio", StringComparison.OrdinalIgnoreCase))
-                result = await _lmStudio.UnloadModelAsync(modelName, ct);
-            else if (toolId.Equals("llamacpp", StringComparison.OrdinalIgnoreCase))
-                result = await _llamaCpp.UnloadModelAsync(ct);
-            else if (toolId.Equals("openvino", StringComparison.OrdinalIgnoreCase))
-                result = await _openVino.UnloadModelAsync(modelName, ct);
-            else
-                return false;
+            if (toolId.Equals("openvino", StringComparison.OrdinalIgnoreCase))
+            {
+                var result = await _openVino.UnloadModelAsync(modelName, ct);
+                if (result) InvalidateCaches();
+                return result;
+            }
 
-            if (result) InvalidateCaches();
-            return result;
-        }
-
-        #endregion
-
-        #region LlamaCpp Service Control
-
-        public async Task<LocalAiServiceStatusDto> StartLlamaCppAsync(CancellationToken ct = default)
-        {
-            var result = await _llamaCpp.StartAsync(ct);
-            if (result.IsRunning) InvalidateCaches();
-            return result;
-        }
-
-        public async Task<bool> StopLlamaCppAsync(CancellationToken ct = default)
-        {
-            var result = await _llamaCpp.StopAsync(ct);
-            if (result) InvalidateCaches();
-            return result;
+            return false;
         }
 
         #endregion
@@ -91,14 +45,6 @@ public partial class LocalModelDeploymentService
         {
             return new List<DownloadSourceDto>
             {
-                new()
-                {
-                    Id = "ollama",
-                    Name = "Ollama Library",
-                    BaseUrl = "https://ollama.com/library",
-                    IsChinaMirror = false,
-                    IsAvailable = true
-                },
                 new()
                 {
                     Id = "huggingface",
@@ -135,9 +81,6 @@ public partial class LocalModelDeploymentService
             _cache.Remove(RunningModelsCacheKey);
             _cache.Remove(ToolsCacheKey);
             _cache.Remove(DownloadedModelsCacheKey);
-            _cache.Remove("available_ollama");
-            _cache.Remove("available_lmstudio");
-            _cache.Remove("available_llamacpp");
             _cache.Remove("available_openvino");
             _logger.LogDebug("本地模型缓存已清除");
         }

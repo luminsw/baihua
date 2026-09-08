@@ -16,14 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 本地进程内引擎 -->
-    <PackageReference Include="LLamaSharp" Version="0.26.0" />
-    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.26.0" />
-    <PackageReference Include="LLamaSharp.Backend.Vulkan" Version="0.26.0" />
-    <PackageReference Include="LLamaSharp.Backend.Cuda12" Version="0.26.0" />
-    <!-- ONNX：Windows 用 DirectML（任意 GPU），Linux 用 CPU 基础包（DirectML 是 Windows 专属 API） -->
-    <PackageReference Include="Microsoft.ML.OnnxRuntimeGenAI.DirectML" Version="0.13.1" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntimeGenAI" Version="0.13.1" Condition="!$([MSBuild]::IsOSPlatform('Windows'))" />
+
     <!-- 基础设施 -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.6" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.4" />

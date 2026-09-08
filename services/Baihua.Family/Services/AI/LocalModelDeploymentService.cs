@@ -27,11 +27,6 @@ namespace Baihua.Family.Services;
         private readonly AiSettingsService _aiSettings;
         private readonly IMemoryCache _cache;
         private readonly IStringLocalizer<SharedResources> _loc;
-
-        private readonly OllamaService _ollama;
-        private readonly LmStudioService _lmStudio;
-        private readonly LmStudioDownloadService _lmStudioDownload;
-        private readonly LlamaCppService _llamaCpp;
     private readonly ILocalModelTool _openVino;
 
         // 内存中的部署任务状态
@@ -52,10 +47,6 @@ namespace Baihua.Family.Services;
             LocalModelSettingsService localModelSettings,
             AiSettingsService aiSettings,
             IMemoryCache cache,
-            OllamaService ollama,
-            LmStudioService lmStudio,
-            LmStudioDownloadService lmStudioDownload,
-            LlamaCppService llamaCpp,
             ILocalModelTool openVino,
             IStringLocalizer<SharedResources> loc)
         {
@@ -67,10 +58,6 @@ namespace Baihua.Family.Services;
             _localModelSettings = localModelSettings;
             _aiSettings = aiSettings;
             _cache = cache;
-            _ollama = ollama;
-            _lmStudio = lmStudio;
-            _lmStudioDownload = lmStudioDownload;
-            _llamaCpp = llamaCpp;
             _openVino = openVino;
             _loc = loc;
         }

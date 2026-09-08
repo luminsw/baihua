@@ -4,7 +4,7 @@ using Baihua.Core.Services;
 namespace Baihua.Family.Services
 {
     /// <summary>
-    /// 应用启动时预热本地模型相关缓存（硬件信息 + 模型推荐）
+    /// 应用启动时预热本地模型相关缓存（硬件信息 + 工具/运行中/已下载/可下载模型）
     /// </summary>
     public class LocalModelsCacheWarmupService : BackgroundService
     {
@@ -28,16 +28,11 @@ namespace Baihua.Family.Services
             {
                 using var scope = _serviceProvider.CreateScope();
                 var hardwareService = scope.ServiceProvider.GetRequiredService<HardwareInfoService>();
-                var recommendationEngine = scope.ServiceProvider.GetRequiredService<ModelRecommendationEngine>();
 
                 _logger.LogInformation("正在预热本地模型缓存...");
 
                 // 预热硬件信息
                 hardwareService.WarmupCache();
-
-                // 预热模型推荐（全部场景）
-                var hardware = hardwareService.GetHardwareInfo();
-                recommendationEngine.GetRecommendations(hardware, scenario: null, maxResults: 20);
 
                 // 后台预热工具状态/运行中模型/已下载模型（避免页面首访冷加载 5s+）
                 try

@@ -25,7 +25,7 @@ public class AIDbContext : DbContext
     public DbSet<BenchmarkSessionEntity> BenchmarkSessions => Set<BenchmarkSessionEntity>();
     public DbSet<EmbeddingConfig> EmbeddingConfigs => Set<EmbeddingConfig>();
     public DbSet<ComfyArtworkEntity> ComfyArtworks => Set<ComfyArtworkEntity>();
-    public DbSet<CodeAgentSession> CodeAgentSessions => Set<CodeAgentSession>();
+
 
 
     public string DatabasePath => _dbPath;
@@ -151,22 +151,6 @@ public class AIDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
         });
 
-        modelBuilder.Entity<CodeAgentSession>(entity =>
-        {
-            entity.ToTable("CodeAgentSessions");
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.CreatedAt);
-            entity.HasIndex(e => e.IsPipeline);
-
-            entity.Property(e => e.Prompt).HasMaxLength(8000).IsRequired();
-            entity.Property(e => e.Language).HasMaxLength(100);
-            entity.Property(e => e.ProviderId).HasMaxLength(50);
-            entity.Property(e => e.Model).HasMaxLength(100);
-            entity.Property(e => e.ToolMode).HasMaxLength(20).IsRequired().HasDefaultValue("All");
-            entity.Property(e => e.FileName).HasMaxLength(300);
-            entity.Property(e => e.SessionStateJson).HasColumnType("TEXT");
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
-        });
 
     }
 

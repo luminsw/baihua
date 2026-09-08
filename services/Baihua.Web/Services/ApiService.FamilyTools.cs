@@ -974,117 +974,7 @@ namespace Baihua.Web.Services
             }
         }
 
-        public async Task<List<RecommendedModelDto>> GetRecommendedModelsAsync(string? scenario = null, bool forceRefresh = false, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var query = new List<string>();
-                if (!string.IsNullOrEmpty(scenario))
-                    query.Add($"scenario={Uri.EscapeDataString(scenario)}");
-                if (forceRefresh)
-                    query.Add("forceRefresh=true");
-                var url = "/api/local-models/recommend" + (query.Count > 0 ? "?" + string.Join("&", query) : "");
-                var response = await GetWithMetricsAsync(url, linked.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<RecommendedModelDto>>(linked.Token) ?? new List<RecommendedModelDto>();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取推荐模型失败");
-                return new List<RecommendedModelDto>();
-            }
-        }
 
-        public async Task<bool> RefreshLibraryAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                // 刷新模型库涉及多次网络请求，使用较长超时
-                using var quick = new CancellationTokenSource(TimeSpan.FromSeconds(35));
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var response = await PostWithMetricsAsync("/api/local-models/refresh-library", null!, linked.Token);
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "刷新模型库失败");
-                return false;
-            }
-        }
-
-        public async Task<DeployLocalModelResult> DeployLocalModelAsync(DeployLocalModelRequest request, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var json = JsonSerializer.Serialize(request);                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await PostWithMetricsAsync("/api/local-models/deploy", content, linked.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<DeployLocalModelResult>(linked.Token)
-                       ?? new DeployLocalModelResult { Success = false, Message = _loc["Api_ResponseParseFailed"] };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "启动模型部署失败");
-                return new DeployLocalModelResult { Success = false, Message = _loc["Api_StartFailedWithError", ex.Message] };
-            }
-        }
-
-        public async Task<DeployTaskStatusDto?> GetDeployTaskStatusAsync(string taskId, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var response = await GetWithMetricsAsync($"/api/local-models/deploy/{Uri.EscapeDataString(taskId)}", linked.Token);
-                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                    return null;
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<DeployTaskStatusDto>(linked.Token);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取部署任务状态失败");
-                return null;
-            }
-        }
-
-        public async Task<bool> CancelDeployTaskAsync(string taskId, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var response = await PostWithMetricsAsync($"/api/local-models/deploy/{Uri.EscapeDataString(taskId)}/cancel", new StringContent("", Encoding.UTF8, "application/json"), linked.Token);
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "取消模型部署任务失败，TaskId: {TaskId}", taskId);
-                return false;
-            }
-        }
-
-        public async Task<List<LocalToolInfoDto>> GetLocalToolsAsync(bool forceRefresh = false, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var url = "/api/local-models/tools" + (forceRefresh ? "?forceRefresh=true" : "");
-                var response = await GetWithMetricsAsync(url, linked.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<LocalToolInfoDto>>(linked.Token) ?? new List<LocalToolInfoDto>();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取本地工具信息失败");
-                return new List<LocalToolInfoDto>();
-            }
-        }
 
         public async Task<List<DownloadSourceDto>> GetDownloadSourcesAsync(CancellationToken cancellationToken = default)
         {
@@ -1211,58 +1101,6 @@ namespace Baihua.Web.Services
             }
         }
 
-
-        public async Task<bool> LoadModelAsync(LoadModelRequest request, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
-                var json = JsonSerializer.Serialize(request);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await PostWithMetricsAsync("/api/local-models/running/load", content, linked.Token);
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "加载模型失败");
-                return false;
-            }
-        }
-
-
-        public async Task<LocalAiServiceStatusDto> StartLlamaCppAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
-                var response = await PostWithMetricsAsync("/api/local-models/llamacpp/start", new StringContent("", Encoding.UTF8, "application/json"), linked.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<LocalAiServiceStatusDto>(linked.Token) ?? new LocalAiServiceStatusDto { Provider = "llamacpp" };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "启动 llama.cpp 失败");
-                return new LocalAiServiceStatusDto { Provider = "llamacpp", Message = ex.Message };
-            }
-        }
-
-        public async Task<bool> StopLlamaCppAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var response = await PostWithMetricsAsync("/api/local-models/llamacpp/stop", new StringContent("", Encoding.UTF8, "application/json"), linked.Token);
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "停止 llama.cpp 失败");
-                return false;
-            }
-        }
 
         #endregion
 
@@ -1546,23 +1384,6 @@ namespace Baihua.Web.Services
             }
         }
 
-        public async Task<VramTierResponse> GetBenchmarkVramTiersAsync(string? category = null)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(QuickCallTimeout);
-                var url = "/api/benchmark/vram-tiers";
-                if (!string.IsNullOrEmpty(category)) url += $"?category={Uri.EscapeDataString(category)}";
-                var response = await GetWithMetricsAsync(url, cts.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<VramTierResponse>(cts.Token) ?? new();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取显存等级推荐失败");
-                return new();
-            }
-        }
 
         public async Task<List<BenchmarkPrompt>> GetBenchmarkPromptsAsync(string? category = null)
         {

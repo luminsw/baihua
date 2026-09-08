@@ -17,20 +17,17 @@ public class ModelBenchmarkController : ControllerBase
 {
     private readonly ModelBenchmarkService _benchmarkService;
     private readonly BenchmarkRepository _benchmarkRepo;
-    private readonly HardwareInfoService _hardwareInfoService;
     private readonly ILogger<ModelBenchmarkController> _logger;
     private readonly IStringLocalizer<SharedResources> _loc;
 
     public ModelBenchmarkController(
         ModelBenchmarkService benchmarkService,
         BenchmarkRepository benchmarkRepo,
-        HardwareInfoService hardwareInfoService,
         ILogger<ModelBenchmarkController> logger,
         IStringLocalizer<SharedResources> loc)
     {
         _benchmarkService = benchmarkService;
         _benchmarkRepo = benchmarkRepo;
-        _hardwareInfoService = hardwareInfoService;
         _logger = logger;
         _loc = loc;
     }
@@ -42,40 +39,6 @@ public class ModelBenchmarkController : ControllerBase
     public ActionResult<List<RecommendedBenchmarkModel>> GetRecommendedModels([FromQuery] string? category)
     {
         return Ok(BenchmarkPrompts.GetModelsByCategory(category ?? ""));
-    }
-
-    /// <summary>
-    /// 获取显存等级推荐表（INT4 / INT8）
-    /// </summary>
-    [HttpGet("vram-tiers")]
-    public ActionResult<VramTierResponse> GetVramTiers([FromQuery] string? category)
-    {
-        var hardware = _hardwareInfoService.GetHardwareInfo();
-        var availableVram = hardware.Gpus
-            .Where(g => !g.IsIntegrated)
-            .Select(g => g.VramGiB)
-            .Where(v => v.HasValue)
-            .Select(v => v!.Value)
-            .DefaultIfEmpty(hardware.Memory.TotalGiB / 2.0)
-            .Max();
-
-        var tiers = BenchmarkPrompts.GetTiersByCategory(category ?? "");
-        var recommendedVramGb = tiers
-            .Where(t => t.VramGb <= availableVram)
-            .Select(t => (int?)t.VramGb)
-            .LastOrDefault();
-
-        foreach (var tier in tiers)
-        {
-            tier.IsRecommendedForCurrentHardware = tier.VramGb == recommendedVramGb;
-        }
-
-        return Ok(new VramTierResponse
-        {
-            Tiers = tiers,
-            AvailableVramGiB = Math.Round(availableVram, 1),
-            RecommendedTierVramGb = recommendedVramGb
-        });
     }
 
     /// <summary>

@@ -1,36 +1,13 @@
 @page "/local-models"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Baihua.Contracts.LocalModels
-@using Baihua.Contracts.OpenClaw
-@using Baihua.Contracts.Benchmark
-@using Baihua.Web.Components.LocalModels
 @inject Baihua.Web.Services.IApiService ApiService
-@inject Baihua.Web.Services.CapabilityService CapabilityService
-@inject Baihua.Web.Services.AIStatusService AIStatusService
-@inject Baihua.Web.Hubs.StatusUpdateService StatusUpdateService
-@inject NavigationManager NavigationManager
-@inject IJSRuntime JSRuntime
 @inject Microsoft.Extensions.Localization.IStringLocalizer<Baihua.Web.Localization.SharedResources> L
 @inject Microsoft.Extensions.Logging.ILogger<LocalModels> Logger
-@implements IDisposable
 
 <PageTitle>@L["LocalModels_PageTitle"]</PageTitle>
 
 <h1>🖥️ @L["LocalModels_Title"]</h1>
-
-<!-- Tab 导航 -->
-<ul class="nav nav-tabs mb-3">
-    <li class="nav-item">
-        <button class="nav-link @(_activeTab == "overview" ? "active" : "")" @onclick='async () => await OnTabChanged("overview")'>📊 @L["LocalModels_TabOverview"]</button>
-    </li>
-    @if (_openVinoAvailable != false)
-    {
-        <li class="nav-item">
-            <button class="nav-link @(_activeTab == "openvino" ? "active" : "")" @onclick='async () => await OnTabChanged("openvino")'>🧿 OpenVINO</button>
-        </li>
-    }
-</ul>
-
 
 @if (isLoading)
 {
@@ -38,240 +15,96 @@
         <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">@L["LocalModels_Loading"]</span>
         </div>
-        <div class="mt-2">@L["LocalModels_Refreshing"]@(!string.IsNullOrEmpty(loadingStatus) ? $"：{loadingStatus}" : "")
-        </div>
+        <div class="mt-2">@L["LocalModels_Refreshing"]</div>
     </div>
 }
 else
 {
-    <!-- Hardware Overview -->
-    @if (_activeTab == "overview")
-    {
-    <!-- Hardware Overview -->
-    <div class="hardware-section">
-        <div class="section-header" style="cursor:pointer;" @onclick="() => ToggleSection(ref _showHardware)">
-<h2>@(_showHardware ? "▼" : "▶") @L["LocalModels_HardwareTitle"]</h2>
-        </div>
-        @if (_showHardware)
-        {
-        <div class="hardware-cards">
-            <div class="hw-card">
-                <div class="hw-icon">🖥️</div>
-                <div class="hw-title">CPU</div>
-                <div class="hw-value">@(hardwareInfo?.Cpu.Name ?? @L["LocalModels_CpuDetecting"])</div>
-                <div class="hw-detail">@(hardwareInfo?.Cpu.LogicalProcessorCount ?? 0) @L["LocalModels_CpuCore"] @(hardwareInfo?.Cpu.Architecture ?? "")</div>
-            </div>
-            <div class="hw-card">
-                <div class="hw-icon">🧠</div>
-                <div class="hw-title">@L["LocalModels_MemoryTitle"]</div>
-                <div class="hw-value">@(hardwareInfo?.Memory.TotalGiB.ToString("F1") ?? "-") GB</div>
-                <div class="hw-detail">@L["LocalModels_MemoryDetail", hardwareInfo?.Memory.AvailableGiB.ToString("F1") ?? "-"]</div>
-            </div>
-            <div class="hw-card">
-                <div class="hw-icon">🎮</div>
-                <div class="hw-title">@L["LocalModels_GpuTitle"]</div>
-                @if (hardwareInfo?.Gpus?.Count > 0)
-                {
-                    @foreach (var gpu in hardwareInfo.Gpus)
-                    {
-                        <div class="hw-value">@gpu.Name</div>
-                        <div class="hw-detail">
-                            @(gpu.VramGiB.HasValue ? $"{gpu.VramGiB:F1} GB" : @L["LocalModels_VramUnknown"])
-                            @(gpu.IsIntegrated ? @L["LocalModels_IntegratedSuffix"] : "")
-                            @(gpu.IsAppleSilicon ? @L["LocalModels_AppleUnifiedSuffix"] : "")
-                        </div>
-                    }
-                }
-                else
-                {
-                    <div class="hw-value">@L["LocalModels_NoGpuDetected"]</div>
-                    <div class="hw-detail">@L["LocalModels_CpuFallback"]</div>
-                }
-            </div>
-            <div class="hw-card">
-                <div class="hw-icon">💾</div>
-                <div class="hw-title">@L["LocalModels_DiskTitle"]</div>
-                <div class="hw-value">@(GetDiskGiB(hardwareInfo?.AvailableDiskSpaceBytes) ?? "-") GB</div>
-                <div class="hw-detail">@L["LocalModels_DiskAvailable"]</div>
-            </div>
-        </div>
-        <button class="btn btn-secondary btn-sm" @onclick="RefreshHardware">🔄 @L["LocalModels_RefreshHardware"]</button>
-        }
+    <div class="d-flex justify-content-end mb-2">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="Refresh" disabled="@isRefreshing">
+            @(isRefreshing ? "🔄 " + L["LocalModels_Refreshing"] : "🔄 " + L["LocalModels_RefreshModels"])
+        </button>
     </div>
 
-
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <div class="load-message @(success ? "text-success" : "text-error") mb-2">@message</div>
     }
 
-    @if (_activeTab == "overview")
+    @if (downloadedModels.Count == 0)
     {
-    <!-- Local Tools Status -->
-    <div class="tools-section">
-        <div class="section-header" style="cursor:pointer;" @onclick="() => ToggleSection(ref _showLocalTools)">
-            <h2>@(_showLocalTools ? "▼" : "▶") @L["LocalModels_LocalToolsTitle"]</h2>
-        </div>
-        @if (_showLocalTools)
-        {
-        <div class="tools-list">
-            @foreach (var tool in localTools)
-            {
-                <div class="tool-item">
-                    <span class="tool-name">@tool.Name</span>
-                    @if (tool.IsInstalled)
-                    {
-                        <span class="badge badge-success">@L["LocalModels_Installed"] @(tool.Version)</span>
-                        @if (tool.IsRunning)
-                        {
-                            <span class="badge badge-info">@L["LocalModels_Running"]</span>
-                        }
-                        else
-                        {
-                            <span class="badge badge-warning">@L["LocalModels_NotRunning"]</span>
-                        }
-                    }
-                    else
-                    {
-                        <span class="badge badge-warning">@L["LocalModels_NotInstalled"]</span>
-                        @if (!string.IsNullOrEmpty(tool.InstallGuideUrl))
-                        {
-                            <a href="@tool.InstallGuideUrl" target="_blank" class="link-small">@L["LocalModels_InstallGuide"]</a>
-                        }
-                    }
-                </div>
-            }
-        </div>
-        }
-    </div>
-
+        <div class="alert alert-info">@L["LocalModels_NoDownloadedModels"]</div>
     }
-
-    @if (_activeTab == "overview")
+    else
     {
-
-
-    <!-- Scene Filters -->
-    <div class="scenario-section">
-        <div class="scenario-header" style="cursor:pointer;" @onclick="() => ToggleSection(ref _showRecommendations)">
-            <h2>@(_showRecommendations ? "▼" : "▶") @L["LocalModels_RecommendationsTitle"]</h2>
-            <button class="btn btn-outline-secondary btn-sm" @onclick="RefreshLibrary" @onclick:stopPropagation
-                    disabled="@isRefreshingLibrary" title="@L["LocalModels_RefreshLibrary"]">
-                @(isRefreshingLibrary ? "🔄 " + L["LocalModels_Refreshing"] : "🔄 " + L["LocalModels_RefreshLibrary"])
-            </button>
-        </div>
-        <div class="scenario-tags">
-            @foreach (var tag in scenarioTags)
-            {
-                <button class="scenario-tag @(currentScenario == tag.Value ? "active" : "")"
-                        @onclick="() => SelectScenario(tag.Value)">
-                    @tag.Label
-                </button>
-            }
-        </div>
-        <div class="scenario-tags company-tags" style="margin-top:0.5rem;">
-            @foreach (var tag in companyTags)
-            {
-                <button class="scenario-tag company-tag @(currentCompany == tag.Value ? "active" : "")"
-                        @onclick="() => SelectCompany(tag.Value)">
-                    @tag.Label
-                </button>
-            }
-        </div>
-    </div>
-
-    @if (_showRecommendations)
-    {
-        @if (availableVram.HasValue)
-        {
-            <div class="hardware-vram-bar" style="margin-bottom:1rem;">
-                <span style="font-size:0.85rem;padding:0.35rem 0.75rem;background:#e0ecf4;border-radius:20px;color:#2e8baf;font-weight:500;">
-                    @L["LocalModels_VramDisplay", availableVram.Value.ToString("F1")]
-                    @if (recommendedTierVramGb.HasValue)
-                    {
-                        <span style="color:#3d6b45;font-weight:600;"> → @L["LocalModels_RecommendedTier", recommendedTierVramGb.Value]</span>
-                    }
-                </span>
-            </div>
-        }
-
-        @if (FilteredModelsByTier.Count == 0)
-        {
-            <div class="alert alert-warning">@L["LocalModels_NoRecommendations"]</div>
-        }
-        else
-        {
-            @foreach (var tier in VramTierValues)
-            {
-                var models = FilteredModelsByTier.GetValueOrDefault(tier);
-                if (models == null || models.Count == 0) continue;
-
-                var isRecommended = recommendedTierVramGb.HasValue && recommendedTierVramGb.Value == tier;
-
-                <div class="tier-group @(isRecommended ? "tier-recommended" : "")">
-                    <div class="tier-group-header">
-                        <div class="tier-title">
-                            <span class="tier-badge">💾 @tier GB</span>
-                            @if (isRecommended)
+        <table class="table table-sm table-hover">
+            <thead>
+                <tr>
+                    <th>@L["LocalModels_Col_Model"]</th>
+                    <th>@L["LocalModels_Col_Params"]</th>
+                    <th>@L["LocalModels_Col_Size"]</th>
+                    <th>@L["LocalModels_Col_Usage"]</th>
+                    <th>@L["LocalModels_Col_Tool"]</th>
+                    <th>@L["LocalModels_Col_Status"]</th>
+                    <th class="text-end">@L["LocalModels_Col_Actions"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in downloadedModels)
+                {
+                    <tr>
+                        <td>
+                            <div class="model-name-text">@m.Name</div>
+                            @if (!string.IsNullOrEmpty(m.Digest))
                             {
-                                <span class="tier-recommended-badge">✓ @L["LocalModels_RecommendedBadge"]</span>
+                                <div class="digest-text" title="@m.Digest">@m.Digest[..Math.Min(12, m.Digest.Length)]...</div>
                             }
-                        </div>
-                        <span class="tier-count">@L["LocalModels_RecommendedCount", models.Count]</span>
-                    </div>
-                    <div class="models-grid">
-                        @foreach (var model in models)
-                        {
-                            @RenderModelCard(model)
-                        }
-                    </div>
-                </div>
-            }
-        }
+                        </td>
+                        <td class="small text-muted">@(string.IsNullOrEmpty(m.Quantization) ? m.ParameterSize : $"{m.ParameterSize} {m.Quantization}")</td>
+                        <td class="small text-muted">@m.SizeGiB.ToString("F1") GB</td>
+                        <td class="small text-muted">@m.Usage</td>
+                        <td><span class="tool-badge @GetToolBadgeClass(m.ToolId)">@GetToolLabel(m)</span></td>
+                        <td>
+                            @if (m.IsRunning)
+                            {
+                                <span class="badge badge-success">@L["LocalModels_Running"]</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-secondary">@L["LocalModels_DownloadedBadge"]</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick='() => AskDelete(m)'>@L["LocalModels_DeleteBtn"]</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
     }
+}
 
-    }
-
-
-    @if (_activeTab == "overview")
-    {
-    <!-- Deploy Status Panel -->
-    @if (activeTasks.Count > 0)
-    {
-        <div class="deploy-section">
-            <h2>@L["LocalModels_DeployStatusTitle"]</h2>
-            @foreach (var task in activeTasks)
-            {
-                <div class="deploy-card">
-                    <div class="deploy-header">
-                        <span class="deploy-model">@task.ModelName</span>
-                        <span class="deploy-status @GetTaskStatusClass(task.Status)">@GetTaskStatusLabel(task.Status)</span>
-                    </div>
-                    <div class="deploy-progress">
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: @task.ProgressPercent%"></div>
-                        </div>
-                        <span class="progress-text">@task.ProgressPercent%</span>
-                    </div>
-                    <div class="deploy-step">@task.CurrentStep</div>
-                    <div class="deploy-logs">
-                        @foreach (var log in task.Logs.TakeLast(5))
-                        {
-                            <div class="log-line">@log</div>
-                        }
-                    </div>
-                    @if (task.Status == "running")
-                    {
-                        <button class="btn btn-danger btn-sm" @onclick="() => CancelDeploy(task.TaskId)">@L["Common_Cancel"]</button>
-                    }
-                    @if (task.Status == "completed" && task.AutoConfiguredProvider)
-                    {
-                        <div class="deploy-success">
-                            ✅ @L["LocalModels_AutoAddedSetting"]
-                        </div>
-                    }
-                </div>
-            }
+@if (modelToDelete != null)
+{
+    <div class="modal-overlay" @onclick="CancelDelete">
+        <div class="modal-content modal-small" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>⚠️ @L["LocalModels_DeleteConfirmTitle"]</h3>
+                <button class="modal-close" @onclick="CancelDelete">×</button>
+            </div>
+            <div class="modal-body">
+                <p>@L["LocalModels_DeleteConfirmText", modelToDelete.Name]</p>
+                <p>@L["LocalModels_DeleteSize", modelToDelete.SizeGiB.ToString("F1")]</p>
+                <p class="text-error">@L["LocalModels_DeleteIrreversible"]</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CancelDelete">@L["Common_Cancel"]</button>
+                <button class="btn btn-danger" @onclick="ConfirmDelete" disabled="@isDeleting">
+                    @(isDeleting ? L["LocalModels_Deleting"] : L["LocalModels_DeleteConfirmBtn"])
+                </button>
+            </div>
         </div>
-    }
-    }
+    </div>
 }
 
 <style>
@@ -281,450 +114,13 @@ else
         color: #666;
     }
 
-    .hardware-section, .tools-section, .scenario-section, .deploy-section {
-        margin-bottom: 2rem;
-    }
-
-    .hardware-section h2, .tools-section h2, .scenario-section h2, .deploy-section h2 {
-        font-size: 1.2rem;
-        margin-bottom: 1rem;
-        color: #333;
-    }
-
-    .hardware-cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 1rem;
-        margin-bottom: 1rem;
-    }
-
-    .hw-card {
-        background: #f5f8fa;
-        border: 1px solid #e8eef2;
-        border-radius: 10px;
-        padding: 1rem;
-        text-align: center;
-    }
-
-    .hw-icon {
-        font-size: 1.8rem;
-        margin-bottom: 0.3rem;
-    }
-
-    .hw-title {
-        font-size: 0.85rem;
-        color: #666;
-        margin-bottom: 0.3rem;
-    }
-
-    .hw-value {
-        font-size: 0.95rem;
-        font-weight: 600;
-        color: #333;
-        margin-bottom: 0.2rem;
-        word-break: break-word;
-    }
-
-    .hw-detail {
-        font-size: 0.8rem;
-        color: #888;
-    }
-
-    .tools-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-    }
-
-    .tool-item {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        background: #f5f8fa;
-        border: 1px solid #e8eef2;
-        border-radius: 6px;
-        padding: 0.5rem 0.75rem;
-    }
-
-    .tool-name {
-        font-weight: 500;
-        font-size: 0.9rem;
-    }
-
-    .link-small {
-        font-size: 0.8rem;
-        color: #2e8baf;
-        text-decoration: none;
-    }
-
-    .link-small:hover {
-        text-decoration: underline;
-    }
-
-    .scenario-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 0.75rem;
-    }
-
-    .scenario-header h2 {
-        margin-bottom: 0;
-    }
-
-    .scenario-tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-bottom: 1rem;
-    }
-
-    .scenario-tag {
-        padding: 0.4rem 1rem;
-        border: 1px solid #d8e2e8;
-        border-radius: 20px;
-        background: white;
-        cursor: pointer;
-        font-size: 0.9rem;
-        transition: all 0.2s;
-    }
-
-    .scenario-tag:hover {
-        background: #f5f8fa;
-    }
-
-    .scenario-tag.active {
-        background: #2e8baf;
-        color: white;
-        border-color: #2e8baf;
-    }
-
-    .models-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-        gap: 1rem;
-        margin-bottom: 2rem;
-    }
-
-    .model-card {
-        background: white;
-        border: 1px solid #e8eef2;
-        border-radius: 10px;
-        padding: 1rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-
-    .model-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .model-name {
-        font-weight: 600;
-        font-size: 1rem;
-        color: #333;
-    }
-
-    .model-size {
-        font-size: 0.85rem;
-        color: #666;
-        background: #e8eef2;
-        padding: 0.2rem 0.5rem;
-        border-radius: 4px;
-    }
-
-    .model-desc {
-        font-size: 0.85rem;
-        color: #555;
-        line-height: 1.4;
-    }
-
-    .model-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.35rem;
-    }
-
-    .model-requirements {
-        display: flex;
-        gap: 1rem;
-        font-size: 0.8rem;
-        color: #666;
-    }
-
-    .model-suitability {
-        font-size: 0.85rem;
-        padding: 0.3rem 0.5rem;
-        border-radius: 4px;
-        font-weight: 500;
-    }
-
-    .suitability-good {
-        background: #e0f0e5;
-        color: #3d6b45;
-    }
-
-    .suitability-ok {
-        background: #f5eee0;
-        color: #6a5a3a;
-    }
-
-    .suitability-slow {
-        background: #e0ecf4;
-        color: #4a2a30;
-    }
-
-    .model-performance {
-        font-size: 0.85rem;
-    }
-
-    .speed-badge {
-        display: inline-block;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-        font-weight: 500;
-        font-size: 0.8rem;
-    }
-
-    .speed-fast {
-        background: #e0f0e5;
-        color: #3d6b45;
-    }
-
-    .speed-medium {
-        background: #f5eee0;
-        color: #6a5a3a;
-    }
-
-    .speed-slow {
-        background: #ffe5cc;
-        color: #804000;
-    }
-
-    .speed-very-slow {
-        background: #e0ecf4;
-        color: #4a2a30;
-    }
-
-    /* 显存档位分组 */
-    .tier-group {
-        margin-bottom: 1.5rem;
-        border: 1px solid #e8eef2;
-        border-radius: 10px;
-        background: #fff;
-        overflow: hidden;
-    }
-
-    .tier-group.tier-recommended {
-        border-color: #6b9e75;
-        box-shadow: 0 0 0 1px #6b9e7520;
-    }
-
-    .tier-group-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem 1rem;
-        background: #f5f8fa;
-        border-bottom: 1px solid #e8eef2;
-    }
-
-    .tier-group.tier-recommended .tier-group-header {
-        background: #e0f0e5;
-    }
-
-    .tier-title {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .tier-badge {
-        font-weight: 700;
-        font-size: 1rem;
-        color: #1e3a4c;
-    }
-
-    .tier-recommended-badge {
-        font-size: 0.72rem;
-        padding: 0.15rem 0.5rem;
-        background: #6b9e75;
-        color: #fff;
-        border-radius: 12px;
-        font-weight: 500;
-    }
-
-    .tier-count {
-        font-size: 0.8rem;
-        color: #5a6a72;
-    }
-
-    .tier-group .models-grid {
-        padding: 1rem;
-        margin-bottom: 0;
-    }
-
-    .deploy-card {
-        background: #f5f8fa;
-        border: 1px solid #e8eef2;
-        border-radius: 10px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-
-    .deploy-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 0.75rem;
-    }
-
-    .deploy-model {
-        font-weight: 600;
-    }
-
-    .deploy-status {
-        font-size: 0.85rem;
-        padding: 0.2rem 0.5rem;
-        border-radius: 4px;
-    }
-
-    .status-running {
-        background: #e0ecf4;
-        color: #4a2a30;
-    }
-
-    .status-completed {
-        background: #e0f0e5;
-        color: #3d6b45;
-    }
-
-    .status-failed {
-        background: #e0ecf4;
-        color: #4a2a30;
-    }
-
-    .deploy-progress {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .progress-bar {
-        flex: 1;
-        height: 8px;
-        background: #d8e2e8;
-        border-radius: 4px;
-        overflow: hidden;
-    }
-
-    .progress-fill {
-        height: 100%;
-        background: #2e8baf;
-        border-radius: 4px;
-        transition: width 0.3s ease;
-    }
-
-    .progress-text {
-        font-size: 0.85rem;
-        color: #666;
-        min-width: 2.5rem;
-        text-align: right;
-    }
-
-    .deploy-step {
-        font-size: 0.85rem;
-        color: #555;
-        margin-bottom: 0.5rem;
-    }
-
-    .deploy-logs {
-        background: #1e1e1e;
-        color: #c8d4dc;
-        border-radius: 6px;
-        padding: 0.5rem 0.75rem;
-        font-family: 'Consolas', 'Monaco', monospace;
-        font-size: 0.8rem;
-        max-height: 120px;
-        overflow-y: auto;
-        margin-bottom: 0.5rem;
-    }
-
-    .log-line {
-        line-height: 1.5;
-        white-space: pre-wrap;
-        word-break: break-all;
-    }
-
-    .deploy-success {
-        margin-top: 0.5rem;
-        font-size: 0.9rem;
-    }
-
-    .deploy-success a {
-        color: #2e8baf;
-    }
-
-    .btn-sm {
-        padding: 0.35rem 0.75rem;
-        font-size: 0.85rem;
-    }
-
-    /* 运行中模型 */
-    .running-section {
-        margin-bottom: 1.5rem;
-    }
-
-    .section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 0.75rem;
-    }
-
-    .running-models-table {
-        background: white;
-        border: 1px solid #e8eef2;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    .running-table-header, .running-table-row {
-        display: grid;
-        grid-template-columns: 2fr 1fr 0.7fr 1.5fr 1.2fr 1fr;
-        gap: 0.5rem;
-        padding: 0.6rem 0.75rem;
-        align-items: center;
-    }
-
-    .running-table-header {
-        background: #f5f8fa;
-        font-weight: 600;
-        font-size: 0.85rem;
-        color: #555;
-    }
-
-    .running-table-row {
-        border-top: 1px solid #e8eef2;
-        font-size: 0.9rem;
-    }
-
-    .running-table-row:hover {
-        background: #f5f8fa;
-    }
-
-    .col-model {
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-    }
-
     .model-name-text {
         font-weight: 500;
+    }
+
+    .digest-text {
+        font-size: 0.75rem;
+        color: #888;
     }
 
     .tool-badge {
@@ -740,57 +136,12 @@ else
         color: #3d7a4d;
     }
 
-    .mem-bar {
-        width: 100%;
-        height: 6px;
+    .tool-generic {
         background: #e8eef2;
-        border-radius: 3px;
-        margin-top: 0.2rem;
-        overflow: hidden;
-    }
-
-    .mem-fill {
-        height: 100%;
-        background: #6b9e75;
-        border-radius: 3px;
-    }
-
-    .memory-summary {
-        margin-top: 0.5rem;
-        font-size: 0.85rem;
-        color: #666;
-        text-align: right;
-    }
-
-    /* 加载模型区域 */
-    .load-model-section {
-        background: #f5f8fa;
-        border: 1px solid #e8eef2;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .load-model-section h3 {
-        margin-top: 0;
-        margin-bottom: 0.75rem;
-        font-size: 1rem;
-    }
-
-    .load-model-form {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-
-    .form-row {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 0.75rem;
+        color: #4a5860;
     }
 
     .load-message {
-        margin-left: 0.5rem;
         font-size: 0.9rem;
     }
 
@@ -802,25 +153,9 @@ else
         color: #c94c4c;
     }
 
-    /* Badge styles - Bootstrap 5 removed badge-* color classes */
     .badge-success {
         background: #6b9e75;
         color: white;
-    }
-
-    .badge-info {
-        background: #5ab8c4;
-        color: white;
-    }
-
-    .modality-badge {
-        background: #f0e6ff;
-        color: #6b2c91;
-    }
-
-    .badge-warning {
-        background: #d4a574;
-        color: #1e3a4c;
     }
 
     .badge-secondary {
@@ -828,103 +163,6 @@ else
         color: white;
     }
 
-    .badge-light {
-        background: #f5f8fa;
-        color: #333;
-        border: 1px solid #d8e2e8;
-    }
-
-    /* 已下载模型区域 */
-    .preset-label {
-        font-size: 0.85rem;
-        color: #666;
-        font-weight: 500;
-        margin: 0;
-    }
-
-    .preset-checkbox {
-        display: flex;
-        align-items: center;
-        gap: 0.35rem;
-        font-size: 0.85rem;
-        color: #444;
-        cursor: pointer;
-        user-select: none;
-        padding: 0.25rem 0.5rem;
-        background: #f5eee8;
-        border-radius: 6px;
-        border: 1px solid #e8dcd0;
-        transition: background 0.2s;
-    }
-
-    .preset-checkbox:hover {
-        background: #e8dcd0;
-    }
-
-    .preset-checkbox input[type="checkbox"] {
-        margin: 0;
-        cursor: pointer;
-    }
-
-    /* 已下载模型区域 */
-    .downloaded-section {
-        margin-bottom: 1.5rem;
-    }
-
-    .downloaded-models-table {
-        background: white;
-        border: 1px solid #e8eef2;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    .downloaded-table-header, .downloaded-table-row {
-        display: grid;
-        grid-template-columns: 2fr 1fr 1fr 1.5fr;
-        gap: 0.5rem;
-        padding: 0.6rem 0.75rem;
-        align-items: center;
-    }
-
-    .ovms-downloaded-table .downloaded-table-header,
-    .ovms-downloaded-table .downloaded-table-row {
-        grid-template-columns: 2fr 1fr 1fr 1fr;
-    }
-
-    .downloaded-table-header {
-        background: #f5f8fa;
-        font-weight: 600;
-        font-size: 0.85rem;
-        color: #555;
-    }
-
-    .downloaded-table-row {
-        border-top: 1px solid #e8eef2;
-        font-size: 0.9rem;
-    }
-
-    .downloaded-table-row:hover {
-        background: #f5f8fa;
-    }
-
-    .col-dl-name {
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-    }
-
-    .digest-text {
-        font-size: 0.75rem;
-        color: #888;
-    }
-
-    .col-dl-actions {
-        display: flex;
-        gap: 0.35rem;
-        flex-wrap: wrap;
-    }
-
-    /* Modal */
     .modal-overlay {
         position: fixed;
         top: 0;
@@ -952,10 +190,6 @@ else
 
     .modal-small {
         width: 420px;
-    }
-
-    .modal-large {
-        width: 700px;
     }
 
     .modal-header {
@@ -998,500 +232,138 @@ else
         border-top: 1px solid #e8eef2;
     }
 
-    .details-sections {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-
-    .detail-section h4 {
-        margin: 0 0 0.5rem 0;
-        font-size: 0.9rem;
-        color: #555;
-    }
-
-    .detail-code {
-        background: #1e1e1e;
-        color: #c8d4dc;
-        border-radius: 6px;
-        padding: 0.75rem;
-        font-family: 'Consolas', 'Monaco', monospace;
-        font-size: 0.8rem;
-        max-height: 200px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        word-break: break-all;
-        margin: 0;
-    }
-
-    /* ===== 暗色模式适配（data-bs-theme=dark）===== */
     [data-bs-theme="dark"] {
         .loading-spinner { color: #91a0b0; }
-        .hardware-section h2, .tools-section h2, .scenario-section h2, .deploy-section h2 { color: #d4d8dd; }
-        .hw-card { background: #232a3b; border-color: #2d3548; }
-        .hw-title { color: #91a0b0; }
-        .hw-value { color: #d4d8dd; }
-        .hw-detail { color: #8090a0; }
-        .tool-item { background: #232a3b; border-color: #2d3548; }
-        .scenario-tag { background: #232a3b; border-color: #2d3548; }
-        .scenario-tag:hover { background: #2a3040; }
-        .model-card { background: #232a3b; border-color: #2d3548; }
-        .model-name { color: #d4d8dd; }
-        .model-size { background: #2d3548; color: #c0c8d0; }
-        .model-desc { color: #a8b0b8; }
-        .model-requirements { color: #91a0b0; }
-        .tier-group { background: #232a3b; border-color: #2d3548; }
-        .tier-group.tier-recommended { border-color: #6b9e75; }
-        .tier-group-header { background: #2a3040; border-bottom-color: #2d3548; }
-        .tier-group.tier-recommended .tier-group-header { background: rgba(107, 158, 117, 0.15); }
-        .tier-badge { color: #d4d8dd; }
-        .tier-count { color: #91a0b0; }
-        .deploy-card { background: #232a3b; border-color: #2d3548; }
-        .deploy-logs { border: 1px solid #2d3548; }
-        .progress-bar { background: #2d3548; }
-        .progress-text { color: #91a0b0; }
-        .deploy-step { color: #a8b0b8; }
-        .running-models-table { background: #232a3b; border-color: #2d3548; }
-        .running-table-header { background: #2a3040; color: #a8b0b8; }
-        .running-table-row { border-color: #2d3548; }
-        .running-table-row:hover { background: #2a3040; }
-        .mem-bar { background: #2d3548; }
-        .memory-summary { color: #91a0b0; }
-        .load-model-section { background: #232a3b; border-color: #2d3548; }
-        .badge-light { background: #2a3040; color: #d4d8dd; border-color: #2d3548; }
-        .preset-label { color: #91a0b0; }
-        .preset-checkbox { background: #2a2a24; border-color: #3a3a30; color: #c0c8d0; }
-        .preset-checkbox:hover { background: #33332a; }
-        .downloaded-models-table { background: #232a3b; border-color: #2d3548; }
-        .downloaded-table-header { background: #2a3040; color: #a8b0b8; }
-        .downloaded-table-row { border-color: #2d3548; }
-        .downloaded-table-row:hover { background: #2a3040; }
         .digest-text { color: #8090a0; }
+        .tool-openvino { background: rgba(61, 122, 77, 0.22); color: #8fc79e; }
+        .tool-generic { background: #2d3548; color: #c0c8d0; }
         .modal-content { background: #232a3b; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); }
         .modal-header { border-bottom-color: #2d3548; }
         .modal-footer { border-top-color: #2d3548; }
         .modal-close { color: #91a0b0; }
         .modal-close:hover { color: #d4d8dd; }
-        .tool-openvino { background: rgba(61, 122, 77, 0.22); color: #8fc79e; }
     }
-
 </style>
-
-    @if (_activeTab == "openvino")
-    {
-        @if (_openVinoAvailable == false)
-        {
-            <div class="alert alert-warning" role="alert">⚠️ @L["LocalModels_OpenVinoNotSupported"]</div>
-        }
-        else
-        {
-            <OpenVinoTab />
-        }
-    }
 
 @code {
     private bool isLoading = true;
-    private string loadingStatus = "";
-    private bool isRefreshingLibrary = false;
-    private HardwareInfoDto? hardwareInfo;
-    private List<RecommendedModelDto> recommendedModels = new();
-    private static readonly int[] VramTierValues = new[] { 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024 };
-    private double? availableVram;
-    private int? recommendedTierVramGb;
-    private List<LocalToolInfoDto> localTools = new();
-    private List<DeployTaskStatusDto> activeTasks = new();
-
-    private string currentScenario = "";
-    private string currentCompany = "";
-    private System.Timers.Timer? _statusTimer;
-
-
-    private string _activeTab = "overview";
-    private bool? _openVinoAvailable; // null=未知/加载中（默认不隐藏 OpenVINO）
-
-    // 区域折叠状态（默认只展开最常用的：模型推荐）
-    private bool _showHardware = false;
-
-    private bool _showLocalTools = false;
-    private bool _showRecommendations = true;
-
-    private void ToggleSection(ref bool flag) => flag = !flag;
-
-    private List<(string Value, string Label)> scenarioTags => new()
-    {
-        ("", L["LocalModels_ScenarioAll"]),
-        ("chat", L["LocalModels_ScenarioChat"]),
-        ("chinese", L["LocalModels_ScenarioChinese"]),
-        ("tcm", L["LocalModels_ScenarioTcm"]),
-        ("code", L["LocalModels_ScenarioCode"]),
-        ("reasoning", L["LocalModels_ScenarioReasoning"]),
-        ("lightweight", L["LocalModels_ScenarioLightweight"]),
-    };
-
-    private List<(string Value, string Label)> companyTags => new()
-    {
-        ("", L["LocalModels_CompanyAll"]),
-        ("阿里云", L["LocalModels_CompanyAliyun"]),
-        ("Meta", "👤 Meta"),
-        ("Google", "🔍 Google"),
-        ("Microsoft", "🪟 Microsoft"),
-        ("DeepSeek", "🐋 DeepSeek"),
-    };
-
-    protected override void OnInitialized()
-    {
-        // 立即渲染骨架屏，数据后台加载
-        isLoading = true;
-    }
+    private bool isRefreshing = false;
+    private bool isDeleting = false;
+    private string message = "";
+    private bool success = true;
+    private List<DownloadedModelDto> downloadedModels = new();
+    private DownloadedModelDto? modelToDelete;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
 
-        // 后台并行加载所有数据
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await LoadAllDataAsync();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "后台加载失败");
-            }
-            finally
-            {
-                await InvokeAsync(() =>
-                {
-                    isLoading = false;
-                    StateHasChanged();
-                });
-            }
-        });
-
-        StartStatusPolling();
-
-    }
-
-    private async Task LoadAllDataAsync()
-    {
         try
         {
-            // 第一步：硬件 + 本地工具（快），完成后即可先渲染概览，不必等慢的提供方扫描
-            SetLoadingStatus(L["LocalModels_LoadingHardware"]);
-            var hwTask = ApiService.GetHardwareInfoAsync();
-            var toolsTask = ApiService.GetLocalToolsAsync();
-            var capTask = SafeLoadAsync(async () =>
-            {
-                try
-                {
-                    var cap = await CapabilityService.GetCapabilityAsync();
-                    _openVinoAvailable = cap.OpenVinoAvailable;
-                }
-                catch { _openVinoAvailable = true; }
-            });
-            await Task.WhenAll(hwTask, toolsTask, capTask);
-
-            hardwareInfo = hwTask.Result;
-            localTools = toolsTask.Result;
-            await InvokeAsync(() =>
-            {
-                isLoading = false;
-                StateHasChanged();
-            });
-
-            // 第二步：其余数据独立加载、各自容错（OpenVINO 区由子组件懒加载，不再拖慢整体）
-            SetLoadingStatus(L["LocalModels_LoadingScanTools"]);
-            var tasks = new List<Task>
-            {
-                SafeLoadAsync(() => LoadRecommendationsAsync()),
-
-            };
-            await Task.WhenAll(tasks);
+            await LoadAsync();
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "加载数据失败");
-        }
-    }
-
-    private void SetLoadingStatus(string msg)
-    {
-        loadingStatus = msg;
-        _ = InvokeAsync(StateHasChanged);
-    }
-
-    private async Task SafeLoadAsync(Func<Task> fn)
-    {
-        try
-        {
-            await fn();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "分块加载失败");
-        }
-    }
-
-    private async Task LoadRecommendationsAsync(bool forceRefresh = false)
-    {
-        recommendedModels = await ApiService.GetRecommendedModelsAsync(
-            string.IsNullOrEmpty(currentScenario) ? null : currentScenario, forceRefresh);
-        try
-        {
-            var tierResponse = await ApiService.GetBenchmarkVramTiersAsync(null);
-            availableVram = tierResponse.AvailableVramGiB;
-            recommendedTierVramGb = tierResponse.RecommendedTierVramGb;
-        }
-        catch { }
-    }
-
-    private async Task RefreshHardware()
-    {
-        isLoading = true;
-        try
-        {
-            hardwareInfo = await ApiService.GetHardwareInfoAsync(forceRefresh: true);
-            localTools = await ApiService.GetLocalToolsAsync(forceRefresh: true);
-            await LoadRecommendationsAsync(forceRefresh: true);
-
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "刷新硬件信息失败");
+            Logger.LogWarning(ex, "加载本地模型列表失败");
         }
         finally
         {
             isLoading = false;
-            await InvokeAsync(StateHasChanged);
+            StateHasChanged();
         }
     }
 
-    private async Task SelectScenario(string scenario)
+    private async Task LoadAsync()
     {
-        currentScenario = scenario;
-        await LoadRecommendationsAsync();
+        downloadedModels = await ApiService.GetDownloadedModelsAsync();
     }
 
-    private void SelectCompany(string company)
+    private async Task Refresh()
     {
-        currentCompany = company;
-        StateHasChanged();
-    }
-
-    private List<RecommendedModelDto> FilteredRecommendedModels =>
-        string.IsNullOrEmpty(currentCompany)
-            ? recommendedModels
-            : recommendedModels.Where(m => m.Company == currentCompany).ToList();
-
-    private Dictionary<int, List<RecommendedModelDto>> FilteredModelsByTier =>
-        FilteredRecommendedModels
-            .GroupBy(m => GetVramTierForModel(m))
-            .Where(g => g.Key > 0)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(m => m.MatchScore).ToList());
-
-    private static int GetVramTierForModel(RecommendedModelDto model)
-    {
-        if (!model.MinVramGiB.HasValue) return 4;
-        var vram = model.MinVramGiB.Value;
-        foreach (var tier in VramTierValues)
-        {
-            if (vram <= tier) return tier;
-        }
-        return VramTierValues.Last();
-    }
-
-    private RenderFragment RenderModelCard(RecommendedModelDto model) => __builder =>
-    {
-        <div class="model-card">
-            <div class="model-header">
-                <span class="model-name">@model.Name</span>
-                <span class="model-size">@model.SizeGiB GB</span>
-            </div>
-            <div class="model-desc">@model.Description</div>
-            <div class="model-meta">
-                <span class="badge badge-secondary">@model.ParameterSize</span>
-                <span class="badge badge-info">@model.Quantization</span>
-                @if (model.Modality != "text")
-                {
-                    <span class="badge modality-badge" title="@L["LocalModels_ModalityHint"]">@GetModalityLabel(model.Modality)</span>
-                }
-                @foreach (var tag in model.Tags)
-                {
-                    <span class="badge badge-light">@tag</span>
-                }
-                <span class="badge" style="background:#e8eef2;color:#4a5860;">@model.Company</span>
-            </div>
-            <div class="model-requirements">
-                <span>@(model.MinVramGiB.HasValue ? string.Format(L["LocalModels_VramLabel"], model.MinVramGiB.Value.ToString("F0")) : L["LocalModels_VramNone"])</span>
-                <span>@string.Format(L["LocalModels_RamLabel"], model.MinRamGiB.ToString("F0"))</span>
-            </div>
-            <div class="model-suitability @(GetSuitabilityClass(model.Suitability))">
-                @model.Suitability
-                @if (model.MatchScore >= 90)
-                {
-                    <span> ⭐ @L["LocalModels_RecommendedBadge"]</span>
-                }
-            </div>
-            @if (model.EstimatedTokensPerSecond.HasValue)
-            {
-                <div class="model-performance">
-                    <span class="speed-badge @(GetSpeedClass(model.EstimatedTokensPerSecond.Value))"
-                          title="@L["LocalModels_SpeedEstimateHint"]">
-                        @GetSpeedLabel(model.EstimatedTokensPerSecond.Value)
-                    </span>
-                </div>
-            }
-        </div>
-    };
-
-    private async Task RefreshLibrary()
-    {
-        isRefreshingLibrary = true;
+        isRefreshing = true;
+        message = "";
         try
         {
-            var success = await ApiService.RefreshLibraryAsync();
-            if (success)
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "刷新本地模型列表失败");
+            message = ex.Message;
+            success = false;
+        }
+        finally
+        {
+            isRefreshing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void AskDelete(DownloadedModelDto model)
+    {
+        modelToDelete = model;
+        message = "";
+    }
+
+    private void CancelDelete()
+    {
+        modelToDelete = null;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (modelToDelete == null) return;
+        var target = modelToDelete;
+        isDeleting = true;
+        try
+        {
+            var ok = await ApiService.DeleteModelAsync(new DeleteModelRequest
             {
-                await LoadRecommendationsAsync(forceRefresh: true);
+                ToolId = target.ToolId,
+                ModelName = target.Name
+            });
+
+            if (ok)
+            {
+                message = string.Format(L["LocalModels_DeletedOk"], target.Name);
+                success = true;
+                modelToDelete = null;
+                await LoadAsync();
+            }
+            else
+            {
+                message = L["LocalModels_DeleteFailedToolDown"];
+                success = false;
             }
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "刷新模型库失败");
+            Logger.LogWarning(ex, "删除模型失败");
+            message = string.Format(L["LocalModels_DeleteException"], ex.Message);
+            success = false;
         }
         finally
         {
-            isRefreshingLibrary = false;
-        }
-    }
-    private async Task<bool> RefreshTaskStatus(string taskId)
-    {
-        var status = await ApiService.GetDeployTaskStatusAsync(taskId);
-        if (status == null) return true;
-
-        var existing = activeTasks.FirstOrDefault(t => t.TaskId == taskId);
-        if (existing != null)
-        {
-            var idx = activeTasks.IndexOf(existing);
-            activeTasks[idx] = status;
-        }
-        else
-        {
-            activeTasks.Add(status);
-        }
-
-        await InvokeAsync(StateHasChanged);
-        return status.Status is "completed" or "failed";
-    }
-
-    private async Task CancelDeploy(string taskId)
-    {
-        var success = await ApiService.CancelDeployTaskAsync(taskId);
-        if (success)
-        {
-            activeTasks.RemoveAll(t => t.TaskId == taskId);
-            await InvokeAsync(StateHasChanged);
+            isDeleting = false;
+            StateHasChanged();
         }
     }
 
-    private void StartStatusPolling()
+    private static string GetToolLabel(DownloadedModelDto m)
     {
-        _statusTimer = new System.Timers.Timer(5000);
-        _statusTimer.Elapsed += async (_, _) =>
+        return m.ToolId?.ToLowerInvariant() switch
         {
-            if (activeTasks.Any(t => t.Status == "running"))
-            {
-                foreach (var task in activeTasks.Where(t => t.Status == "running").ToList())
-                {
-                    await RefreshTaskStatus(task.TaskId);
-                }
-            }
-        };
-        _statusTimer.AutoReset = true;
-        _statusTimer.Start();
-    }
-
-    private static string? GetDiskGiB(long? bytes)
-    {
-        if (!bytes.HasValue || bytes.Value <= 0) return null;
-        return (bytes.Value / (1024.0 * 1024 * 1024)).ToString("F1");
-    }
-
-
-    private string GetModalityLabel(string modality) => modality.ToLowerInvariant() switch
-    {
-        "vision" => $"🖼️ {L["LocalModels_ModalityVision"]}",
-        "multimodal" => $"🖼️ {L["LocalModels_ModalityMultimodal"]}",
-        "audio" => $"🔊 {L["LocalModels_ModalityAudio"]}",
-        _ => $"📄 {L["LocalModels_ModalityText"]}"
-    };
-
-    private static string GetSuitabilityClass(string suitability)
-    {
-        if (suitability.Contains("加速") || suitability.Contains("推荐") || suitability.Contains("可直接"))
-            return "suitability-good";
-        if (suitability.Contains("混合") || suitability.Contains("较慢"))
-            return "suitability-ok";
-        return "suitability-slow";
-    }
-
-    private static string GetSpeedClass(double tps)
-    {
-        return tps switch
-        {
-            >= 30 => "speed-fast",
-            >= 10 => "speed-medium",
-            >= 3 => "speed-slow",
-            _ => "speed-very-slow"
+            "openvino" => "Intel OpenVINO",
+            _ => string.IsNullOrWhiteSpace(m.ToolName) ? (m.ToolId ?? "") : m.ToolName,
         };
     }
 
-    private string GetSpeedLabel(double tps)
+    private static string GetToolBadgeClass(string? toolId)
     {
-        return tps switch
+        return toolId?.ToLowerInvariant() switch
         {
-            >= 30 => string.Format(L["LocalModels_SpeedVeryFast"], tps),
-            >= 10 => string.Format(L["LocalModels_SpeedFast"], tps),
-            >= 3 => string.Format(L["LocalModels_SpeedMedium"], tps),
-            _ => string.Format(L["LocalModels_SpeedSlow"], tps)
+            "openvino" => "tool-openvino",
+            _ => "tool-generic",
         };
-    }
-
-    private static string GetTaskStatusClass(string status)
-    {
-        return status switch
-        {
-            "running" => "status-running",
-            "completed" => "status-completed",
-            "failed" => "status-failed",
-            _ => ""
-        };
-    }
-
-    private string GetTaskStatusLabel(string status)
-    {
-        return status switch
-        {
-            "pending" => L["LocalModels_DeployStatusPending"],
-            "running" => L["LocalModels_DeployStatusRunning"],
-            "completed" => L["LocalModels_DeployStatusCompleted"],
-            "failed" => L["LocalModels_DeployStatusFailed"],
-            _ => status
-        };
-    }
-
-
-    public void Dispose()
-    {
-        _statusTimer?.Stop();
-        _statusTimer?.Dispose();
-
-    }
-
-    private async Task OnTabChanged(string tab)
-    {
-        _activeTab = tab;
-        await InvokeAsync(StateHasChanged);
     }
 }

@@ -87,16 +87,7 @@ namespace Baihua.Web.Services
         Task<AiTodoPreviewDto> GenerateTodosAsync(GenerateTodosRequest request, CancellationToken cancellationToken = default);
         Task<TodoGoalDto> SaveGeneratedTodosAsync(SaveGeneratedTodosRequest request, CancellationToken cancellationToken = default);
         Task<bool> DeleteTodoGoalAsync(int id, CancellationToken cancellationToken = default);
-        Task<List<OpenVinoCatalogItemDto>> GetOpenVinoCatalogAsync(CancellationToken cancellationToken = default);
-        Task<List<OpenVinoInstalledModelDto>> GetOpenVinoInstalledAsync(CancellationToken cancellationToken = default);
-        Task<List<OpenVinoDownloadTaskDto>> GetOpenVinoDownloadsAsync(CancellationToken cancellationToken = default);
-        Task<OpenVinoDownloadTaskDto> StartOpenVinoDownloadAsync(string modelId, CancellationToken cancellationToken = default);
-        Task<OpenVinoDownloadTaskDto> GetOpenVinoDownloadAsync(string taskId, CancellationToken cancellationToken = default);
-        Task CancelOpenVinoDownloadAsync(string taskId, CancellationToken cancellationToken = default);
-        Task<OpenVinoRunResult> RunOpenVinoModelAsync(string modelPath, string device = "GPU", CancellationToken cancellationToken = default);
-        Task<bool> StopOpenVinoModelAsync(int port, CancellationToken cancellationToken = default);
-        Task DeleteOpenVinoModelAsync(string path, CancellationToken cancellationToken = default);
-        Task<(bool Success, string? OmsId, bool AlreadyRegistered, string? Warning, string? Error)> RegisterOmsModelAsync(string modelPath, CancellationToken cancellationToken = default);
+
         Task<AssistantSettingsDto> GetAssistantSettingsAsync(CancellationToken cancellationToken = default);
         Task SaveAssistantSettingsAsync(AssistantSettingsDto settings, CancellationToken cancellationToken = default);
         Task<AssistantAnalysisDto?> GetAssistantTodayAnalysisAsync(CancellationToken cancellationToken = default);
@@ -120,15 +111,7 @@ namespace Baihua.Web.Services
         IAsyncEnumerable<string> StreamChatDirectAsync(string message, string? providerId = null, string? model = null, List<(bool IsUser, string Content)>? history = null, CancellationToken cancellationToken = default);        IAsyncEnumerable<string> StreamLocalChatAsync(string message, string modelPath, string modelType, List<(bool IsUser, string Content)>? history = null, string? systemPrompt = null, CancellationToken cancellationToken = default);
         IAsyncEnumerable<string> StreamChatWithVaultAsync(string message, string model, List<(bool IsUser, string Content)>? history = null, CancellationToken cancellationToken = default);
 
-        // 编程 Agent（Microsoft Agent Framework）
-        Task<CodeAgentResponse> RunCodeAgentAsync(CodeAgentRequest request, CancellationToken cancellationToken = default);
-        IAsyncEnumerable<CodeAgentStreamItem> StreamCodeAgentAsync(CodeAgentRequest request, CancellationToken cancellationToken = default);
-        IAsyncEnumerable<CodeAgentStreamItem> StreamCodeAgentPipelineAsync(CodeAgentPipelineRequest request, CancellationToken cancellationToken = default);
-        Task<List<CodeAgentProviderInfo>> GetCodeAgentProvidersAsync(CancellationToken cancellationToken = default);
-  Task<List<CodeAgentSessionSummaryDto>> GetCodeAgentHistoryAsync(int limit = 20, CancellationToken cancellationToken = default);
-  Task<CodeAgentSessionDetailDto?> GetCodeAgentHistoryItemAsync(int id, CancellationToken cancellationToken = default);
-  Task<int> SaveCodeAgentSessionAsync(CodeAgentSessionSaveRequest request, CancellationToken cancellationToken = default);
-  Task DeleteCodeAgentSessionAsync(int id, CancellationToken cancellationToken = default);
+
         Task<List<LocalModelInfo>> ScanLocalModelsAsync(string? directory = null);
 
         // 本地视觉识别（Qwen2.5-VL + OpenVINO）
@@ -230,12 +213,7 @@ namespace Baihua.Web.Services
 
         // 本地模型部署
         Task<HardwareInfoDto?> GetHardwareInfoAsync(bool forceRefresh = false, CancellationToken cancellationToken = default);
-        Task<List<RecommendedModelDto>> GetRecommendedModelsAsync(string? scenario = null, bool forceRefresh = false, CancellationToken cancellationToken = default);
-        Task<bool> RefreshLibraryAsync(CancellationToken cancellationToken = default);
-        Task<DeployLocalModelResult> DeployLocalModelAsync(DeployLocalModelRequest request, CancellationToken cancellationToken = default);
-        Task<DeployTaskStatusDto?> GetDeployTaskStatusAsync(string taskId, CancellationToken cancellationToken = default);
-        Task<bool> CancelDeployTaskAsync(string taskId, CancellationToken cancellationToken = default);
-        Task<List<LocalToolInfoDto>> GetLocalToolsAsync(bool forceRefresh = false, CancellationToken cancellationToken = default);
+
         Task<List<DownloadSourceDto>> GetDownloadSourcesAsync(CancellationToken cancellationToken = default);
         Task<DownloadDirectoryConfigDto?> GetDownloadConfigAsync(CancellationToken cancellationToken = default);
         Task<bool> SaveDownloadConfigAsync(DownloadDirectoryConfigDto config, CancellationToken cancellationToken = default);
@@ -247,9 +225,6 @@ namespace Baihua.Web.Services
         Task<List<DownloadedModelDto>> GetDownloadedModelsAsync(CancellationToken cancellationToken = default);
         Task<bool> DeleteModelAsync(DeleteModelRequest request, CancellationToken cancellationToken = default);
 
-        Task<bool> LoadModelAsync(LoadModelRequest request, CancellationToken cancellationToken = default);
-        Task<LocalAiServiceStatusDto> StartLlamaCppAsync(CancellationToken cancellationToken = default);
-        Task<bool> StopLlamaCppAsync(CancellationToken cancellationToken = default);
 
         // 请求指标统计
         Task<MetricsSummary?> GetMetricsSummaryAsync(CancellationToken cancellationToken = default);
@@ -277,7 +252,7 @@ namespace Baihua.Web.Services
 
         // 模型基准测试
         Task<List<RecommendedBenchmarkModel>> GetBenchmarkModelsAsync(string? category = null);
-        Task<VramTierResponse> GetBenchmarkVramTiersAsync(string? category = null);
+
         Task<List<BenchmarkPrompt>> GetBenchmarkPromptsAsync(string? category = null);
         Task<bool> RunBenchmarkAsync(BenchmarkModelConfig model, string[]? promptIds = null);
         Task<bool> StopBenchmarkAsync();
@@ -315,8 +290,6 @@ namespace Baihua.Web.Services
         Task<List<TtsVoice>?> GetTtsVoicesAsync(CancellationToken cancellationToken = default);
     }
 
-    /// <summary>流水线流式事件项：Type = stage/delta/tool/error，Data 已格式化。</summary>
-    public sealed record CodeAgentStreamItem(string Type, string Data);
 
     public partial class ApiService : IApiService
 

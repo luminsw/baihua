@@ -97,46 +97,6 @@ public partial class LocalModelDeploymentController
     }
 
     /// <summary>
-    /// 启动 llama.cpp 服务
-    /// </summary>
-    [HttpPost("llamacpp/start")]
-    public async Task<ActionResult<LocalAiServiceStatusDto>> StartLlamaCpp(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var status = await _deploymentService.StartLlamaCppAsync(cancellationToken);
-            if (status.IsRunning)
-                return Ok(status);
-            return StatusCode(500, status);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "启动 llama.cpp 失败");
-            return StatusCode(500, new LocalAiServiceStatusDto { Provider = "llamacpp", Message = ex.Message });
-        }
-    }
-
-    /// <summary>
-    /// 停止 llama.cpp 服务
-    /// </summary>
-    [HttpPost("llamacpp/stop")]
-    public async Task<ActionResult> StopLlamaCpp(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var success = await _deploymentService.StopLlamaCppAsync(cancellationToken);
-            if (success)
-                return Ok(new { success = true, message = _loc["LocalModel_LlamaCppStopped"] });
-            return StatusCode(500, new { error = _loc["LocalModel_StopFailed"], message = _loc["LocalModel_CheckProcessAlive"] });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "停止 llama.cpp 失败");
-            return StatusCode(500, new { error = _loc["LocalModel_StopFailed"], message = ex.Message });
-        }
-    }
-
-    /// <summary>
     /// 获取所有已下载模型（聚合所有工具）
     /// </summary>
     [HttpGet("downloaded")]
