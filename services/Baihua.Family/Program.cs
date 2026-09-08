@@ -305,7 +305,7 @@ builder.Services.AddSingleton<BenchmarkRepository>();
 
 builder.Services.AddSingleton<OpenClawConfigService>();
 builder.Services.AddSingleton<ILocalAiConfigService, LocalAiConfigService>();
-builder.Services.AddSingleton<IOpenClawModelProfileService, OpenClawModelProfileService>();
+
 builder.Services.AddSingleton<IOpenClawTaskService, OpenClawTaskService>();
 
 // API 限流（配对码防暴力破解）

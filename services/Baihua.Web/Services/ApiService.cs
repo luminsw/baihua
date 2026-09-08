@@ -209,23 +209,6 @@ namespace Baihua.Web.Services
         Task<List<RequestMetric>> GetRecentErrorsAsync(int count = 10, CancellationToken cancellationToken = default);
         Task<bool> ClearMetricsAsync(CancellationToken cancellationToken = default);
 
-        // OpenClaw 任务
-        Task<OpenClawTaskDto> CreateOpenClawTaskAsync(string prompt);
-        Task<List<OpenClawTaskDto>> GetOpenClawTasksAsync();
-        Task<OpenClawTaskDto?> GetOpenClawTaskAsync(int id);
-        Task<string?> GetOpenClawReportAsync(int id);
-        Task<bool> DeleteOpenClawTaskAsync(int id);
-        Task<bool> CancelOpenClawTaskAsync(int id);
-        Task<OpenClawLocalAiConfigDto> GetOpenClawLocalAiConfigAsync();
-        Task<bool> SaveOpenClawLocalAiConfigAsync(SaveOpenClawLocalAiConfigRequest request);
-        Task<List<OpenClawLocalModelDto>> ScanOpenClawLocalModelsAsync(string provider);
-        Task<LocalAiServiceStatusDto> DetectAndStartOpenClawLocalAiAsync(string provider);
-        Task<OpenClawDefaultModelDto> GetOpenClawDefaultModelAsync();
-        Task<bool> SetOpenClawDefaultModelAsync(string model);
-        Task<ModelProfileListDto> GetModelProfilesAsync();
-        Task<bool> SetModelProfileAsync(string profile);
-        Task<bool> SyncLocalModelsToOpenClawAsync(string provider);
-
 
         // AI 调用性能指标
         Task<AiMetricsSummaryDto?> GetAiMetricsSummaryAsync(int days = 7, CancellationToken cancellationToken = default);
