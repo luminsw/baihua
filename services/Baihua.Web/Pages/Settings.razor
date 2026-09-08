@@ -22,22 +22,7 @@
         <!-- 编辑视图 -->
         <div class="ai-edit-form">
             <h4>@(string.IsNullOrEmpty(editingProvider.Id) ? L["Settings_AddProvider"] : L["Settings_EditProvider"])</h4>
-            
-            @if (string.IsNullOrEmpty(editingProvider.Id))
-            {
-                <!-- 预设选择 - 仅新建时显示 -->
-                <div class="form-group">
-                    <label>@L["Settings_SelectPreset"]</label>
-                    <select class="form-control" @onchange="OnPresetSelected">
-                        <option value="">-- @L["Settings_ManualInput"] --</option>
-                        @foreach (var preset in providerPresets)
-                        {
-                            <option value="@preset.Id">@preset.Name</option>
-                        }
-                    </select>
-                    <small class="form-text">@L["Settings_PresetHint"]</small>
-                </div>
-            }
+
 
             <div class="form-group">
                 <label>@L["Settings_ProviderId"]</label>
@@ -239,17 +224,6 @@
                 </div>
             }
 
-            @if (peerProviders.Count > 0)
-            {
-                <h2 class="settings-section-title" style="margin-top: 1.75rem;">🖧 @L["Settings_PeerProvidersTitle"]</h2>
-                <p class="config-note">@L["Settings_PeerProvidersNote"]</p>
-                <div class="ai-providers-list">
-                    @foreach (var provider in peerProviders)
-                    {
-                        @RenderProviderCard(provider)
-                    }
-                </div>
-            }
         }
 
         <div class="list-actions">
@@ -260,146 +234,7 @@
         <p class="config-note">
             @L["Settings_ApiKeyEncryptedNote"]
         </p>
-
-        <!-- 任务分类模型配置（每类一个模型配置） -->
-        <div class="embedding-config-section" style="margin-top: 2rem; padding-top: 1.5rem; border-color: var(--master-border, #2d3548);">
-            <h2>🎯 @L["Settings_CategoryConfigTitle"]</h2>
-            <p style="color: var(--master-text-muted, #91a0b0);font-size:0.9rem;margin-bottom:1rem;">
-                @L["Settings_CategoryConfigNote"]
-            </p>
-            <div class="category-grid">
-                @foreach (var cat in categoryAssignments)
-                {
-                    var def = categoryDefinitions.FirstOrDefault(d => d.Key == cat.Category);
-                    var resolved = categoryResolved.FirstOrDefault(r => r.Category == cat.Category);
-                    <div class="category-card">
-                        <div class="category-card-header">
-                            <span class="category-icon">@(def?.Icon ?? "🎯")</span>
-                            <span class="category-name">@GetCategoryName(cat.Category)</span>
-                            @if (resolved is { FromAssignment: true })
-                            {
-                                <span class="badge badge-success" style="margin-left:auto;">@L["Settings_CategoryAssignedBadge"]</span>
-                            }
-                        </div>
-                        <div class="category-desc">@GetCategoryDescription(cat.Category)</div>
-                        <div class="form-group">
-                            <label>@L["Settings_CategoryProvider"]</label>
-                            <select class="form-control" value="@cat.ProviderId" @onchange="(e) => OnCategoryProviderChanged(cat, e)">
-                                <option value="">@L["Settings_CategoryProviderDefault"]</option>
-                                @foreach (var p in aiProviders)
-                                {
-                                    <option value="@p.Id">@p.Name</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="form-group" style="margin-bottom:0.5rem;">
-                            <label>@L["Settings_CategoryModel"]</label>
-                            <select class="form-control" @bind="cat.ModelName">
-                                <option value="">@L["Settings_CategoryModelDefault"]</option>
-                                @foreach (var m in GetCategoryModels(cat))
-                                {
-                                    <option value="@m.Name">@(m.Name.Split('/').LastOrDefault() ?? m.Name)</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="category-resolved">
-                            <span class="text-muted">@L["Settings_CategoryResolved"]</span>
-                            <b>@GetCategoryResolvedLabel(cat.Category)</b>
-                            @if (resolved is { FromAssignment: false })
-                            {
-                                <span class="text-muted">(@L["Settings_CategoryFallback"])</span>
-                            }
-                        </div>
-                    </div>
-                }
-            </div>
-            <div class="form-actions" style="margin-top:1.25rem;">
-                <button class="btn btn-primary" @onclick="SaveCategories" disabled="@isSavingCategories">
-                    @(isSavingCategories ? L["Common_Loading"] : L["Settings_CategorySave"])
-                </button>
-            </div>
-            @if (!string.IsNullOrEmpty(categoryConfigMessage))
-            {
-                <div class="alert @(categoryConfigSuccess ? "alert-success" : "alert-error")" style="margin-top: 0.75rem;">
-                    @categoryConfigMessage
-                </div>
-            }
-        </div>
     }
-
-    <!-- 全局生成详细度（所有 AI 内容生成默认应用，编程任务除外） -->
-    <div class="embedding-config-section" style="margin-top: 2rem; padding-top: 1.5rem; border-color: var(--master-border, #2d3548);">
-        <h2>📐 @L["Settings_GlobalDetailTitle"]</h2>
-        <p style="color: var(--master-text-muted, #91a0b0);font-size:0.9rem;margin-bottom:1rem;">
-            @L["Settings_GlobalDetailDescription"]
-        </p>
-        <div class="form-group">
-            <label>@L["Settings_GlobalDetailLabel"]</label>
-            <div class="btn-group btn-group-sm" role="group">
-                <button type="button" class="btn @(_globalDetailLevel == "concise" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetGlobalDetailLevel("concise")'>@L["Settings_DetailConcise"]</button>
-                <button type="button" class="btn @(_globalDetailLevel == "balanced" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetGlobalDetailLevel("balanced")'>@L["Settings_DetailBalanced"]</button>
-                <button type="button" class="btn @(_globalDetailLevel == "comprehensive" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetGlobalDetailLevel("comprehensive")'>@L["Settings_DetailComprehensive"]</button>
-            </div>
-            <div class="form-text text-muted">
-                @(_globalDetailLevel == "concise" ? L["Settings_DetailCountConcise"] : _globalDetailLevel == "comprehensive" ? L["Settings_DetailCountComprehensive"] : L["Settings_DetailCountBalanced"])
-            </div>
-        </div>
-    </div>
-
-    <!-- Embedding 配置（一级·固本模型） -->
-    <div class="embedding-config-section" style="margin-top: 2rem; padding-top: 1.5rem; border-color: var(--master-border, #2d3548);">
-        <h2>🔍 @L["Settings_EmbeddingConfig"]</h2>
-        <p style="color: var(--master-text-muted, #91a0b0);font-size:0.9rem;margin-bottom:1rem;">
-            @L["Settings_EmbeddingDescription"]
-        </p>
-        <div class="form-group">
-            <label>@L["Settings_Provider"]</label>
-            <div class="btn-group btn-group-sm" role="group">
-                <button type="button" class="btn @(embeddingConfig.ProviderId == "ollama" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => SelectEmbeddingProvider("ollama"))">@L["Settings_EmbeddingOllama"]</button>
-                <button type="button" class="btn @(embeddingConfig.ProviderId == "openai" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => SelectEmbeddingProvider("openai"))">@L["Settings_EmbeddingOpenai"]</button>
-                <button type="button" class="btn @(embeddingConfig.ProviderId == "siliconflow" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => SelectEmbeddingProvider("siliconflow"))">@L["Settings_EmbeddingSiliconflow"]</button>
-                @if (_openVinoAvailable != false)
-                {
-                    <button type="button" class="btn @(embeddingConfig.ProviderId == "openvino" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => SelectEmbeddingProvider("openvino"))">@L["Settings_EmbeddingOpenVino"]</button>
-                }
-                <button type="button" class="btn @(embeddingConfig.ProviderId == "custom" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => SelectEmbeddingProvider("custom"))">@L["Settings_EmbeddingCustom"]</button>
-            </div>
-        </div>
-        <div class="form-group">
-            <label>@L["Settings_ModelName"]</label>
-            <input type="text" class="form-control" @bind="embeddingConfig.Model" placeholder="nomic-embed-text" />
-            <small class="form-text">@L["Settings_EmbeddingModelHint"]</small>
-        </div>
-        <div class="form-group">
-            <label>@L["Settings_ApiBaseUrl"]</label>
-            <input type="text" class="form-control" @bind="embeddingConfig.BaseUrl" placeholder="http://localhost:11434/v1" />
-        </div>
-        <div class="form-group">
-            <label>@L["Settings_ApiKeyOptional"]</label>
-            <input type="password" class="form-control" @bind="embeddingConfig.ApiKey" placeholder="sk-..." />
-            @if (!string.IsNullOrEmpty(embeddingConfig.KeyMask))
-            {
-                <small class="form-text">@L["Settings_ApiKeyConfigured"]@embeddingConfig.KeyMask</small>
-            }
-        </div>
-        <div class="form-group checkbox-group">
-            <label class="checkbox-label">
-                <input type="checkbox" @bind="embeddingConfig.IsEnabled" />
-                <span>@L["Settings_EnableEmbedding"]</span>
-            </label>
-        </div>
-        <div class="form-actions">
-            <button class="btn btn-primary" @onclick="SaveEmbeddingConfig" disabled="@isSavingEmbedding">
-                @(isSavingEmbedding ? L["Common_Loading"] : L["Settings_SaveEmbedding"])
-            </button>
-        </div>
-        @if (!string.IsNullOrEmpty(embeddingConfigMessage))
-        {
-            <div class="alert @(embeddingConfigSuccess ? "alert-success" : "alert-error")" style="margin-top: 0.75rem;">
-                @embeddingConfigMessage
-            </div>
-        }
-    </div>
 
     @if (_canShowLocalModelSettings)
     {
@@ -408,44 +243,11 @@
         <h2>🖥️ @L["Settings_LocalModelSettings"]</h2>
         <div class="form-group">
             <label>@L["Settings_DownloadDir"]</label>
-            <input type="text" class="form-control" @bind="localModelDownloadDir"
-                   placeholder="@L["Settings_DownloadDirPlaceholder"]" />
+            <input type="text" class="form-control" value="@localModelDownloadDir" readonly />
             <small class="form-text">
                 @L["Settings_DownloadDirDefault"]@platformDefaultDownloadDir
-                @if (!string.IsNullOrEmpty(localModelDownloadDir))
-                {
-                    <span> | @L["Settings_DownloadDirCurrent"]@localModelDownloadDir</span>
-                }
             </small>
         </div>
-        <div class="form-group">
-            <label>@L["Settings_DownloadSource"]</label>
-            <div class="btn-group btn-group-sm flex-wrap" role="group">
-                <button type="button" class="btn @(preferredDownloadSource == "auto" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => preferredDownloadSource = "auto")">@L["Settings_SourceAuto"]</button>
-                <button type="button" class="btn @(preferredDownloadSource == "ollama" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => preferredDownloadSource = "ollama")">Ollama</button>
-                <button type="button" class="btn @(preferredDownloadSource == "lmstudio" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => preferredDownloadSource = "lmstudio")">LM Studio</button>
-                <button type="button" class="btn @(preferredDownloadSource == "huggingface" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => preferredDownloadSource = "huggingface")">@L["Settings_SourceHuggingface"]</button>
-                <button type="button" class="btn @(preferredDownloadSource == "hf-mirror" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => preferredDownloadSource = "hf-mirror")">@L["Settings_SourceHfMirror"]</button>
-                <button type="button" class="btn @(preferredDownloadSource == "modelscope" ? "btn-primary" : "btn-outline-primary")" @onclick="@(() => preferredDownloadSource = "modelscope")">@L["Settings_SourceModelscope"]</button>
-            </div>
-        </div>
-        <div class="form-group checkbox-group">
-            <label class="checkbox-label">
-                <input type="checkbox" @bind="useChinaMirror" />
-                <span>@L["Settings_UseChinaMirror"]</span>
-            </label>
-        </div>
-        <div class="form-actions">
-            <button class="btn btn-primary" @onclick="SaveLocalModelConfig" disabled="@isSavingLocalConfig">
-                @(isSavingLocalConfig ? L["Common_Loading"] : L["Settings_SaveLocalConfig"])
-            </button>
-        </div>
-        @if (!string.IsNullOrEmpty(localModelConfigMessage))
-        {
-            <div class="alert @(localModelConfigSuccess ? "alert-success" : "alert-error")" style="margin-top: 0.75rem;">
-                @localModelConfigMessage
-            </div>
-        }
     </div>
     }
 
@@ -944,31 +746,13 @@
 
 @code {
     private bool _canShowLocalModelSettings = false;
-    private bool? _openVinoAvailable; // null=未知/加载中（默认不隐藏 OpenVINO）
-    private string _globalDetailLevel = "concise";
-    private bool _globalDetailSaving;
+
     
     private List<AiConfigProvider> aiProviders = new();
 
     /// <summary>本机手配提供方（不含算力池对端登记）</summary>
     private List<AiConfigProvider> localProviders =>
-        aiProviders.Where(p => !IsPeerProvider(p)).ToList();
-
-    /// <summary>算力池自动登记的对端提供方（peer- 前缀，仅本机登记项）</summary>
-    private List<AiConfigProvider> peerProviders =>
-        aiProviders.Where(IsPeerProvider).ToList();
-
-    /// <summary>是否为算力池对端登记（peer- 前缀，本机指向对端 OpenAI 兼容端点的登记项）</summary>
-    private static bool IsPeerProvider(AiConfigProvider provider) =>
-        provider.Id.StartsWith("peer-", StringComparison.OrdinalIgnoreCase);
-
-    // 任务分类模型配置（每类一个模型配置）
-    private List<AiCategoryDefinitionDto> categoryDefinitions = new();
-    private List<AiCategoryAssignmentDto> categoryAssignments = new();
-    private List<AiCategoryResolutionDto> categoryResolved = new();
-    private bool isSavingCategories = false;
-    private string categoryConfigMessage = "";
-    private bool categoryConfigSuccess = false;
+        aiProviders.Where(p => !p.Id.StartsWith("peer-", StringComparison.OrdinalIgnoreCase)).ToList();
 
     // 视图状态
     private bool isEditing = false;
@@ -982,36 +766,11 @@
     private EditProviderModel editingProvider = new();
     private List<MissingModelInfo> missingModels = new();
 
-    // 预设提供商列表
-    private List<AiProviderPreset> providerPresets = new();
-
     // 服务连接状态
 
 
     protected override void OnInitialized()
     {
-    }
-
-    private async Task SetGlobalDetailLevel(string level)
-    {
-        if (_globalDetailSaving || _globalDetailLevel == level) return;
-        _globalDetailSaving = true;
-        _globalDetailLevel = level;
-        StateHasChanged();
-        try
-        {
-            await ApiService.SetGlobalDetailLevelAsync(level);
-        }
-        catch (Exception ex)
-        {
-            try { _globalDetailLevel = await ApiService.GetGlobalDetailLevelAsync(); } catch { }
-            editErrorMessage = string.Format(L["Settings_SaveFailedWithMessage"], ex.Message);
-        }
-        finally
-        {
-            _globalDetailSaving = false;
-            StateHasChanged();
-        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -1024,7 +783,6 @@
             try
             {
                 var canShow = await CapabilityService.CanShowAsync("SettingsLocalModelDownload");
-                try { var cap = await CapabilityService.GetCapabilityAsync(); _openVinoAvailable = cap.OpenVinoAvailable; } catch { _openVinoAvailable = true; }
                 await InvokeAsync(() =>
                 {
                     _canShowLocalModelSettings = canShow;
@@ -1038,14 +796,9 @@
 
             try
             {
-                // 全局生成详细度
-                try { _globalDetailLevel = await ApiService.GetGlobalDetailLevelAsync(); } catch { }
-
                 await Task.WhenAll(
                     LoadAiProviders(),
-                    LoadCategoryConfigAsync(),
-                    LoadLocalModelConfigAsync(),
-                    LoadEmbeddingConfigAsync()
+                    LoadLocalModelConfigAsync()
                 );
             }
             catch (Exception ex)
@@ -1076,58 +829,6 @@
         }
     }
 
-    private async Task LoadCategoryConfigAsync()
-    {
-        try
-        {
-            var config = await ApiService.GetAiCategoryConfigAsync();
-            categoryDefinitions = config.Categories ?? new List<AiCategoryDefinitionDto>();
-            categoryResolved = config.Resolved ?? new List<AiCategoryResolutionDto>();
-            // 只保留有效分类的指派行（缺失的用空行补齐，保证每个分类都有一张卡片）
-            var existing = (config.Assignments ?? new List<AiCategoryAssignmentDto>())
-                .Where(a => Baihua.Contracts.Ai.AiTaskCategory.IsValid(a.Category))
-                .ToDictionary(a => a.Category, a => a, StringComparer.OrdinalIgnoreCase);
-            categoryAssignments = Baihua.Contracts.Ai.AiTaskCategory.All
-                .Select(cat => existing.TryGetValue(cat, out var a)
-                    ? new AiCategoryAssignmentDto { Category = a.Category, ProviderId = a.ProviderId, ModelName = a.ModelName }
-                    : new AiCategoryAssignmentDto { Category = cat })
-                .ToList();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "加载任务分类模型配置失败");
-            categoryAssignments = Baihua.Contracts.Ai.AiTaskCategory.All
-                .Select(cat => new AiCategoryAssignmentDto { Category = cat })
-                .ToList();
-        }
-    }
-
-    private async Task SaveCategories()
-    {
-        isSavingCategories = true;
-        categoryConfigMessage = "";
-        try
-        {
-            var ok = await ApiService.SaveAiCategoryConfigAsync(categoryAssignments);
-            categoryConfigSuccess = ok;
-            categoryConfigMessage = ok ? L["Settings_CategorySavedSuccess"] : L["Settings_CategorySaveFailed"];
-            if (ok)
-            {
-                await LoadCategoryConfigAsync();
-                await StatusUpdateService.NotifyAIStatusChangedAsync();
-                AIStatusService.NotifyStateChanged();
-            }
-        }
-        catch (Exception ex)
-        {
-            categoryConfigSuccess = false;
-            categoryConfigMessage = string.Format(L["Settings_SaveFailedWithMessage"], ex.Message);
-        }
-        finally
-        {
-            isSavingCategories = false;
-        }
-    }
 
     private string GetCategoryName(string category) => category.ToLowerInvariant() switch
     {
@@ -1138,50 +839,13 @@
         _ => category
     };
 
-    private string GetCategoryDescription(string category) => category.ToLowerInvariant() switch
-    {
-        "chat" => L["Settings_CategoryChatDesc"],
-        "reasoning" => L["Settings_CategoryReasoningDesc"],
-        "code" => L["Settings_CategoryCodeDesc"],
-        "vision" => L["Settings_CategoryVisionDesc"],
-        _ => ""
-    };
-
-    private void OnCategoryProviderChanged(AiCategoryAssignmentDto cat, ChangeEventArgs e)
-    {
-        cat.ProviderId = e.Value?.ToString() ?? "";
-        cat.ModelName = ""; // 切换提供方后重置模型，避免跨提供方残留
-    }
-
-    private List<AiConfigModel> GetCategoryModels(AiCategoryAssignmentDto cat)
-    {
-        var provider = aiProviders.FirstOrDefault(p => p.Id == cat.ProviderId);
-        return provider?.Models ?? new List<AiConfigModel>();
-    }
-
-    private string GetCategoryResolvedLabel(string category)
-    {
-        var resolved = categoryResolved.FirstOrDefault(r =>
-            r.Category.Equals(category, StringComparison.OrdinalIgnoreCase));
-        if (resolved == null || string.IsNullOrEmpty(resolved.ModelName))
-            return L["Settings_CategoryUnresolved"];
-        var providerName = string.IsNullOrEmpty(resolved.ProviderName)
-            ? resolved.ProviderId
-            : resolved.ProviderName;
-        var modelShort = resolved.ModelName.Split('/').LastOrDefault() ?? resolved.ModelName;
-        return $"{providerName} · {modelShort}";
-    }
-
     private RenderFragment RenderProviderCard(AiConfigProvider provider) => __builder =>
     {
         <div class="ai-provider-card">
             <div class="provider-header">
                 <div class="provider-title">
                     <span class="provider-name">@provider.Name</span>
-                    @if (IsPeerProvider(provider))
-                    {
-                        <span class="badge" style="background:#e6eef7;color:#2e6da4;">🖧 @L["Settings_PeerBadge"]</span>
-                    }
+
                     @if (provider.IsMain)
                     {
                         <span class="badge badge-primary">@L["Settings_MainBadge"]</span>
@@ -1395,9 +1059,6 @@
 
     private async Task AddNewProvider()
     {
-        // 加载预设列表
-        providerPresets = await ApiService.GetAiProviderPresetsAsync();
-        
         editingProvider = new EditProviderModel
         {
             Id = "",
@@ -1410,36 +1071,6 @@
         };
         isEditing = true;
         editErrorMessage = "";
-    }
-
-    private void OnPresetSelected(ChangeEventArgs e)
-    {
-        var presetId = e.Value?.ToString();
-        if (string.IsNullOrEmpty(presetId))
-        {
-            // 用户选择手动输入，清空所有字段
-            editingProvider.Id = "";
-            editingProvider.Name = "";
-            editingProvider.BaseUrl = "https://api.example.com/v1";
-            editingProvider.Models = new List<EditModel>();
-            return;
-        }
-
-        var preset = providerPresets.FirstOrDefault(p => p.Id == presetId);
-        if (preset != null)
-        {
-            editingProvider.Id = preset.Id;
-            editingProvider.Name = preset.Name;
-            editingProvider.BaseUrl = preset.BaseUrl;
-            editingProvider.Tier = preset.Tier;
-            editingProvider.Models = preset.Models.Select(m => new EditModel
-            {
-                Name = m.Name,
-                IsPaid = m.IsPaid,
-                IsMain = m.IsMain,
-                Category = m.Category
-            }).ToList();
-        }
     }
 
     private void EditProvider(AiConfigProvider provider)
@@ -1706,139 +1337,9 @@
         public string Category { get; set; } = Baihua.Contracts.Ai.AiTaskCategory.Chat;
     }
 
-    // Embedding 配置
-    private EmbeddingConfigDto embeddingConfig = new();
-    private bool isSavingEmbedding = false;
-    private string embeddingConfigMessage = "";
-    private bool embeddingConfigSuccess = false;
-
-    private async Task LoadEmbeddingConfigAsync()
-    {
-        try
-        {
-            embeddingConfig = await ApiService.GetEmbeddingConfigAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "加载 Embedding 配置失败");
-        }
-    }
-
-    /// <summary>
-    /// 切换 Embedding 提供商时联动预填默认 Model/BaseUrl
-    /// （从 custom 切出总是预填；非 custom 之间切换时若用户已自定义则保留输入）
-    /// </summary>
-    private void SelectEmbeddingProvider(string provider)
-    {
-        var prev = embeddingConfig.ProviderId;
-        embeddingConfig.ProviderId = provider;
-
-        if (provider == "custom")
-        {
-            // custom 保留当前值，用户自行填写
-            return;
-        }
-
-        // 从 custom 切出 → 总是预填新默认值（custom 无预设，旧值不应残留）
-        if (prev == "custom")
-        {
-            ApplyEmbeddingDefaults(provider);
-            return;
-        }
-
-        // 非 custom 之间切换：仅当用户没自定义过才预填（避免覆盖已输入内容）
-        var userCustomized = !string.IsNullOrEmpty(embeddingConfig.Model) && !string.IsNullOrEmpty(embeddingConfig.BaseUrl)
-                             && !IsEmbeddingDefault(prev, embeddingConfig.Model, embeddingConfig.BaseUrl);
-        if (userCustomized)
-            return;
-
-        ApplyEmbeddingDefaults(provider);
-    }
-
-    private void ApplyEmbeddingDefaults(string provider)
-    {
-        switch (provider)
-        {
-            case "ollama":
-                embeddingConfig.Model = "nomic-embed-text";
-                embeddingConfig.BaseUrl = "http://localhost:11434/v1";
-                embeddingConfig.Dimensions = null;
-                break;
-            case "openai":
-                embeddingConfig.Model = "text-embedding-3-small";
-                embeddingConfig.BaseUrl = "https://api.openai.com/v1";
-                embeddingConfig.Dimensions = null;
-                break;
-            case "siliconflow":
-                embeddingConfig.Model = "BAAI/bge-large-zh-v1.5";
-                embeddingConfig.BaseUrl = "https://api.siliconflow.cn/v1";
-                embeddingConfig.Dimensions = null;
-                break;
-            case "openvino":
-                // OpenVINO Model Server (OVMS) 寄存的 bge-small-zh-v1.5 嵌入模型（OpenAI 兼容 /v3/embeddings）
-                embeddingConfig.Model = "bge-small-zh";
-                embeddingConfig.BaseUrl = "http://127.0.0.1:8000/v3";
-                embeddingConfig.Dimensions = 512;
-                break;
-        }
-    }
-
-    /// <summary>判断 Model/BaseUrl 是否为某提供商的默认值（用于检测用户自定义）</summary>
-    private static bool IsEmbeddingDefault(string provider, string model, string baseUrl)
-    {
-        return provider switch
-        {
-            "ollama" => model == "nomic-embed-text" && baseUrl == "http://localhost:11434/v1",
-            "openai" => model == "text-embedding-3-small" && baseUrl == "https://api.openai.com/v1",
-            "siliconflow" => model == "BAAI/bge-large-zh-v1.5" && baseUrl == "https://api.siliconflow.cn/v1",
-            "openvino" => model == "bge-small-zh" && baseUrl == "http://127.0.0.1:8000/v3",
-            _ => false,
-        };
-    }
-
-    private async Task SaveEmbeddingConfig()
-    {
-        isSavingEmbedding = true;
-        embeddingConfigMessage = "";
-        try
-        {
-            var request = new SaveEmbeddingConfigRequest
-            {
-                ProviderId = embeddingConfig.ProviderId,
-                Model = embeddingConfig.Model,
-                BaseUrl = embeddingConfig.BaseUrl,
-                ApiKey = string.IsNullOrWhiteSpace(embeddingConfig.ApiKey) ? null : embeddingConfig.ApiKey,
-                IsEnabled = embeddingConfig.IsEnabled,
-                Dimensions = embeddingConfig.Dimensions
-            };
-            var result = await ApiService.SaveEmbeddingConfigAsync(request);
-            embeddingConfigSuccess = result.Success;
-            embeddingConfigMessage = result.Success ? L["Settings_EmbeddingSavedSuccess"] : string.Format(L["Settings_SaveFailedWithMessage"], result.Message);
-            if (result.Success)
-            {
-                // 重新加载以更新 KeyMask
-                await LoadEmbeddingConfigAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            embeddingConfigSuccess = false;
-            embeddingConfigMessage = string.Format(L["Settings_SaveFailedWithMessage"], ex.Message);
-        }
-        finally
-        {
-            isSavingEmbedding = false;
-        }
-    }
-
     // 本地模型配置
     private string localModelDownloadDir = "";
     private string platformDefaultDownloadDir = "";
-    private string preferredDownloadSource = "auto";
-    private bool useChinaMirror = true;
-    private bool isSavingLocalConfig = false;
-    private string localModelConfigMessage = "";
-    private bool localModelConfigSuccess = false;
 
     private async Task LoadLocalModelConfigAsync()
     {
@@ -1849,41 +1350,24 @@
             {
                 localModelDownloadDir = config.DownloadDirectory ?? "";
                 platformDefaultDownloadDir = config.PlatformDefaultDirectory ?? "";
-                preferredDownloadSource = config.PreferredSource ?? "auto";
-                useChinaMirror = config.UseChinaMirror;
             }
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "加载本地模型配置失败");
         }
-    }
 
-    private async Task SaveLocalModelConfig()
-    {
-        isSavingLocalConfig = true;
-        localModelConfigMessage = "";
-        try
+        // 兜底：当后端未返回默认下载目录时，前端计算用户主目录下的 ollama models 路径
+        if (string.IsNullOrEmpty(platformDefaultDownloadDir))
         {
-            var config = new DownloadDirectoryConfigDto
-            {
-                DownloadDirectory = localModelDownloadDir,
-                PreferredSource = preferredDownloadSource,
-                UseChinaMirror = useChinaMirror
-            };
-
-            var success = await ApiService.SaveDownloadConfigAsync(config);
-            localModelConfigSuccess = success;
-            localModelConfigMessage = success ? L["Settings_LocalConfigSavedSuccess"] : L["Settings_SaveFailed"];
+            platformDefaultDownloadDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".ollama",
+                "models");
         }
-        catch (Exception ex)
+        if (string.IsNullOrEmpty(localModelDownloadDir))
         {
-            localModelConfigSuccess = false;
-            localModelConfigMessage = string.Format(L["Settings_SaveFailedWithMessage"], ex.Message);
-        }
-        finally
-        {
-            isSavingLocalConfig = false;
+            localModelDownloadDir = platformDefaultDownloadDir;
         }
     }
 }
