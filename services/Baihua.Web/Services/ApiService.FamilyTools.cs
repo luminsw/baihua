@@ -956,25 +956,6 @@ namespace Baihua.Web.Services
 
         #region 本地模型部署
 
-        public async Task<HardwareInfoDto?> GetHardwareInfoAsync(bool forceRefresh = false, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var url = "/api/local-models/hardware" + (forceRefresh ? "?forceRefresh=true" : "");
-                var response = await GetWithMetricsAsync(url, linked.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<HardwareInfoDto>(linked.Token);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取硬件信息失败");
-                return null;
-            }
-        }
-
-
 
         public async Task<List<DownloadSourceDto>> GetDownloadSourcesAsync(CancellationToken cancellationToken = default)
         {
@@ -1028,26 +1009,6 @@ namespace Baihua.Web.Services
             }
         }
 
-        // 运行中模型管理
-
-        // 运行中模型管理
-        public async Task<List<RunningModelDto>> GetRunningModelsAsync(bool forceRefresh = false, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var url = "/api/local-models/running" + (forceRefresh ? "?forceRefresh=true" : "");
-                var response = await GetWithMetricsAsync(url, linked.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<RunningModelDto>>(linked.Token) ?? new List<RunningModelDto>();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取运行中模型失败");
-                return new List<RunningModelDto>();
-            }
-        }
 
         public async Task<List<string>> GetAvailableModelsAsync(string toolId, CancellationToken cancellationToken = default)
         {
@@ -1364,159 +1325,6 @@ namespace Baihua.Web.Services
 
         #endregion
 
-        #region Model Benchmark
-
-        public async Task<List<RecommendedBenchmarkModel>> GetBenchmarkModelsAsync(string? category = null)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(QuickCallTimeout);
-                var url = "/api/benchmark/models";
-                if (!string.IsNullOrEmpty(category)) url += $"?category={Uri.EscapeDataString(category)}";
-                var response = await GetWithMetricsAsync(url, cts.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<RecommendedBenchmarkModel>>(cts.Token) ?? new();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取基准测试模型列表失败");
-                return new();
-            }
-        }
-
-
-        public async Task<List<BenchmarkPrompt>> GetBenchmarkPromptsAsync(string? category = null)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(QuickCallTimeout);
-                var url = "/api/benchmark/prompts";
-                if (!string.IsNullOrEmpty(category)) url += $"?category={Uri.EscapeDataString(category)}";
-                var response = await GetWithMetricsAsync(url, cts.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<BenchmarkPrompt>>(cts.Token) ?? new();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取基准测试提示词失败");
-                return new();
-            }
-        }
-
-        public async Task<bool> RunBenchmarkAsync(BenchmarkModelConfig model, string[]? promptIds = null)
-        {
-            try
-            {
-                var request = new RunBenchmarkRequest { Model = model, PromptIds = promptIds };
-                var json = JsonSerializer.Serialize(request);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await PostWithMetricsAsync("/api/benchmark/run", content);
-                return response.StatusCode == System.Net.HttpStatusCode.Accepted;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "启动基准测试失败");
-                return false;
-            }
-        }
-
-        public async Task<bool> StopBenchmarkAsync()
-        {
-            try
-            {
-                var response = await PostWithMetricsAsync("/api/benchmark/stop", new StringContent(""));
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "停止基准测试失败");
-                return false;
-            }
-        }
-
-        public async Task<BenchmarkStatusDto> GetBenchmarkStatusAsync()
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(QuickCallTimeout);
-                var response = await GetWithMetricsAsync("/api/benchmark/status", cts.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<BenchmarkStatusDto>(cts.Token) ?? new();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "获取基准测试状态失败");
-                return new();
-            }
-        }
-
-        public async Task<List<BenchmarkSession>> GetBenchmarkHistoryAsync(string? category = null)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(QuickCallTimeout);
-                var url = "/api/benchmark/history";
-                if (!string.IsNullOrEmpty(category)) url += $"?category={Uri.EscapeDataString(category)}";
-                var response = await GetWithMetricsAsync(url, cts.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<BenchmarkSession>>(cts.Token) ?? new();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取基准测试历史失败");
-                return new();
-            }
-        }
-
-        public async Task<List<BenchmarkLeaderboardEntry>> GetBenchmarkLeaderboardAsync(string? category = null)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(QuickCallTimeout);
-                var url = "/api/benchmark/leaderboard";
-                if (!string.IsNullOrEmpty(category)) url += $"?category={Uri.EscapeDataString(category)}";
-                var response = await GetWithMetricsAsync(url, cts.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<BenchmarkLeaderboardEntry>>(cts.Token) ?? new();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取基准测试排行榜失败");
-                return new();
-            }
-        }
-
-        public async Task<bool> DeleteBenchmarkSessionAsync(string sessionId)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(QuickCallTimeout);
-                var response = await _httpClient.DeleteAsync($"/api/benchmark/history/{sessionId}", cts.Token);
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "删除基准测试记录失败");
-                return false;
-            }
-        }
-
-        public async Task<bool> ClearBenchmarkHistoryAsync()
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(QuickCallTimeout);
-                var response = await _httpClient.DeleteAsync("/api/benchmark/history", cts.Token);
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "清空基准测试历史失败");
-                return false;
-            }
-        }
-
-        #endregion
 
         #region AI 调用性能指标
 
@@ -1851,60 +1659,6 @@ namespace Baihua.Web.Services
 
         // ============ AI 绘图（ComfyUI） ============
 
-        public async Task<ComfyStatusDto> GetComfyStatusAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                var response = await _httpClient.GetAsync("/api/comfy/status", cancellationToken);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<ComfyStatusDto>(cancellationToken)
-                    ?? new ComfyStatusDto { Available = false };
-            }
-            catch
-            {
-                return new ComfyStatusDto { Available = false };
-            }
-        }
-
-        public async Task<ComfyGenerateResultDto> GenerateComfyImageAsync(string prompt, string negativePrompt, int width, int height, int steps, CancellationToken cancellationToken = default)
-        {
-            // 用长超时 client（FamilyApiLong 5 分钟）：图片生成约 20-60 秒（含模型冷加载），30s 硬超时不够
-            var response = await _longHttpClient.PostAsJsonAsync("/api/comfy/generate-image", new
-            {
-                Prompt = prompt,
-                NegativePrompt = negativePrompt,
-                Width = width,
-                Height = height,
-                Steps = steps
-            }, cancellationToken);
-            return await ReadComfyGenerateResultAsync(response, cancellationToken);
-        }
-
-        public async Task<ComfyGenerateResultDto> GenerateComfyVideoAsync(string prompt, string negativePrompt, CancellationToken cancellationToken = default)
-        {
-            // 视频生成 3-5 分钟，必须走长超时 client
-            var response = await _longHttpClient.PostAsJsonAsync("/api/comfy/generate-video", new
-            {
-                Prompt = prompt,
-                NegativePrompt = negativePrompt
-            }, cancellationToken);
-            return await ReadComfyGenerateResultAsync(response, cancellationToken);
-        }
-
-        public async Task<List<ComfyHistoryItemDto>> GetComfyHistoryAsync(int limit = 50, string? kind = null, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                var path = $"/api/comfy/history?limit={limit}" + (string.IsNullOrEmpty(kind) ? "" : $"&kind={kind}");
-                var response = await _httpClient.GetAsync(path, cancellationToken);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<ComfyHistoryItemDto>>(cancellationToken) ?? [];
-            }
-            catch
-            {
-                return [];
-            }
-        }
 
         private static async Task<ComfyGenerateResultDto> ReadComfyGenerateResultAsync(HttpResponseMessage response, CancellationToken cancellationToken)
         {

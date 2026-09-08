@@ -176,10 +176,8 @@ builder.Services.AddSingleton<FamilyBudgetService>();
 builder.Services.Configure<LocalAiOptions>(builder.Configuration.GetSection("LocalAI"));
 
 builder.Services.AddSingleton<Baihua.AI.Provider.ILocalRuntimeManager, Baihua.AI.Provider.OpenVino.OpenVinoRuntimeManager>();
-builder.Services.AddSingleton<AssistantService>();
 builder.Services.AddSingleton<UserActivityService>();
 builder.Services.AddSingleton<AiDetailSettingsService>();
-builder.Services.AddHostedService<AssistantDailyWorker>();
 builder.Services.AddHttpClient<Baihua.Core.Services.ComfyUiClient>(client =>
         {
             // ComfyUI 生成：图片约 20-60s（含模型冷加载）、视频 3-5 分钟，默认 30s 硬超时不够
@@ -304,7 +302,7 @@ builder.Services.AddSingleton<Baihua.AI.Provider.ILocalModelTool, Baihua.AI.Prov
 builder.Services.AddSingleton<LocalModelDeploymentService>();
 builder.Services.AddSingleton<AiMetricsService>();
 builder.Services.AddSingleton<BenchmarkRepository>();
-builder.Services.AddSingleton<ModelBenchmarkService>();
+
 builder.Services.AddSingleton<OpenClawConfigService>();
 builder.Services.AddSingleton<ILocalAiConfigService, LocalAiConfigService>();
 builder.Services.AddSingleton<IOpenClawModelProfileService, OpenClawModelProfileService>();
