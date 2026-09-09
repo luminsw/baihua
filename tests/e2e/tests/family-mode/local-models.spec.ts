@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { navigateTo, waitForBlazor, authorize } from '../helpers';
 
-// 本地模型部署页冒烟：OpenVINO Tab 组件化后（LocalModels.razor → OpenVinoTab.razor）的行为回归锚。
-// 覆盖：页面加载、Tab 切换到 OpenVINO 后目录/下载任务/已下载模型/LLM 托管各区域渲染。
+// 本地模型部署页（单表收敛后）行为回归锚。
+// 覆盖：页面加载、模型表渲染、删除流程（弹窗 + 确认 + 成功消息）。
 
-test.describe('本地模型部署页（OpenVINO Tab 组件）', () => {
+test.describe('本地模型部署页', () => {
   test.beforeEach(async ({ page }) => {
     await authorize(page);
     await navigateTo(page, '/local-models');
@@ -15,30 +15,43 @@ test.describe('本地模型部署页（OpenVINO Tab 组件）', () => {
     await expect(page.locator('h1').first()).toBeVisible({ timeout: 20000 });
   });
 
-  test('切换 OpenVINO Tab：区域标题渲染', async ({ page }) => {
-    await page.getByRole('button', { name: /OpenVINO/ }).first().click();
-    // OpenVINO 模型区标题（🧠 模型目录 / OpenVINO 模型）
-    await expect(page.getByText(/模型目录|OpenVINO/).first()).toBeVisible({ timeout: 20000 });
-    // 下载任务与已下载模型区
-    await expect(page.getByText(/下载任务|已下载/).first()).toBeVisible({ timeout: 20000 });
+  test('模型表渲染：表头与模型行可见', async ({ page }) => {
+    await expect(page.locator('table').first()).toBeVisible({ timeout: 20000 });
+    // 表头列（模型 / 参数 / 大小 / 用途 / 工具 / 状态 / 操作）
+    await expect(page.getByText('模型', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('工具', { exact: true }).first()).toBeVisible();
   });
 
-  test('切回概览 Tab：硬件区渲染', async ({ page }) => {
-    await page.getByRole('button', { name: /OpenVINO/ }).first().click();
-    await page.getByRole('button', { name: /概览/ }).first().click();
-    await expect(page.getByText(/硬件|运行中/).first()).toBeVisible({ timeout: 20000 });
+  test('删除流程：确认弹窗出现并可取消', async ({ page }) => {
+    // 等模型表渲染
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 20000 });
+    // 点击第一行的删除按钮
+    await page.locator('table tbody tr').first().getByRole('button', { name: '删除' }).click();
+    // 确认弹窗标题可见
+    await expect(page.getByRole('heading', { name: /确认删除/ })).toBeVisible();
+    // 取消
+    await page.getByRole('button', { name: '取消' }).click();
+    // 弹窗关闭
+    await expect(page.getByRole('heading', { name: /确认删除/ })).toHaveCount(0);
   });
 
-  test('OpenVINO 视觉模型行：显示 OVMS 托管纸章 + 详情按钮', async ({ page }) => {
-    await page.getByRole('button', { name: /OpenVINO/ }).first().click();
-    // OVMS 托管纸章（替代旧的手动加载/卸载按钮）
-    const badge = page.getByText(/由 OVMS 托管/, { exact: false }).first();
-    await expect(badge).toBeVisible({ timeout: 20000 });
-    // 详情按钮
-    const detailsBtn = page.getByRole('button', { name: /详情/ }).first();
-    await expect(detailsBtn).toBeVisible({ timeout: 20000 });
-    // 点击详情按钮弹出详情弹窗
-    await detailsBtn.click();
-    await expect(page.getByText(/模型详情|详情/).first()).toBeVisible({ timeout: 20000 });
+  test('删除流程：确认后模型从列表移除', async ({ page }) => {
+    // 等模型表渲染
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 20000 });
+    // 记录第一个模型的名字
+    const firstRow = page.locator('table tbody tr').first();
+    const modelName = (await firstRow.locator('td').first().innerText()).trim();
+    expect(modelName.length).toBeGreaterThan(0);
+
+    // 点击删除 → 确认
+    await firstRow.getByRole('button', { name: '删除' }).click();
+    await expect(page.getByText(`确定要删除模型 ${modelName} 吗？`)).toBeVisible();
+    await page.getByRole('button', { name: '确认删除' }).click();
+
+    // 成功消息出现
+    await expect(page.getByText(/已删除/)).toBeVisible({ timeout: 20000 });
+
+    // 该模型从列表移除
+    await expect(page.locator('table tbody tr', { hasText: modelName })).toHaveCount(0);
   });
 });

@@ -44,4 +44,10 @@ public interface ILocalModelTool
     /// </summary>
     Task<ModelDetailsDto?> GetModelDetailsAsync(string modelName, CancellationToken ct = default)
         => Task.FromResult<ModelDetailsDto?>(null);
+
+    /// <summary>
+    /// 删除本地模型。默认实现不支持删除，各 Provider 可覆盖。
+    /// </summary>
+    Task<bool> DeleteModelAsync(string modelName, CancellationToken ct = default)
+        => Task.FromResult(false);
 }

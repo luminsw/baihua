@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Baihua.Contracts.LocalModels;
 using Microsoft.Extensions.Options;
 
@@ -589,6 +590,146 @@ public class OpenVinoToolService : ILocalModelTool
         details.Parameters = string.Join("\n", sb);
         await Task.CompletedTask;
         return details;
+    }
+
+    /// <summary>
+    /// OpenVINO 模型删除：把显示名 / 内部 id / 目录名映射到实际模型目录后递归删除。
+    /// 前端 DownLoadedModelDto.Name 传的是显示名（如「扁仓 BianCang Instruct（医疗）」），
+    /// 实际目录名由 OmsModelMap 映射（如 BianCang-Qwen2.5-7B-Instruct），需先反查再删目录。
+    /// </summary>
+    public async Task<bool> DeleteModelAsync(string modelName, CancellationToken ct = default)
+    {
+        string? dirName = null;
+        string? omsId = null;
+
+        // 1. 显示名 → omsId → 目录名
+        foreach (var id in OmsModelMap.KnownOmsIds)
+        {
+            var dto = BuildRunningModelDto(id);
+            if (dto != null && string.Equals(dto.DisplayName, modelName, StringComparison.OrdinalIgnoreCase))
+            {
+                omsId = id;
+                dirName = OmsModelMap.DirNameForOmsId(id);
+                break;
+            }
+        }
+
+        // 2. 内部 id 匹配（dto.ModelName，如 "biancang-instruct"/"qwen2.5-7b"）
+        if (dirName == null)
+        {
+            foreach (var id in OmsModelMap.KnownOmsIds)
+            {
+                var dto = BuildRunningModelDto(id);
+                if (dto != null && string.Equals(dto.ModelName, modelName, StringComparison.OrdinalIgnoreCase))
+                {
+                    omsId = id;
+                    dirName = OmsModelMap.DirNameForOmsId(id);
+                    break;
+                }
+            }
+        }
+
+        // 3. modelName 本身就是目录名
+        if (dirName == null && OmsModelMap.OmsIdForDirName(modelName) != null)
+        {
+            dirName = modelName;
+            omsId = OmsModelMap.OmsIdForDirName(modelName);
+        }
+
+        if (string.IsNullOrEmpty(dirName))
+        {
+            _logger.LogWarning("无法定位模型目录: {Name}", modelName);
+            return false;
+        }
+
+        // 4. 删除模型目录
+        var path = Path.Combine(ModelRoot, dirName);
+        var dirDeleted = false;
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, recursive: true);
+            dirDeleted = true;
+            _logger.LogInformation("已删除模型目录: {Path}", path);
+        }
+
+        // 5. 从 OVMS config.json 移除模型注册并 reload，防止"幽灵模型"以 size=0 重新出现
+        var configRemoved = await RemoveFromOvmsConfigAsync(omsId, dirName, ct);
+
+        if (!dirDeleted && !configRemoved)
+        {
+            _logger.LogWarning("模型目录与 config.json 均不存在: {Name}", modelName);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 从 OVMS config.json 移除模型注册条目（匹配 name == omsId 或 base_path == dirName），
+    /// 写回后调用 OVMS /v1/config/reload 让变更即时生效。
+    /// </summary>
+    private async Task<bool> RemoveFromOvmsConfigAsync(string? omsId, string dirName, CancellationToken ct)
+    {
+        var configPath = Path.Combine(ModelRoot, "config.json");
+        if (!File.Exists(configPath)) return false;
+
+        try
+        {
+            var json = await File.ReadAllTextAsync(configPath, ct);
+            var node = JsonNode.Parse(json);
+            if (node == null) return false;
+
+            if (node["model_config_list"] is not JsonArray arr) return false;
+
+            var changed = false;
+            for (int i = arr.Count - 1; i >= 0; i--)
+            {
+                var entry = arr[i]?["config"];
+                if (entry == null) continue;
+                var name = entry["name"]?.GetValue<string>();
+                var basePath = entry["base_path"]?.GetValue<string>();
+                var match = (omsId != null && string.Equals(name, omsId, StringComparison.OrdinalIgnoreCase))
+                         || string.Equals(basePath, dirName, StringComparison.OrdinalIgnoreCase);
+                if (match)
+                {
+                    arr.RemoveAt(i);
+                    changed = true;
+                }
+            }
+
+            if (!changed) return false;
+
+            var opts = new JsonSerializerOptions { WriteIndented = true };
+            await File.WriteAllTextAsync(configPath, node.ToJsonString(opts), ct);
+            _logger.LogInformation("已从 OVMS config.json 移除模型: {OmsId}/{Dir}", omsId, dirName);
+
+            await ReloadOvmsAsync(ct);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "更新 OVMS config.json 失败: {Path}", configPath);
+            return false;
+        }
+    }
+
+    /// <summary>调用 OVMS /v1/config/reload 重新加载 config.json</summary>
+    private async Task ReloadOvmsAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(5);
+            var resp = await client.PostAsync(BaseUrl + "/v1/config/reload", content: null, ct);
+            if (resp.IsSuccessStatusCode)
+                _logger.LogInformation("OVMS config reload 成功");
+            else
+                _logger.LogWarning("OVMS config reload 返回 {Status}", (int)resp.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "OVMS config reload 失败（删除已完成，下次 OVMS 重启时生效）");
+        }
     }
 
     private static string FormatSizeText(long bytes)

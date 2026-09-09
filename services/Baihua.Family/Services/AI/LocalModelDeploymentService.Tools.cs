@@ -121,22 +121,13 @@ public partial class LocalModelDeploymentService
         {
             if (toolId.Equals("openvino", StringComparison.OrdinalIgnoreCase))
             {
-                var modelsDir = _localModelSettings.LocalModelDownloadDirectory;
-                var modelPath = Path.Combine(modelsDir, modelName);
-
-                if (!Directory.Exists(modelPath))
+                var ok = await _openVino.DeleteModelAsync(modelName, ct);
+                if (ok)
                 {
-                    _logger.LogWarning("模型目录不存在: {Path}", modelPath);
-                    return false;
+                    _cache.Remove(DownloadedModelsCacheKey);
+                    _cache.Remove(RunningModelsCacheKey);
                 }
-
-                Directory.Delete(modelPath, recursive: true);
-                _logger.LogInformation("已删除模型: {Name} ({Path})", modelName, modelPath);
-
-                _cache.Remove(DownloadedModelsCacheKey);
-                _cache.Remove(RunningModelsCacheKey);
-
-                return true;
+                return ok;
             }
 
             return false;
