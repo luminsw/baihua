@@ -108,8 +108,7 @@ else if (_activeScene == 0)
         new("dashboard", "Nav_ParentDashboard", "bi bi-bar-chart-line", 1),
 
         // 🤖 AI 实验室（场景 2）
-        // AI 对话/绘图/评测等消费型页面已删，统一走 DSH 智能体
-        new("dsh", "Dsh_Title", "bi bi-robot", 2, Group: "Nav_ChatLabel"),
+        // AI 对话/绘图/评测等消费型页面已删，统一走 DSH 智能体（外部）
         new("master-chat", "Nav_VirtualMaster", "bi bi-mortarboard", 2, Group: "Nav_ChatLabel"),
         new("local-models", "Nav_LocalModels", "bi bi-cpu", 2, Group: "Nav_ResearchLabel", RequiredFeature: "LocalModelsPage"),
         new("stock-advisor", "Nav_StockAdvisor", "bi bi-graph-up", 2, Group: "Nav_ResearchLabel"),
@@ -153,7 +152,7 @@ else if (_activeScene == 0)
             var home = scene switch
             {
                 1 => "family",
-                2 => "dsh",
+                2 => "master-chat",
                 _ => ""
             };
             NavigationManager.NavigateTo(home);

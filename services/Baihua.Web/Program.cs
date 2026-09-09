@@ -322,17 +322,6 @@ builder.Services.AddHttpClient("VaultApi", client =>
 }).AddPolicyHandler(retryPolicy)
  .AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
-// DSH（DeepSeek Harness）桥接客户端：连接本机 dsh-baihua-bridge 插件（默认 127.0.0.1:3080）。
-// 该端点是本机 DSH 服务，不参与 FamilyApi 的熔断/重试策略（桥接自有错误处理）。
-var dshBaseUrl = builder.Configuration["DshApi:BaseUrl"] ?? "http://127.0.0.1:3080";
-builder.Services.AddHttpClient("DshApi", client =>
-{
-    client.BaseAddress = new Uri(dshBaseUrl);
-    client.Timeout = TimeSpan.FromMinutes(10); // 任务可能较长，桥接 POST /chat 已改为非阻塞
-}).AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
-
-// Add DSH bridge service
-builder.Services.AddSingleton<Baihua.Web.Services.DshBridgeService>();
 
 builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient("FamilyApi"));
 

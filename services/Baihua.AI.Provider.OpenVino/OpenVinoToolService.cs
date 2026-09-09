@@ -342,6 +342,16 @@ public class OpenVinoToolService : ILocalModelTool
         string modelId, displayName, family;
         switch (key.ToLowerInvariant())
         {
+            case "qwen3.5-4b":
+                modelId = "qwen3.5-4b";
+                displayName = "Qwen 3.5 4B（视觉）";
+                family = "Qwen3.5";
+                break;
+            case "qwen3-embedding-0.6b":
+                modelId = "qwen3-embedding-0.6b";
+                displayName = "Qwen3 Embedding 0.6B（嵌入）";
+                family = "Qwen3-Embedding";
+                break;
             case "qwen2.5-vl-7b":
                 modelId = "7b";
                 displayName = "Qwen2.5-VL-7B-Instruct (INT4)";
@@ -497,6 +507,8 @@ public class OpenVinoToolService : ILocalModelTool
         else if (dirName.Contains("int8", StringComparison.OrdinalIgnoreCase)) quant = "INT8";
         return omsId.ToLowerInvariant() switch
         {
+            "qwen3.5-4b" => ("4B", quant, "视觉"),
+            "qwen3-embedding-0.6b" => ("0.6B", quant, "嵌入"),
             "qwen2.5" => ("7B", quant, "对话"),
             "qwen2.5-14b" => ("14B", quant, "对话"),
             "qwen2.5-coder-7b" => ("7B", quant, "编码"),

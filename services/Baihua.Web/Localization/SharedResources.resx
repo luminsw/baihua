@@ -15,35 +15,7 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Dsh_PageTitle" xml:space="preserve">
-    <value>DeepSeek Harness</value>
-  </data>
-  <data name="Dsh_Title" xml:space="preserve">
-    <value>DSH Agent</value>
-  </data>
-  <data name="Dsh_Checking" xml:space="preserve">
-    <value>Checking…</value>
-  </data>
-  <data name="Dsh_Online" xml:space="preserve">
-    <value>Online</value>
-  </data>
-  <data name="Dsh_Offline" xml:space="preserve">
-    <value>Offline</value>
-  </data>  <data name="Dsh_Refresh" xml:space="preserve">
-    <value>Refresh</value>
-  </data>
-  <data name="Dsh_OfflineHint" xml:space="preserve">
-    <value>DSH is not running. Start DeepSeek Harness on this machine:</value>
-  </data>
-  <data name="Dsh_PortHint" xml:space="preserve">
-    <value>defaults to 127.0.0.1:3080</value>
-  </data>
-  <data name="Dsh_PluginHint" xml:space="preserve">
-    <value>Load the dsh-baihua-bridge plugin in DSH (see ~/.dsh/bridge/README.md) so Baihua can drive its agent sessions.</value>
-  </data>
-  <data name="Dsh_OpenExternal" xml:space="preserve">
-    <value>Open in a new window</value>
-  </data>
+
   <data name="LanguageName" xml:space="preserve">
     <value>English</value>
   </data>

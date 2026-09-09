@@ -15,35 +15,7 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="Dsh_PageTitle" xml:space="preserve">
-    <value>DeepSeek Harness - 百花调用</value>
-  </data>
-  <data name="Dsh_Title" xml:space="preserve">
-    <value>DSH 智能体</value>
-  </data>
-  <data name="Dsh_Checking" xml:space="preserve">
-    <value>检测中…</value>
-  </data>
-  <data name="Dsh_Online" xml:space="preserve">
-    <value>在线</value>
-  </data>
-  <data name="Dsh_Offline" xml:space="preserve">
-    <value>离线</value>
-  </data>  <data name="Dsh_Refresh" xml:space="preserve">
-    <value>刷新</value>
-  </data>
-  <data name="Dsh_OfflineHint" xml:space="preserve">
-    <value>DSH 未运行。请先在本机开启 DeepSeek Harness：</value>
-  </data>
-  <data name="Dsh_PortHint" xml:space="preserve">
-    <value>默认监听 127.0.0.1:3080</value>
-  </data>
-  <data name="Dsh_PluginHint" xml:space="preserve">
-    <value>需在 DSH 加载 dsh-baihua-bridge 插件（见 ~/.dsh/bridge/README.md），百花页面才能驱动其 agent 会话。</value>
-  </data>
-  <data name="Dsh_OpenExternal" xml:space="preserve">
-    <value>在独立窗口打开</value>
-  </data>
+
   <data name="LanguageName" xml:space="preserve">
     <value>中文</value>
   </data>
