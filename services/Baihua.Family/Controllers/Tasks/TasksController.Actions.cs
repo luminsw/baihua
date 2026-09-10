@@ -61,22 +61,6 @@ namespace Baihua.Family.Controllers
 
             var providerId = task.Parameters?.GetValueOrDefault("providerId");
             var model = task.Parameters?.GetValueOrDefault("model");
-            if (!string.IsNullOrEmpty(providerId) && !string.IsNullOrEmpty(model))
-            {
-                var provider = _aiSettings.GetAiProviders().FirstOrDefault(p => p.Id.Equals(providerId, StringComparison.OrdinalIgnoreCase));
-                if (IsLocalProvider(provider))
-                {
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            _logger.LogInformation("任务取消后自动卸载本地模型: {Provider} {Model}", providerId, model);
-                            await _localDeployment.UnloadModelAsync(providerId, model);
-                        }
-                        catch { }
-                    });
-                }
-            }
 
             return Ok(new { success = true, message = _loc["Task_CancelSuccess"] });
         }

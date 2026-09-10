@@ -36,6 +36,7 @@ namespace Baihua.Web.Services
                 var result = await response.Content.ReadFromJsonAsync<List<AiConfigProvider>>(quick.Token);
                 if (result != null)
                 {
+                    List<LocalModelRegistryDto>? registry = null;
                     foreach (var provider in result)
                     {
                         var toolId = GetToolIdFromProviderUrl(provider.BaseUrl);
@@ -43,13 +44,16 @@ namespace Baihua.Web.Services
                         {
                             try
                             {
-                                using var localCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                                var availableModels = await GetAvailableModelsAsync(toolId, localCts.Token);
-                                MergeModels(provider.Models, availableModels);
+                                registry ??= await GetLocalModelRegistryAsync(quick.Token);
+                                var modelIds = registry
+                                    .Where(r => r.Tool.Equals(toolId, StringComparison.OrdinalIgnoreCase))
+                                    .Select(r => r.ModelId)
+                                    .ToList();
+                                MergeModels(provider.Models, modelIds);
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogDebug(ex, "动态获取本地模型列表失败，ProviderId: {ProviderId}", provider.Id);
+                                _logger.LogDebug(ex, "从注册表获取本地模型列表失败，ProviderId: {ProviderId}", provider.Id);
                             }
                         }
                     }
@@ -954,111 +958,23 @@ namespace Baihua.Web.Services
             }
         }
 
-        #region 本地模型部署
+        #region 本地模型注册表
 
 
-        public async Task<List<DownloadSourceDto>> GetDownloadSourcesAsync(CancellationToken cancellationToken = default)
+        public async Task<List<LocalModelRegistryDto>> GetLocalModelRegistryAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 using var quick = new CancellationTokenSource(QuickCallTimeout);
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var response = await GetWithMetricsAsync("/api/local-models/sources", linked.Token);
+                var response = await GetWithMetricsAsync("/api/local-models/registry", linked.Token);
                 response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<DownloadSourceDto>>(linked.Token) ?? new List<DownloadSourceDto>();
+                return await response.Content.ReadFromJsonAsync<List<LocalModelRegistryDto>>(linked.Token) ?? new List<LocalModelRegistryDto>();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "获取下载源失败");
-                return new List<DownloadSourceDto>();
-            }
-        }
-
-        public async Task<DownloadDirectoryConfigDto?> GetDownloadConfigAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var response = await GetWithMetricsAsync("/api/local-models/config", linked.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<DownloadDirectoryConfigDto>(linked.Token);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取下载配置失败");
-                return null;
-            }
-        }
-
-        public async Task<bool> SaveDownloadConfigAsync(DownloadDirectoryConfigDto config, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var json = JsonSerializer.Serialize(config);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await PostWithMetricsAsync("/api/local-models/config", content, linked.Token);
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "保存下载配置失败");
-                return false;
-            }
-        }
-
-
-        public async Task<List<string>> GetAvailableModelsAsync(string toolId, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var response = await GetWithMetricsAsync($"/api/local-models/available?toolId={Uri.EscapeDataString(toolId)}", linked.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<string>>(linked.Token) ?? new List<string>();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取可用模型列表失败");
-                return new List<string>();
-            }
-        }
-
-        public async Task<List<DownloadedModelDto>> GetDownloadedModelsAsync(CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var quick = new CancellationTokenSource(QuickCallTimeout);
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quick.Token);
-                var response = await GetWithMetricsAsync("/api/local-models/downloaded", linked.Token);
-                response.EnsureSuccessStatusCode();
-                return await response.Content.ReadFromJsonAsync<List<DownloadedModelDto>>(linked.Token) ?? new List<DownloadedModelDto>();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "获取已下载模型列表失败");
-                return new List<DownloadedModelDto>();
-            }
-        }
-
-        public async Task<bool> DeleteModelAsync(DeleteModelRequest request, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
-                var json = JsonSerializer.Serialize(request);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await PostWithMetricsAsync("/api/local-models/delete", content, linked.Token);
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "删除模型失败");
-                return false;
+                _logger.LogError(ex, "获取本地模型注册表失败");
+                return new List<LocalModelRegistryDto>();
             }
         }
 

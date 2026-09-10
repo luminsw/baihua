@@ -93,22 +93,7 @@ public partial class ChatCompletionsController
             }
             catch (OperationCanceledException)
             {
-                // 客户端取消，如果是本地 provider，卸载模型释放资源
-                if (IsLocalProvider(provider))
-                {
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            _logger.LogInformation("用户取消后自动卸载本地模型: {Provider} {Model}", provider.Id, model);
-                            await _localDeployment.UnloadModelAsync(provider.Id, model);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogDebug(ex, "取消后卸载模型失败: {Provider} {Model}", provider.Id, model);
-                        }
-                    });
-                }
+
             }
             catch (Exception ex)
             {

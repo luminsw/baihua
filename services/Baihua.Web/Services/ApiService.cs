@@ -192,14 +192,8 @@ namespace Baihua.Web.Services
 
         // 本地模型部署
 
-        Task<List<DownloadSourceDto>> GetDownloadSourcesAsync(CancellationToken cancellationToken = default);
-        Task<DownloadDirectoryConfigDto?> GetDownloadConfigAsync(CancellationToken cancellationToken = default);
-        Task<bool> SaveDownloadConfigAsync(DownloadDirectoryConfigDto config, CancellationToken cancellationToken = default);
 
-
-        Task<List<string>> GetAvailableModelsAsync(string toolId, CancellationToken cancellationToken = default);
-        Task<List<DownloadedModelDto>> GetDownloadedModelsAsync(CancellationToken cancellationToken = default);
-        Task<bool> DeleteModelAsync(DeleteModelRequest request, CancellationToken cancellationToken = default);
+        Task<List<LocalModelRegistryDto>> GetLocalModelRegistryAsync(CancellationToken cancellationToken = default);
 
 
         // 请求指标统计

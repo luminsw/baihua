@@ -388,6 +388,7 @@ namespace Baihua.Web.Services
                 var result = await response.Content.ReadFromJsonAsync<List<AiProviderInfo>>(quick.Token);
                 if (result != null)
                 {
+                    List<LocalModelRegistryDto>? registry = null;
                     foreach (var provider in result)
                     {
                         var toolId = GetToolIdFromProviderId(provider.Id);
@@ -395,13 +396,16 @@ namespace Baihua.Web.Services
                         {
                             try
                             {
-                                using var localCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                                var availableModels = await GetAvailableModelsAsync(toolId, localCts.Token);
-                                MergeModels(provider.Models, availableModels);
+                                registry ??= await GetLocalModelRegistryAsync(quick.Token);
+                                var modelIds = registry
+                                    .Where(r => r.Tool.Equals(toolId, StringComparison.OrdinalIgnoreCase))
+                                    .Select(r => r.ModelId)
+                                    .ToList();
+                                MergeModels(provider.Models, modelIds);
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogDebug(ex, "动态获取本地模型列表失败，ProviderId: {ProviderId}", provider.Id);
+                                _logger.LogDebug(ex, "从注册表获取本地模型列表失败，ProviderId: {ProviderId}", provider.Id);
                             }
                         }
                     }

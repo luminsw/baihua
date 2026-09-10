@@ -26,7 +26,7 @@ namespace Baihua.Family.Controllers
         private readonly Services.AtomNoteSplitter _atomNoteSplitter;
         private readonly Baihua.Core.Services.AiClientService _aiClientService;
         private readonly Baihua.Core.Services.LocalAiAutoStarter _localAiAutoStarter;
-        private readonly Services.LocalModelDeploymentService _localDeployment;
+
         private readonly Services.IOpenClawTaskService _openClawTaskService;
         private readonly DefaultPromptProvider _scenePromptService;
         private readonly Services.AnkiCardGenerator _cardGenerator;
@@ -44,7 +44,7 @@ namespace Baihua.Family.Controllers
             Services.AtomNoteSplitter atomNoteSplitter,
             Baihua.Core.Services.AiClientService aiClientService,
             Baihua.Core.Services.LocalAiAutoStarter localAiAutoStarter,
-            Services.LocalModelDeploymentService localDeployment,
+
             Services.IOpenClawTaskService openClawTaskService,
             DefaultPromptProvider scenePromptService,
             Services.AnkiCardGenerator cardGenerator,
@@ -61,7 +61,7 @@ namespace Baihua.Family.Controllers
             _atomNoteSplitter = atomNoteSplitter;
             _aiClientService = aiClientService;
             _localAiAutoStarter = localAiAutoStarter;
-            _localDeployment = localDeployment;
+
             _openClawTaskService = openClawTaskService;
             _scenePromptService = scenePromptService;
             _cardGenerator = cardGenerator;

@@ -214,6 +214,7 @@ builder.Services.AddSingleton<Baihua.Family.Services.Medical.MedicalAiService>()
 builder.Services.AddHostedService<StudyRecordMigrationService>();
 builder.Services.AddSingleton<Baihua.Core.WebSocket.DeviceWebSocketHub>();
 builder.Services.AddSingleton<DeviceService>();
+builder.Services.AddSingleton<LocalModelRegistryService>();
 // 百花服务器互联：对端管理 + 双向消息 + 局域网发现
 builder.Services.AddSingleton<Baihua.Family.Services.ServerMessaging.ServerMessageService>();
 builder.Services.AddHostedService<Baihua.Family.Services.ServerMessaging.ServerDiscoveryHostedService>();
@@ -273,7 +274,8 @@ builder.Services.AddHttpClient("Vault", c =>
 builder.Services.AddMcpServer()
     .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateless)
     .WithTools<BaihuaVaultTools>()
-    .WithTools<BaihuaFamilyTools>();
+    .WithTools<BaihuaFamilyTools>()
+    .WithTools<BaihuaLocalModelTools>();
 
 // 添加内存缓存（用于本地模型页等高频查询）
 builder.Services.AddMemoryCache();
@@ -282,24 +284,9 @@ builder.Services.AddSingleton<SystemHealthService>();
 builder.Services.AddSingleton<HardwareInfoService>();
 builder.Services.AddSingleton<CapabilityService>();
 
-
-builder.Services.Configure<Baihua.AI.Provider.OpenVino.OpenVinoToolOptions>(
-    builder.Configuration.GetSection("LocalVision"));
 // OVMS（OpenVINO Model Server）端点：统一承载 OpenVINO 推理
 builder.Services.Configure<Baihua.AI.Provider.OpenVino.OmsOptions>(
     builder.Configuration.GetSection("OpenVinoOms"));
-// 若 LocalVision:ModelRoot 未设置，则从 LocalAI:DownloadDirectory 读取，保持模型路径统一
-builder.Services.PostConfigure<Baihua.AI.Provider.OpenVino.OpenVinoToolOptions>(opts =>
-{
-    if (string.IsNullOrWhiteSpace(opts.ModelRoot))
-    {
-        var dir = builder.Configuration["LocalAI:DownloadDirectory"];
-        if (!string.IsNullOrWhiteSpace(dir))
-            opts.ModelRoot = dir;
-    }
-});
-builder.Services.AddSingleton<Baihua.AI.Provider.ILocalModelTool, Baihua.AI.Provider.OpenVino.OpenVinoToolService>();
-builder.Services.AddSingleton<LocalModelDeploymentService>();
 builder.Services.AddSingleton<AiMetricsService>();
 builder.Services.AddSingleton<BenchmarkRepository>();
 
@@ -326,7 +313,7 @@ builder.Services.AddHostedService<TaskCleanupService>();
 builder.Services.AddHostedService<ObsidianWarmupHostedService>();
 // VaultIndexSchedulerService 已在 Baihua.Vault 中注册，避免两个进程同时重建索引
 builder.Services.AddHostedService<BackupSchedulerService>();
-builder.Services.AddHostedService<LocalModelsCacheWarmupService>();
+
 
 // 添加健康检查
 builder.Services.AddHealthChecks()

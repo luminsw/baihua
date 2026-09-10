@@ -932,7 +932,11 @@
 
             try
             {
-                var availableModels = await ApiService.GetAvailableModelsAsync(toolId);
+                var registry = await ApiService.GetLocalModelRegistryAsync();
+                var availableModels = registry
+                    .Where(r => r.Tool.Equals(toolId, StringComparison.OrdinalIgnoreCase))
+                    .Select(r => r.ModelId)
+                    .ToList();
                 var availableSet = availableModels.ToHashSet(StringComparer.OrdinalIgnoreCase);
                 foreach (var model in provider.Models)
                 {
@@ -1263,7 +1267,11 @@
                 return;
             }
 
-            var models = await ApiService.GetAvailableModelsAsync(toolId, _fetchCts.Token);
+            var registry = await ApiService.GetLocalModelRegistryAsync(_fetchCts.Token);
+            var models = registry
+                .Where(r => r.Tool.Equals(toolId, StringComparison.OrdinalIgnoreCase))
+                .Select(r => r.ModelId)
+                .ToList();
             if (models.Count == 0)
             {
                 fetchModelsError = L["Settings_ErrorNoModelsFetched"];
@@ -1343,31 +1351,12 @@
 
     private async Task LoadLocalModelConfigAsync()
     {
-        try
-        {
-            var config = await ApiService.GetDownloadConfigAsync();
-            if (config != null)
-            {
-                localModelDownloadDir = config.DownloadDirectory ?? "";
-                platformDefaultDownloadDir = config.PlatformDefaultDirectory ?? "";
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "加载本地模型配置失败");
-        }
-
-        // 兜底：当后端未返回默认下载目录时，前端计算用户主目录下的 baihua models 路径
-        if (string.IsNullOrEmpty(platformDefaultDownloadDir))
-        {
-            platformDefaultDownloadDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                ".baihua",
-                "models");
-        }
-        if (string.IsNullOrEmpty(localModelDownloadDir))
-        {
-            localModelDownloadDir = platformDefaultDownloadDir;
-        }
+        // 兜底：前端计算用户主目录下的 baihua models 路径
+        platformDefaultDownloadDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".baihua",
+            "models");
+        localModelDownloadDir = platformDefaultDownloadDir;
+        await Task.CompletedTask;
     }
 }

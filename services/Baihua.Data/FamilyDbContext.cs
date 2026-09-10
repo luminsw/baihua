@@ -18,6 +18,7 @@ public class FamilyDbContext : DbContext
 
     public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
     public DbSet<OpenClawTask> OpenClawTasks => Set<OpenClawTask>();
+    public DbSet<LocalModelRegistry> LocalModelRegistries => Set<LocalModelRegistry>();
     public DbSet<LearnerProfile> LearnerProfiles => Set<LearnerProfile>();
     public DbSet<Achievement> Achievements => Set<Achievement>();
     public DbSet<StudyActivity> StudyActivities => Set<StudyActivity>();
@@ -134,6 +135,27 @@ public class FamilyDbContext : DbContext
             entity.Property(e => e.Status).HasMaxLength(50).IsRequired().HasDefaultValue("pending");
             entity.Property(e => e.ReportPath).HasMaxLength(1000);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
+        });
+
+        // 本地大模型注册表（Agent 经 MCP 写入，(Tool, ModelId) 幂等 upsert）
+        modelBuilder.Entity<LocalModelRegistry>(entity =>
+        {
+            entity.ToTable("LocalModelRegistries");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.Tool, e.ModelId }).IsUnique();
+
+            entity.Property(e => e.Tool).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.ModelId).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.DisplayName).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.Endpoint).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.ParameterSize).HasMaxLength(32);
+            entity.Property(e => e.Quantization).HasMaxLength(32);
+            entity.Property(e => e.Usage).HasMaxLength(32);
+            entity.Property(e => e.Capabilities).HasMaxLength(256);
+            entity.Property(e => e.Notes).HasMaxLength(512);
+            entity.Property(e => e.RegisteredBy).HasMaxLength(64).IsRequired().HasDefaultValue("");
+            entity.Property(e => e.RegisteredAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
         });
 
         modelBuilder.Entity<OnboardingState>(entity =>
