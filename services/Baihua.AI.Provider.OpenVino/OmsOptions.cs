@@ -27,23 +27,22 @@ public static class OmsModelMap
     /// <summary>OVMS config.json 中已知的全部模型 id（供 DisplayName 回查等）</summary>
     public static readonly string[] KnownOmsIds =
     {
-        "qwen3.5-4b", "qwen3-embedding-0.6b",
-        "qwen2.5-vl-7b", "qwen2.5-vl-3b", "qwen2.5", "qwen2.5-14b",
+        "qwen3-4b", "qwen3-embedding-0.6b",
+        "qwen3.5-4b", "qwen2.5-vl-7b", "qwen2.5-vl-3b", "qwen2.5", "qwen2.5-14b",
         "qwen2.5-coder-7b", "qwen3.5-9b", "biancang", "bge-small-zh",
     };
 
     /// <summary>
     /// 百花视觉内部 Id → OVMS 模型 id。
-    /// 视觉模型已由 Qwen2.5-VL-7B 切换为 Qwen3.5-9B（int8，含视觉/文本嵌入，
-    /// 2026-08-29 实测视觉可用）；VL-7B/VL-3B 目录已清理以释放磁盘。
+    /// 当前 OVMS 仅注册 Qwen3-4B（纯文本 LLM，兼做对话主力）；旧 VL 模型目录已清理。
     /// </summary>
     public static string VisionModelId(string internalId)
     {
-        return "qwen3.5-4b";
+        return "qwen3-4b";
     }
 
     /// <summary>LLM 对话模型 id（百花文本推理后端）——统一指向 OVMS 的对话模型</summary>
-    public static string ChatModelId => "qwen3.5-4b";
+    public static string ChatModelId => "qwen3-4b";
 
     /// <summary>嵌入模型 id（RAG）</summary>
     public static string EmbeddingModelId => "qwen3-embedding-0.6b";
@@ -51,6 +50,7 @@ public static class OmsModelMap
     /// <summary>本地模型目录名 → OVMS 注册模型 id（用于把 OVMS 注册状态合并到目录页）</summary>
     public static string? OmsIdForDirName(string dirName) => dirName switch
     {
+        "Qwen3-4B-int4-ov" => "qwen3-4b",
         "Qwen3.5-4B-int4-ov" => "qwen3.5-4b",
         "Qwen3-Embedding-0.6B-int8-ov" => "qwen3-embedding-0.6b",
         "Qwen2.5-VL-7B-Instruct-int4-ov" => "qwen2.5-vl-7b",
@@ -67,6 +67,7 @@ public static class OmsModelMap
     /// <summary>OVMS 注册模型 id → 本地模型目录名（用于按目录估算模型大小/安装状态）</summary>
     public static string? DirNameForOmsId(string omsId) => omsId switch
     {
+        "qwen3-4b" => "Qwen3-4B-int4-ov",
         "qwen3.5-4b" => "Qwen3.5-4B-int4-ov",
         "qwen3-embedding-0.6b" => "Qwen3-Embedding-0.6B-int8-ov",
         "qwen2.5-vl-7b" => "Qwen2.5-VL-7B-Instruct-int4-ov",
