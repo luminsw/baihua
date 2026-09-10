@@ -121,6 +121,16 @@ foreach ($m in $Models) {
 }
 
 # --- 5. 注册 Windows 服务 ---
+# 增大 Windows 服务启动超时（默认 30 秒，OVMS 启动时同步加载 2GB+ 模型会超时 1053），
+# 需重启系统生效。幂等：已设置则跳过。
+$pipeTimeout = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control' -Name ServicesPipeTimeout -ErrorAction SilentlyContinue).ServicesPipeTimeout
+if ($pipeTimeout -lt 180000) {
+    Write-Host '[4/6] 设置服务启动超时 ServicesPipeTimeout=180000（3 分钟，需重启系统生效）...'
+    reg.exe add HKLM\SYSTEM\CurrentControlSet\Control /v ServicesPipeTimeout /t REG_DWORD /d 180000 /f | Out-Null
+} else {
+    Write-Host '[4/6] 服务启动超时已配置: ServicesPipeTimeout=$pipeTimeout'
+}
+
 $installBat = Join-Path $OmsHome 'install_ovms_service.bat'
 if (Test-Path $installBat) {
     Write-Host '[4/6] 运行官方安装脚本 install_ovms_service.bat ...'
