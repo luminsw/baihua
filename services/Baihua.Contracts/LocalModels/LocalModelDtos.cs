@@ -292,3 +292,24 @@ public class ModelDetailsRequest
     public string ToolId { get; set; } = "";
     public string ModelName { get; set; } = "";
 }
+
+/// <summary>
+/// 本地大模型注册表条目（Agent 经 MCP 写入，WebUI 只读展示）。
+/// </summary>
+public class LocalModelRegistryDto
+{
+    public int Id { get; set; }
+    public string Tool { get; set; } = "";
+    public string ModelId { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Endpoint { get; set; } = "";
+    public string? ParameterSize { get; set; }
+    public string? Quantization { get; set; }
+    public string? Usage { get; set; }
+    public long? SizeBytes { get; set; }
+    public string? Capabilities { get; set; }
+    public string? Notes { get; set; }
+    public string RegisteredBy { get; set; } = "";
+    public DateTime RegisteredAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}

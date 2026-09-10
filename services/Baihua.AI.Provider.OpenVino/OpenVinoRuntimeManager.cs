@@ -97,7 +97,7 @@ public class OpenVinoRuntimeManager : ILocalRuntimeManager
         var port = OmsPort;
         foreach (var m in result)
         {
-            var omsId = OmsModelMap.OmsIdForDirName(m.Name);
+            var omsId = OmsIdForDirName(m.Name);
             if (omsId == null || !omsIds.Contains(omsId)) continue;
             m.IsOmsHosted = true;
             // 已有自起子进程时保留子进程端口（OVMS 状态作为兜底，不覆盖）
@@ -108,6 +108,23 @@ public class OpenVinoRuntimeManager : ILocalRuntimeManager
             }
         }
     }
+
+    /// <summary>本地模型目录名 → OVMS 注册模型 id</summary>
+    private static string? OmsIdForDirName(string dirName) => dirName switch
+    {
+        "Qwen3-4B-int4-ov" => "qwen3-4b",
+        "Qwen3.5-4B-int4-ov" => "qwen3.5-4b",
+        "Qwen3-Embedding-0.6B-int8-ov" => "qwen3-embedding-0.6b",
+        "Qwen2.5-VL-7B-Instruct-int4-ov" => "qwen2.5-vl-7b",
+        "Qwen2.5-VL-3B-Instruct-int4-ov" => "qwen2.5-vl-3b",
+        "Qwen2.5-7B-Instruct-int4-ov" => "qwen2.5",
+        "Qwen2.5-14B-Instruct-INT4-OV" => "qwen2.5-14b",
+        "Qwen2.5-Coder-7B-Instruct-int4-ov" => "qwen2.5-coder-7b",
+        "Qwen3.5-9B-int8-ov" => "qwen3.5-9b",
+        "BianCang-Qwen2.5-7B-Instruct" => "biancang",
+        "bge-small-zh-v1.5" => "bge-small-zh",
+        _ => null
+    };
 
     /// <summary>OVMS REST 基地址（去掉尾部斜杠）</summary>
     private string OmsBaseUrl => _omsOptions.BaseUrl.TrimEnd('/');

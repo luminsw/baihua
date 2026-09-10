@@ -135,22 +135,6 @@ namespace Baihua.Family.Controllers
             {
                 await SendSse("error", _loc["AiChat_TimeoutOrCancelled"]);
 
-                // 如果是本地 provider，主动卸载模型以释放 GPU/CPU 资源
-                if (IsLocalProvider(provider))
-                {
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            _logger.LogInformation("用户取消后自动卸载本地模型: {Provider} {Model}", provider.Id, model);
-                            await _localDeployment.UnloadModelAsync(provider.Id, model);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogDebug(ex, "取消后卸载模型失败: {Provider} {Model}", provider.Id, model);
-                        }
-                    });
-                }
             }
             catch (Exception ex)
             {

@@ -141,3 +141,55 @@ public sealed class BaihuaFamilyTools
         return JsonSerializer.Serialize(new { tasks, total = tasks.Count }, JsonOpts);
     }
 }
+
+/// <summary>
+/// 百花 MCP 工具：本地大模型注册表（Agent 写入，WebUI 只读）。
+/// Agent（DSH/OpenClaw）诊断本机环境、安装并启动推理服务后，
+/// 调 baihua_local_model_register 登记到百花数据库，页面自动展示。
+/// </summary>
+[McpServerToolType]
+public sealed class BaihuaLocalModelTools
+{
+    private readonly LocalModelRegistryService _registry;
+    private static readonly JsonSerializerOptions JsonOpts = JsonSerializerOptions.Web;
+
+    public BaihuaLocalModelTools(LocalModelRegistryService registry)
+    {
+        _registry = registry;
+    }
+
+    [McpServerTool(Name = "baihua_local_model_register"), Description("注册或更新一个本地大模型到百花注册表（幂等，按 tool+model_id 去重）。tool 为推理后端类型（如 oms/llama.cpp/vllm/ollama），model_id 为模型标识，display_name 为展示名，endpoint 为推理服务地址（如 http://localhost:8000），usage 可选（chat/embedding/vision），registered_by 可选（登记人/agent 名）。")]
+    public async Task<string> Register(
+        string tool, string model_id, string display_name, string endpoint,
+        string? parameter_size = null, string? quantization = null, string? usage = null,
+        long? size_bytes = null, string? capabilities = null, string? notes = null,
+        string? registered_by = null)
+    {
+        try
+        {
+            var entry = await _registry.UpsertAsync(
+                tool, model_id, display_name, endpoint,
+                parameter_size, quantization, usage, size_bytes, capabilities, notes,
+                registered_by ?? "");
+            return JsonSerializer.Serialize(new { ok = true, entry }, JsonOpts);
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new { ok = false, error = ex.Message }, JsonOpts);
+        }
+    }
+
+    [McpServerTool(Name = "baihua_local_model_list"), Description("列出百花已注册的本地大模型。tool 可选筛选后端类型（如 oms/llama.cpp/vllm/ollama），留空返回全部。")]
+    public async Task<string> List(string? tool = null)
+    {
+        var models = await _registry.ListAsync(tool);
+        return JsonSerializer.Serialize(new { models, total = models.Count }, JsonOpts);
+    }
+
+    [McpServerTool(Name = "baihua_local_model_unregister"), Description("从百花注册表注销一个本地大模型（按 tool+model_id）。")]
+    public async Task<string> Unregister(string tool, string model_id)
+    {
+        var removed = await _registry.RemoveAsync(tool, model_id);
+        return JsonSerializer.Serialize(new { ok = true, removed }, JsonOpts);
+    }
+}

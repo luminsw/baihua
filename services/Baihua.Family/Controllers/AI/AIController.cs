@@ -22,7 +22,7 @@ namespace Baihua.Family.Controllers
         private readonly Baihua.Core.Services.AiSettingsService _aiSettings;
         private readonly Baihua.Core.Services.VaultSettingsService _vaultSettings;
         private readonly Baihua.Core.Services.AiClientService _aiClientService;
-        private readonly Services.LocalModelDeploymentService _localDeployment;
+
         private readonly Services.RagService _ragService;
         private readonly DefaultPromptProvider _scenePromptService;
         private readonly Services.AiFunctionService _aiFunctionService;
@@ -37,7 +37,7 @@ namespace Baihua.Family.Controllers
             Baihua.Core.Services.AiSettingsService aiSettings,
             Baihua.Core.Services.VaultSettingsService vaultSettings,
             Baihua.Core.Services.AiClientService aiClientService,
-            Services.LocalModelDeploymentService localDeployment,
+
             Services.RagService ragService,
             DefaultPromptProvider scenePromptService,
             Services.AiFunctionService aiFunctionService,
@@ -52,7 +52,7 @@ namespace Baihua.Family.Controllers
             _loc = loc;
             _vaultSettings = vaultSettings;
             _aiClientService = aiClientService;
-            _localDeployment = localDeployment;
+
             _scenePromptService = scenePromptService;
             _ragService = ragService;
             _aiFunctionService = aiFunctionService;

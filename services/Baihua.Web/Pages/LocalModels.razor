@@ -4,79 +4,79 @@
 @inject Baihua.Web.Services.IApiService ApiService
 @inject Microsoft.Extensions.Localization.IStringLocalizer<Baihua.Web.Localization.SharedResources> L
 @inject Microsoft.Extensions.Logging.ILogger<LocalModels> Logger
+@inject Microsoft.JSInterop.IJSRuntime JSRuntime
 
-<PageTitle>@L["LocalModels_PageTitle"]</PageTitle>
+<PageTitle>本地模型</PageTitle>
 
-<h1>🖥️ @L["LocalModels_Title"]</h1>
+<h1>🖥️ 本地大模型</h1>
+
+<div class="prompt-card mb-4">
+    <div class="prompt-card-header">
+        <h2>📋 Agent 初始化提示词</h2>
+        <button class="btn btn-sm btn-outline-primary" @onclick="CopyPrompt" disabled="@promptCopied">
+            @(promptCopied ? "✅ 已复制" : "📋 一键复制")
+        </button>
+    </div>
+    <p class="prompt-card-desc">
+        把以下提示词粘贴给 DSH / OpenClaw 等 Agent，Agent 会自动诊断本机硬件、安装并启动推理服务，
+        然后通过百花 MCP 工具把模型信息写入下方的注册表。
+    </p>
+    <pre class="prompt-text">@BootstrapPrompt</pre>
+</div>
 
 @if (isLoading)
 {
     <div class="loading-spinner">
         <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">@L["LocalModels_Loading"]</span>
+            <span class="visually-hidden">加载中...</span>
         </div>
-        <div class="mt-2">@L["LocalModels_Refreshing"]</div>
+        <div class="mt-2">正在加载注册表...</div>
     </div>
 }
 else
 {
     <div class="d-flex justify-content-end mb-2">
         <button class="btn btn-outline-secondary btn-sm" @onclick="Refresh" disabled="@isRefreshing">
-            @(isRefreshing ? "🔄 " + L["LocalModels_Refreshing"] : "🔄 " + L["LocalModels_RefreshModels"])
+            @(isRefreshing ? "🔄 刷新中..." : "🔄 刷新")
         </button>
     </div>
 
-    @if (!string.IsNullOrEmpty(message))
+    @if (models.Count == 0)
     {
-        <div class="load-message @(success ? "text-success" : "text-error") mb-2">@message</div>
-    }
-
-    @if (downloadedModels.Count == 0)
-    {
-        <div class="alert alert-info">@L["LocalModels_NoDownloadedModels"]</div>
+        <div class="alert alert-info">
+            <strong>注册表为空。</strong>请使用上方提示词让 Agent 初始化本机 AI 环境并注册模型。
+        </div>
     }
     else
     {
         <table class="table table-sm table-hover">
             <thead>
                 <tr>
-                    <th>@L["LocalModels_Col_Model"]</th>
-                    <th>@L["LocalModels_Col_Params"]</th>
-                    <th>@L["LocalModels_Col_Size"]</th>
-                    <th>@L["LocalModels_Col_Usage"]</th>
-                    <th>@L["LocalModels_Col_Tool"]</th>
-                    <th>@L["LocalModels_Col_Status"]</th>
-                    <th class="text-end">@L["LocalModels_Col_Actions"]</th>
+                    <th>模型</th>
+                    <th>参数</th>
+                    <th>用途</th>
+                    <th>后端</th>
+                    <th>端点</th>
+                    <th>登记人</th>
+                    <th>更新时间</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var m in downloadedModels)
+                @foreach (var m in models)
                 {
                     <tr>
                         <td>
-                            <div class="model-name-text">@m.Name</div>
-                            @if (!string.IsNullOrEmpty(m.Digest))
-                            {
-                                <div class="digest-text" title="@m.Digest">@m.Digest[..Math.Min(12, m.Digest.Length)]...</div>
-                            }
+                            <div class="model-name-text">@m.DisplayName</div>
+                            <div class="model-id-text">@m.ModelId</div>
                         </td>
-                        <td class="small text-muted">@(string.IsNullOrEmpty(m.Quantization) ? m.ParameterSize : $"{m.ParameterSize} {m.Quantization}")</td>
-                        <td class="small text-muted">@m.SizeGiB.ToString("F1") GB</td>
-                        <td class="small text-muted">@m.Usage</td>
-                        <td><span class="tool-badge @GetToolBadgeClass(m.ToolId)">@GetToolLabel(m)</span></td>
-                        <td>
-                            @if (m.IsRunning)
-                            {
-                                <span class="badge badge-success">@L["LocalModels_Running"]</span>
-                            }
-                            else
-                            {
-                                <span class="badge badge-secondary">@L["LocalModels_DownloadedBadge"]</span>
-                            }
+                        <td class="small text-muted">
+                            @(string.IsNullOrEmpty(m.Quantization) ? (m.ParameterSize ?? "") : $"{m.ParameterSize} {m.Quantization}")
                         </td>
-                        <td class="text-end">
-                            <button class="btn btn-sm btn-outline-secondary" @onclick='() => AskDelete(m)'>@L["LocalModels_DeleteBtn"]</button>
-                        </td>
+                        <td class="small text-muted">@(m.Usage ?? "")</td>
+                        <td><span class="tool-badge @GetToolBadgeClass(m.Tool)">@m.Tool</span></td>
+                        <td class="small text-muted">@m.Endpoint</td>
+                        <td class="small text-muted">@(string.IsNullOrEmpty(m.RegisteredBy) ? "—" : m.RegisteredBy)</td>
+                        <td class="small text-muted">@m.UpdatedAt.ToString("yyyy-MM-dd HH:mm")</td>
                     </tr>
                 }
             </tbody>
@@ -84,30 +84,46 @@ else
     }
 }
 
-@if (modelToDelete != null)
-{
-    <div class="modal-overlay" @onclick="CancelDelete">
-        <div class="modal-content modal-small" @onclick:stopPropagation>
-            <div class="modal-header">
-                <h3>⚠️ @L["LocalModels_DeleteConfirmTitle"]</h3>
-                <button class="modal-close" @onclick="CancelDelete">×</button>
-            </div>
-            <div class="modal-body">
-                <p>@L["LocalModels_DeleteConfirmText", modelToDelete.Name]</p>
-                <p>@L["LocalModels_DeleteSize", modelToDelete.SizeGiB.ToString("F1")]</p>
-                <p class="text-error">@L["LocalModels_DeleteIrreversible"]</p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" @onclick="CancelDelete">@L["Common_Cancel"]</button>
-                <button class="btn btn-danger" @onclick="ConfirmDelete" disabled="@isDeleting">
-                    @(isDeleting ? L["LocalModels_Deleting"] : L["LocalModels_DeleteConfirmBtn"])
-                </button>
-            </div>
-        </div>
-    </div>
-}
-
 <style>
+    .prompt-card {
+        background: var(--bs-secondary-bg, #f5f7fa);
+        border: 1px solid var(--bs-border-color, #e0e4e8);
+        border-radius: 10px;
+        padding: 1.25rem;
+    }
+
+    .prompt-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+
+    .prompt-card-header h2 {
+        margin: 0;
+        font-size: 1.1rem;
+    }
+
+    .prompt-card-desc {
+        font-size: 0.85rem;
+        color: var(--bs-secondary-color, #666);
+        margin-bottom: 0.75rem;
+    }
+
+    .prompt-text {
+        background: var(--bs-dark, #1e1e2e);
+        color: #cdd6f4;
+        border-radius: 8px;
+        padding: 1rem;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+        margin: 0;
+    }
+
     .loading-spinner {
         padding: 2rem;
         text-align: center;
@@ -118,7 +134,7 @@ else
         font-weight: 500;
     }
 
-    .digest-text {
+    .model-id-text {
         font-size: 0.75rem;
         color: #888;
     }
@@ -131,128 +147,59 @@ else
         font-weight: 500;
     }
 
-    .tool-openvino {
-        background: #e8f0e8;
-        color: #3d7a4d;
-    }
-
-    .tool-generic {
-        background: #e8eef2;
-        color: #4a5860;
-    }
-
-    .load-message {
-        font-size: 0.9rem;
-    }
-
-    .text-success {
-        color: #6b9e75;
-    }
-
-    .text-error {
-        color: #c94c4c;
-    }
-
-    .badge-success {
-        background: #6b9e75;
-        color: white;
-    }
-
-    .badge-secondary {
-        background: #5a6a72;
-        color: white;
-    }
-
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-        padding: 1rem;
-    }
-
-    .modal-content {
-        background: white;
-        border-radius: 10px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-        max-width: 90vw;
-        max-height: 90vh;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-
-    .modal-small {
-        width: 420px;
-    }
-
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem 1.25rem;
-        border-bottom: 1px solid #e8eef2;
-    }
-
-    .modal-header h3 {
-        margin: 0;
-        font-size: 1.1rem;
-    }
-
-    .modal-close {
-        background: none;
-        border: none;
-        font-size: 1.5rem;
-        cursor: pointer;
-        color: #888;
-        line-height: 1;
-    }
-
-    .modal-close:hover {
-        color: #333;
-    }
-
-    .modal-body {
-        padding: 1.25rem;
-        overflow-y: auto;
-        flex: 1;
-    }
-
-    .modal-footer {
-        display: flex;
-        justify-content: flex-end;
-        gap: 0.75rem;
-        padding: 1rem 1.25rem;
-        border-top: 1px solid #e8eef2;
-    }
+    .tool-oms { background: #e8f0e8; color: #3d7a4d; }
+    .tool-generic { background: #e8eef2; color: #4a5860; }
 
     [data-bs-theme="dark"] {
         .loading-spinner { color: #91a0b0; }
-        .digest-text { color: #8090a0; }
-        .tool-openvino { background: rgba(61, 122, 77, 0.22); color: #8fc79e; }
+        .model-id-text { color: #8090a0; }
+        .tool-oms { background: rgba(61, 122, 77, 0.22); color: #8fc79e; }
         .tool-generic { background: #2d3548; color: #c0c8d0; }
-        .modal-content { background: #232a3b; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); }
-        .modal-header { border-bottom-color: #2d3548; }
-        .modal-footer { border-top-color: #2d3548; }
-        .modal-close { color: #91a0b0; }
-        .modal-close:hover { color: #d4d8dd; }
     }
 </style>
 
 @code {
     private bool isLoading = true;
     private bool isRefreshing = false;
-    private bool isDeleting = false;
-    private string message = "";
-    private bool success = true;
-    private List<DownloadedModelDto> downloadedModels = new();
-    private DownloadedModelDto? modelToDelete;
+    private bool promptCopied = false;
+    private List<LocalModelRegistryDto> models = new();
+
+    private const string BootstrapPrompt = """
+你正在协助用户初始化本机 AI 推理环境。请按以下步骤操作：
+
+1. 诊断硬件
+   - 检查 CPU / GPU / 内存信息
+   - 确认是否有 Intel Arc GPU（可跑 OpenVINO）、NVIDIA GPU（可跑 CUDA）、或纯 CPU
+
+2. 查已注册模型（防重复）
+   - 调用 baihua_local_model_list 查看百花已注册的本地模型
+   - 如果已有同 tool + model_id 的条目，跳过重复注册
+
+3. 选后端并安装模型
+   - Intel Arc GPU → 用 OpenVINO + OVMS（OpenVINO Model Server）
+     · 下载 int4 量化模型（如 Qwen3-4B-int4-ov）
+     · 配置 OVMS config.json 注册模型
+     · 启动 OVMS 服务（默认端口 8000）
+   - NVIDIA GPU → 用 vLLM 或 Ollama
+   - 纯 CPU → 用 llama.cpp / Ollama（选小模型如 1.5B-4B）
+
+4. 启动并验证
+   - 启动推理服务后，用 curl 请求 /v1/models 确认模型可用
+   - 发一条测试 prompt 确认推理正常
+
+5. 调 MCP 注册
+   - 对每个成功启动的模型，调用 baihua_local_model_register：
+     · tool: 推理后端类型（如 "oms" / "vllm" / "ollama" / "llama.cpp"）
+     · model_id: 模型标识（如 "qwen3-4b"）
+     · display_name: 展示名（如 "Qwen3-4B"）
+     · endpoint: 推理服务地址（如 "http://localhost:8000"）
+     · usage: "chat" 或 "embedding" 或 "vision"
+     · parameter_size: 如 "4B"
+     · quantization: 如 "int4"
+     · registered_by: 你的 agent 名
+
+完成后告知用户哪些模型已注册成功。
+""";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -264,7 +211,7 @@ else
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "加载本地模型列表失败");
+            Logger.LogWarning(ex, "加载本地模型注册表失败");
         }
         finally
         {
@@ -275,22 +222,19 @@ else
 
     private async Task LoadAsync()
     {
-        downloadedModels = await ApiService.GetDownloadedModelsAsync();
+        models = await ApiService.GetLocalModelRegistryAsync();
     }
 
     private async Task Refresh()
     {
         isRefreshing = true;
-        message = "";
         try
         {
             await LoadAsync();
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "刷新本地模型列表失败");
-            message = ex.Message;
-            success = false;
+            Logger.LogWarning(ex, "刷新本地模型注册表失败");
         }
         finally
         {
@@ -299,70 +243,28 @@ else
         }
     }
 
-    private void AskDelete(DownloadedModelDto model)
+    private async Task CopyPrompt()
     {
-        modelToDelete = model;
-        message = "";
-    }
-
-    private void CancelDelete()
-    {
-        modelToDelete = null;
-    }
-
-    private async Task ConfirmDelete()
-    {
-        if (modelToDelete == null) return;
-        var target = modelToDelete;
-        isDeleting = true;
         try
         {
-            var ok = await ApiService.DeleteModelAsync(new DeleteModelRequest
-            {
-                ToolId = target.ToolId,
-                ModelName = target.Name
-            });
-
-            if (ok)
-            {
-                message = string.Format(L["LocalModels_DeletedOk"], target.Name);
-                success = true;
-                modelToDelete = null;
-                await LoadAsync();
-            }
-            else
-            {
-                message = L["LocalModels_DeleteFailedToolDown"];
-                success = false;
-            }
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", BootstrapPrompt);
+            promptCopied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            promptCopied = false;
+            StateHasChanged();
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "删除模型失败");
-            message = string.Format(L["LocalModels_DeleteException"], ex.Message);
-            success = false;
-        }
-        finally
-        {
-            isDeleting = false;
-            StateHasChanged();
+            Logger.LogWarning(ex, "复制提示词失败");
         }
     }
 
-    private static string GetToolLabel(DownloadedModelDto m)
+    private static string GetToolBadgeClass(string tool)
     {
-        return m.ToolId?.ToLowerInvariant() switch
+        return tool.ToLowerInvariant() switch
         {
-            "openvino" => "Intel OpenVINO",
-            _ => string.IsNullOrWhiteSpace(m.ToolName) ? (m.ToolId ?? "") : m.ToolName,
-        };
-    }
-
-    private static string GetToolBadgeClass(string? toolId)
-    {
-        return toolId?.ToLowerInvariant() switch
-        {
-            "openvino" => "tool-openvino",
+            "oms" or "openvino" => "tool-oms",
             _ => "tool-generic",
         };
     }
