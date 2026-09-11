@@ -848,25 +848,13 @@
                 if (!needsUpdate)
                     continue;
 
-                // 构建更新后的模型列表：保留原有模型的 IsPaid/IsMain/Category 信息，
-                // 对不在最新列表中的模型标记为过时（保留但不删除），新增的模型追加
+                // 构建更新后的模型列表：不在最新远程列表中的模型直接删除，新增的模型追加
                 var updatedModels = new List<AiConfigModel>();
                 foreach (var existing in provider.Models)
                 {
                     if (remoteModels.Contains(existing.Name))
                     {
                         updatedModels.Add(existing);
-                    }
-                    else
-                    {
-                        // 模型已不在远程列表中——保留但不再标记为主模型
-                        updatedModels.Add(new AiConfigModel
-                        {
-                            Name = existing.Name,
-                            IsPaid = existing.IsPaid,
-                            IsMain = false,
-                            Category = existing.Category
-                        });
                     }
                 }
 
