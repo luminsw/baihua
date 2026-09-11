@@ -145,7 +145,7 @@ namespace Baihua.Web.Services
             {
                 if (!existingSet.Contains(modelName))
                 {
-                    existingModels.Add(new AiModelInfo { Name = modelName, IsPaid = false, IsMain = false });
+                    existingModels.Add(new AiModelInfo { Name = modelName, IsPaid = true, IsMain = false });
                 }
             }
         }
@@ -157,7 +157,7 @@ namespace Baihua.Web.Services
             {
                 if (!existingSet.Contains(modelName))
                 {
-                    existingModels.Add(new AiConfigModel { Name = modelName, IsPaid = false, IsMain = false });
+                    existingModels.Add(new AiConfigModel { Name = modelName, IsPaid = true, IsMain = false });
                 }
             }
         }

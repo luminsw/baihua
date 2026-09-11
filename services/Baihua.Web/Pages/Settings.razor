@@ -878,7 +878,7 @@
                         updatedModels.Add(new AiConfigModel
                         {
                             Name = remoteModel,
-                            IsPaid = false,
+                            IsPaid = true,
                             IsMain = false,
                             Category = "chat"
                         });
@@ -1315,7 +1315,7 @@
         editingProvider.Models.Add(new EditModel
         {
             Name = "",
-            IsPaid = false,
+            IsPaid = true,
             IsMain = editingProvider.Models.Count == 0,
             Category = Baihua.Contracts.Ai.AiTaskCategory.Chat
         });
@@ -1394,7 +1394,7 @@
                 editingProvider.Models.Add(new EditModel
                 {
                     Name = name,
-                    IsPaid = false,
+                    IsPaid = true,
                     IsMain = editingProvider.Models.Count == 0
                 });
                 existingNames.Add(name);
