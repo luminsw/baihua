@@ -51,7 +51,6 @@ public class AiConfigProvider
 public class AiConfigModel
 {
     public string Name { get; set; } = "";
-    public bool IsPaid { get; set; }
     public bool IsMain { get; set; }
 
     /// <summary>
@@ -76,7 +75,6 @@ public class SaveAiProviderRequest
 public class AiModelRequest
 {
     public string Name { get; set; } = "";
-    public bool IsPaid { get; set; }
     public bool IsMain { get; set; }
 
     /// <summary>任务分类（chat/reasoning/code/vision）</summary>
@@ -102,7 +100,6 @@ public class AiProviderPreset
 public class AiProviderPresetModel
 {
     public string Name { get; set; } = "";
-    public bool IsPaid { get; set; }
     public bool IsMain { get; set; }
 
     /// <summary>任务分类（chat/reasoning/code/vision）</summary>

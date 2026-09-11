@@ -30,7 +30,7 @@ public partial class AiConfigController
                 request.Models?.Select(m => new AiModelConfig
                 {
                     Name = m.Name,
-                    IsPaid = m.IsPaid,
+
                     IsMain = m.IsMain,
                     Category = m.Category
                 }).ToList() ?? new List<AiModelConfig>());

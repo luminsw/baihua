@@ -4,7 +4,7 @@ namespace Baihua.Web.Services;
 public class AiModelInfo
 {
     public string Name { get; set; } = "";
-    public bool IsPaid { get; set; }
+
     public bool IsMain { get; set; }
 }
 

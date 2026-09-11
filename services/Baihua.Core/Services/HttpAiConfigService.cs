@@ -140,7 +140,7 @@ public class HttpAiConfigService : IAiConfigService
                 AnthropicBaseUrl = setting.AnthropicBaseUrl,
                 IsMain = setting.IsMain,
                 Models = models
-                    .Select(m => new AiModelRequest { Name = m.Name, IsPaid = m.IsPaid, IsMain = m.IsMain })
+                    .Select(m => new AiModelRequest { Name = m.Name, IsMain = m.IsMain })
                     .ToList(),
                 ApiKey = plainApiKey,
                 SortOrder = setting.SortOrder,
@@ -194,7 +194,7 @@ public class HttpAiConfigService : IAiConfigService
         AnthropicBaseUrl = p.AnthropicBaseUrl,
         IsMain = p.IsMain,
         Models = (p.Models ?? new List<AiConfigModel>())
-            .Select(m => new AiModelConfig { Name = m.Name, IsPaid = m.IsPaid, IsMain = m.IsMain })
+            .Select(m => new AiModelConfig { Name = m.Name, IsMain = m.IsMain })
             .ToList(),
         Tier = p.Tier
     };

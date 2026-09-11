@@ -759,7 +759,7 @@
                     : preset.Models.Select(m => new AiModelRequest
                     {
                         Name = m.Name,
-                        IsPaid = m.IsPaid,
+
                         IsMain = m.IsMain
                     }).ToList(),
                 ApiKey = apiKey.Trim()

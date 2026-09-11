@@ -78,7 +78,7 @@ namespace Baihua.Family.Controllers
                     Models = p.GetModelOptions().Select(m => new AiModelPublicDto
                     {
                         Name = m.Name,
-                        IsPaid = m.IsPaid,
+
                         IsMain = m.IsMain
                     }).ToList()
                 })

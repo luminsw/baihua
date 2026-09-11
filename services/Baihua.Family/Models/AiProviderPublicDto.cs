@@ -6,7 +6,7 @@ namespace Baihua.Family.Models
     public class AiModelPublicDto
     {
         public string Name { get; set; } = "";
-        public bool IsPaid { get; set; }
+
         public bool IsMain { get; set; }
     }
 

@@ -55,7 +55,7 @@ public class AiProviderRegistryClient
                 AnthropicBaseUrl = setting.AnthropicBaseUrl,
                 IsMain = setting.IsMain,
                 Models = models
-                    .Select(m => new AiModelRequest { Name = m.Name, IsPaid = m.IsPaid, IsMain = m.IsMain })
+                    .Select(m => new AiModelRequest { Name = m.Name, IsMain = m.IsMain })
                     .ToList(),
                 ApiKey = plainApiKey,
                 SortOrder = setting.SortOrder,

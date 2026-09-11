@@ -52,7 +52,7 @@ public class AiProviderSetting
 
     /// <summary>
     /// 模型列表（JSON 数组）
-    /// 格式: [{"name": "model1", "isPaid": false, "isMain": true}, ...]
+    /// 格式: [{"name": "model1", "isMain": true}, ...]
     /// </summary>
     public string ModelsJson { get; set; } = "[]";
 
