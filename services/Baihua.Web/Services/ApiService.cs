@@ -125,6 +125,7 @@ namespace Baihua.Web.Services
         Task<AiConfigProvider?> GetAiConfigProviderAsync(string providerId);
         Task<SaveAiProviderResult> SaveAiConfigProviderAsync(SaveAiProviderRequest request);
         Task<bool> DeleteAiConfigProviderAsync(string providerId);
+        Task<List<string>?> GetRemoteModelsAsync(string providerId);
         Task<EnvConfigHelp?> GetAiEnvConfigHelpAsync();
         Task<List<AiProviderPreset>> GetAiProviderPresetsAsync();
         Task<AiCategoryConfigDto> GetAiCategoryConfigAsync();

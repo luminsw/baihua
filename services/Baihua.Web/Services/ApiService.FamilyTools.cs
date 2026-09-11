@@ -134,6 +134,37 @@ namespace Baihua.Web.Services
             }
         }
 
+        public async Task<List<string>?> GetRemoteModelsAsync(string providerId)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                var response = await _aiHttpClient.GetAsync(
+                    $"/api/ai/config/providers/{Uri.EscapeDataString(providerId)}/remote-models", cts.Token);
+                if (!response.IsSuccessStatusCode)
+                    return null;
+                var json = await response.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("models", out var modelsArr))
+                {
+                    var result = new List<string>();
+                    foreach (var item in modelsArr.EnumerateArray())
+                    {
+                        var id = item.GetString();
+                        if (!string.IsNullOrEmpty(id))
+                            result.Add(id);
+                    }
+                    return result;
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "查询远程模型列表失败，ProviderId: {ProviderId}", providerId);
+                return null;
+            }
+        }
+
         public async Task<EnvConfigHelp?> GetAiEnvConfigHelpAsync()
         {
             try
