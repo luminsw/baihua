@@ -2,7 +2,6 @@ using Baihua.Core.Models;
 using Baihua.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Baihua.Data;
-using Baihua.AI.Provider;
 
 namespace Baihua.Family.Services;
 
@@ -11,20 +10,17 @@ public class StartupOrchestratorHostedService : IHostedService
     private readonly IDbContextFactory<FamilyDbContext> _familyDbContextFactory;
     private readonly IDbContextFactory<VaultDbContext> _vaultDbContextFactory;
     private readonly VaultSettingsService _vaultSettings;
-    private readonly LocalModelSettingsService _localModelSettings;
     private readonly ILogger<StartupOrchestratorHostedService> _logger;
 
     public StartupOrchestratorHostedService(
         IDbContextFactory<FamilyDbContext> familyDbContextFactory,
         IDbContextFactory<VaultDbContext> vaultDbContextFactory,
         VaultSettingsService vaultSettings,
-        LocalModelSettingsService localModelSettings,
         ILogger<StartupOrchestratorHostedService> logger)
     {
         _familyDbContextFactory = familyDbContextFactory;
         _vaultDbContextFactory = vaultDbContextFactory;
         _vaultSettings = vaultSettings;
-        _localModelSettings = localModelSettings;
         _logger = logger;
     }
 
@@ -33,7 +29,6 @@ public class StartupOrchestratorHostedService : IHostedService
         try
         {
             LoadFromDatabase();
-            _localModelSettings.LoadLocalModelConfigFromFile();
             TrySyncVaultsOnStartup();
         }
         catch (Exception ex)

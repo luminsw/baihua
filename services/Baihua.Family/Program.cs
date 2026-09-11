@@ -162,7 +162,6 @@ builder.Services.AddSingleton<IAiConfigService, HttpAiConfigService>();
 builder.Services.AddSingleton<AiProviderRegistryClient>();
 builder.Services.AddSingleton<AiComfyArtworksClient>();
 
-builder.Services.AddSingleton<LocalModelSettingsService>();
 
 builder.Services.AddSingleton<IVaultNameResolver, VaultNameResolver>();
 builder.Services.AddSingleton<VaultSettingsService>();
