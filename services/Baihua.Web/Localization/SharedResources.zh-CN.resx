@@ -1852,21 +1852,7 @@
   <data name="Settings_DisplayNamePlaceholder" xml:space="preserve">
     <value>如：智谱AI, DeepSeek</value>
   </data>
-  <data name="Settings_DownloadDir" xml:space="preserve">
-    <value>模型下载目录</value>
-  </data>
-  <data name="Settings_DownloadDirCurrent" xml:space="preserve">
-    <value>当前: </value>
-  </data>
-  <data name="Settings_DownloadDirDefault" xml:space="preserve">
-    <value>平台默认值: </value>
-  </data>
-  <data name="Settings_DownloadDirPlaceholder" xml:space="preserve">
-    <value>留空使用平台默认值</value>
-  </data>
-  <data name="Settings_DownloadSource" xml:space="preserve">
-    <value>下载源偏好</value>
-  </data>
+
   <data name="Settings_Edit" xml:space="preserve">
     <value>编辑</value>
   </data>
@@ -1936,9 +1922,7 @@
   <data name="Settings_LocalConfigSavedSuccess" xml:space="preserve">
     <value>✅ 本地模型设置已保存</value>
   </data>
-  <data name="Settings_LocalModelSettings" xml:space="preserve">
-    <value>本地模型设置</value>
-  </data>
+
   <data name="Settings_MainBadge" xml:space="preserve">
     <value>主</value>
   </data>

@@ -237,20 +237,6 @@
         </p>
     }
 
-    @if (_canShowLocalModelSettings)
-    {
-    <!-- 本地模型设置 -->
-    <div class="local-model-settings" style="margin-top: 2rem; padding-top: 1.5rem; border-color: var(--master-border, #2d3548);">
-        <h2>🖥️ @L["Settings_LocalModelSettings"]</h2>
-        <div class="form-group">
-            <label>@L["Settings_DownloadDir"]</label>
-            <input type="text" class="form-control" value="@localModelDownloadDir" readonly />
-            <small class="form-text">
-                @L["Settings_DownloadDirDefault"]@platformDefaultDownloadDir
-            </small>
-        </div>
-    </div>
-    }
 
 </div>
 
@@ -746,9 +732,7 @@
                OnCancel="CancelRemoveMissing" />
 
 @code {
-    private bool _canShowLocalModelSettings = false;
 
-    
     private List<AiConfigProvider> aiProviders = new();
 
     /// <summary>本机手配提供方（不含算力池对端登记）</summary>
@@ -783,24 +767,7 @@
         {
             try
             {
-                var canShow = await CapabilityService.CanShowAsync("SettingsLocalModelDownload");
-                await InvokeAsync(() =>
-                {
-                    _canShowLocalModelSettings = canShow;
-                    StateHasChanged();
-                });
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "检查本地模型设置权限失败");
-            }
-
-            try
-            {
-                await Task.WhenAll(
-                    LoadAiProviders(),
-                    LoadLocalModelConfigAsync()
-                );
+                await LoadAiProviders();
             }
             catch (Exception ex)
             {
@@ -1486,18 +1453,4 @@
         public string Category { get; set; } = Baihua.Contracts.Ai.AiTaskCategory.Chat;
     }
 
-    // 本地模型配置
-    private string localModelDownloadDir = "";
-    private string platformDefaultDownloadDir = "";
-
-    private async Task LoadLocalModelConfigAsync()
-    {
-        // 兜底：前端计算用户主目录下的 baihua models 路径
-        platformDefaultDownloadDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".baihua",
-            "models");
-        localModelDownloadDir = platformDefaultDownloadDir;
-        await Task.CompletedTask;
-    }
 }

@@ -1852,21 +1852,7 @@
   <data name="Settings_DisplayNamePlaceholder" xml:space="preserve">
     <value>e.g. ZhipuAI, DeepSeek</value>
   </data>
-  <data name="Settings_DownloadDir" xml:space="preserve">
-    <value>Download Directory</value>
-  </data>
-  <data name="Settings_DownloadDirCurrent" xml:space="preserve">
-    <value>Current: </value>
-  </data>
-  <data name="Settings_DownloadDirDefault" xml:space="preserve">
-    <value>Platform default: </value>
-  </data>
-  <data name="Settings_DownloadDirPlaceholder" xml:space="preserve">
-    <value>Leave empty to use platform default</value>
-  </data>
-  <data name="Settings_DownloadSource" xml:space="preserve">
-    <value>Download Source Preference</value>
-  </data>
+
   <data name="Settings_Edit" xml:space="preserve">
     <value>Edit</value>
   </data>
@@ -1936,9 +1922,7 @@
   <data name="Settings_LocalConfigSavedSuccess" xml:space="preserve">
     <value>✅ Local model settings saved</value>
   </data>
-  <data name="Settings_LocalModelSettings" xml:space="preserve">
-    <value>Local Model Settings</value>
-  </data>
+
   <data name="Settings_MainBadge" xml:space="preserve">
     <value>Main</value>
   </data>
