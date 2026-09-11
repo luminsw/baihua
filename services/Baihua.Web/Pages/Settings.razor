@@ -885,6 +885,14 @@
                     }
                 }
 
+                // 优先把名字带 flash 的模型设为默认主模型（便宜）
+                var flashModel = updatedModels.FirstOrDefault(m => m.Name.Contains("flash", StringComparison.OrdinalIgnoreCase));
+                if (flashModel != null)
+                {
+                    foreach (var m in updatedModels) m.IsMain = false;
+                    flashModel.IsMain = true;
+                }
+
                 // 确保至少有一个主模型
                 if (!updatedModels.Any(m => m.IsMain) && updatedModels.Count > 0)
                 {
