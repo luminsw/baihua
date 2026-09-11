@@ -88,6 +88,55 @@ public partial class AiConfigController : ControllerBase
     }
 
     /// <summary>
+    /// 查询远程 provider 的最新模型列表（使用存储的 API Key）
+    /// </summary>
+    [HttpGet("providers/{providerId}/remote-models")]
+    public async Task<ActionResult<object>> GetRemoteModels(string providerId)
+    {
+        var provider = _aiConfigService.GetProvider(providerId);
+        if (provider == null)
+            return NotFound(new { error = $"Provider '{providerId}' not found" });
+
+        var apiKey = _aiConfigService.GetApiKey(providerId);
+        if (string.IsNullOrEmpty(apiKey))
+            return Ok(new { models = Array.Empty<string>(), reason = "no_api_key" });
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            var baseUrl = provider.AiBaseUrl.TrimEnd('/');
+            var url = $"{baseUrl}/models";
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Add("Authorization", $"Bearer {apiKey}");
+            var response = await http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+                return Ok(new { models = Array.Empty<string>(), reason = $"http_{response.StatusCode}" });
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var models = new List<string>();
+            if (doc.RootElement.TryGetProperty("data", out var dataArr))
+            {
+                foreach (var item in dataArr.EnumerateArray())
+                {
+                    if (item.TryGetProperty("id", out var idProp))
+                    {
+                        var id = idProp.GetString();
+                        if (!string.IsNullOrEmpty(id))
+                            models.Add(id);
+                    }
+                }
+            }
+            return Ok(new { models, reason = "ok" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "查询远程模型列表失败，ProviderId: {ProviderId}", providerId);
+            return Ok(new { models = Array.Empty<string>(), reason = "error" });
+        }
+    }
+
+    /// <summary>
     /// 获取单个提供商配置
     /// </summary>
     [HttpGet("providers/{providerId}")]

@@ -1,5 +1,6 @@
 @page "/settings"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Baihua.Contracts.Ai
 @using Baihua.Contracts.LocalModels
 @inject Baihua.Web.Services.SettingsService SettingsService
 @inject Baihua.Web.Services.IApiService ApiService
@@ -814,6 +815,7 @@
         {
             aiProviders = await ApiService.GetAiConfigProvidersAsync();
             await CheckMissingLocalModelsAsync();
+            _ = RefreshRemoteProviderModelsAsync();
         }
         catch (Exception ex)
         {
@@ -826,6 +828,145 @@
             {
                 StateHasChanged();
             });
+        }
+    }
+
+    /// <summary>
+    /// 后台刷新远程 provider（如 DeepSeek）的模型列表，自动更新过时的模型名。
+    /// 仅对有 API Key 且 BaseUrl 指向远程 API（非 localhost）的 provider 执行。
+    /// </summary>
+    private async Task RefreshRemoteProviderModelsAsync()
+    {
+        foreach (var provider in aiProviders.ToList())
+        {
+            // 跳过本地模型 provider（Ollama/LM Studio 等）和算力池对端
+            if (provider.Id.StartsWith("peer-", StringComparison.OrdinalIgnoreCase))
+                continue;
+            var baseUrl = provider.BaseUrl ?? "";
+            if (baseUrl.Contains("localhost") || baseUrl.Contains("127.0.0.1") || baseUrl.Contains("0.0.0.0"))
+                continue;
+            if (!provider.HasApiKey)
+                continue;
+
+            try
+            {
+                var remoteModels = await ApiService.GetRemoteModelsAsync(provider.Id);
+                if (remoteModels == null || remoteModels.Count == 0)
+                    continue;
+
+                // 检查当前配置的模型是否都在最新列表中
+                var existingNames = provider.Models.Select(m => m.Name).ToHashSet();
+                var needsUpdate = false;
+
+                // 如果当前配置的模型不在最新列表中，说明可能已过时
+                foreach (var model in provider.Models)
+                {
+                    if (!remoteModels.Contains(model.Name))
+                    {
+                        needsUpdate = true;
+                        break;
+                    }
+                }
+
+                // 如果有新模型不在当前配置中，也更新
+                foreach (var remoteModel in remoteModels)
+                {
+                    if (!existingNames.Contains(remoteModel))
+                    {
+                        needsUpdate = true;
+                        break;
+                    }
+                }
+
+                if (!needsUpdate)
+                    continue;
+
+                // 构建更新后的模型列表：保留原有模型的 IsPaid/IsMain/Category 信息，
+                // 对不在最新列表中的模型标记为过时（保留但不删除），新增的模型追加
+                var updatedModels = new List<AiConfigModel>();
+                foreach (var existing in provider.Models)
+                {
+                    if (remoteModels.Contains(existing.Name))
+                    {
+                        updatedModels.Add(existing);
+                    }
+                    else
+                    {
+                        // 模型已不在远程列表中——保留但不再标记为主模型
+                        updatedModels.Add(new AiConfigModel
+                        {
+                            Name = existing.Name,
+                            IsPaid = existing.IsPaid,
+                            IsMain = false,
+                            Category = existing.Category
+                        });
+                    }
+                }
+
+                // 追加新发现的模型
+                foreach (var remoteModel in remoteModels)
+                {
+                    if (!existingNames.Contains(remoteModel))
+                    {
+                        updatedModels.Add(new AiConfigModel
+                        {
+                            Name = remoteModel,
+                            IsPaid = false,
+                            IsMain = false,
+                            Category = "chat"
+                        });
+                    }
+                }
+
+                // 确保至少有一个主模型
+                if (!updatedModels.Any(m => m.IsMain) && updatedModels.Count > 0)
+                {
+                    // 优先选第一个在远程列表中的模型作为主模型
+                    var firstAvailable = updatedModels.FirstOrDefault(m => remoteModels.Contains(m.Name));
+                    if (firstAvailable != null)
+                        firstAvailable.IsMain = true;
+                }
+
+                // 保存更新
+                var saveRequest = new SaveAiProviderRequest
+                {
+                    Id = provider.Id,
+                    Name = provider.Name,
+                    BaseUrl = provider.BaseUrl,
+                    AnthropicBaseUrl = provider.AnthropicBaseUrl ?? "",
+                    IsMain = provider.IsMain,
+                    Models = updatedModels.Select(m => new AiModelRequest
+                    {
+                        Name = m.Name,
+                        IsPaid = m.IsPaid,
+                        IsMain = m.IsMain,
+                        Category = m.Category ?? "chat"
+                    }).ToList(),
+                    ApiKey = null // null = 保留原有 API Key
+                };
+
+                var result = await ApiService.SaveAiConfigProviderAsync(saveRequest);
+                if (result.Success)
+                {
+                    Logger.LogInformation("已自动更新 Provider {ProviderId} 的模型列表：原有 {OldCount} 个，远程 {RemoteCount} 个",
+                        provider.Id, provider.Models.Count, remoteModels.Count);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "刷新远程模型列表失败，ProviderId: {ProviderId}", provider.Id);
+            }
+        }
+
+        // 重新加载 providers 以反映更新
+        try
+        {
+            aiProviders = await ApiService.GetAiConfigProvidersAsync();
+            await InvokeAsync(() => StateHasChanged());
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "刷新后重新加载 providers 失败");
         }
     }
 
