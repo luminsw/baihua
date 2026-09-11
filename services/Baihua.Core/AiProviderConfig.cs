@@ -13,11 +13,7 @@ namespace Baihua.Core.Models
         public string Name { get; set; } = "";
 
         /// <summary>
-        /// 是否付费模型
-        /// </summary>
-        public bool IsPaid { get; set; }
 
-        /// <summary>
         /// 是否为主模型（默认使用）
         /// </summary>
         public bool IsMain { get; set; }

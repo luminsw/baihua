@@ -144,10 +144,7 @@ else
                                         @onclick="() => SelectModel(modelName)"
                                         title="@modelName">
                                     @displayName
-                                    @if (model.IsPaid)
-                                    {
-                                        <span class="tag tag-paid" style="margin-left: 0.3rem;">@L["KnowledgeGen_PaidTag"]</span>
-                                    }
+
                                     @if (model.IsMain)
                                     {
                                         <span class="tag tag-default" style="margin-left: 0.3rem;">@L["KnowledgeGen_DefaultTag"]</span>

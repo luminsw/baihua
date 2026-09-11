@@ -1913,9 +1913,7 @@
   <data name="Settings_FetchFailed" xml:space="preserve">
     <value>Fetch failed: {0}</value>
   </data>
-  <data name="Settings_FreeModel" xml:space="preserve">
-    <value>Free</value>
-  </data>
+
   <data name="Settings_GoToDownloadModels" xml:space="preserve">
     <value>Go to Download Models</value>
   </data>
@@ -1953,12 +1951,7 @@
   <data name="Settings_PageTitle" xml:space="preserve">
     <value>AI Settings</value>
   </data>
-  <data name="Settings_Paid" xml:space="preserve">
-    <value>Paid</value>
-  </data>
-  <data name="Settings_PaidModel" xml:space="preserve">
-    <value>Paid</value>
-  </data>
+
   <data name="Settings_PresetHint" xml:space="preserve">
     <value>Select a well-known provider to auto-fill API address and recommended models</value>
   </data>
@@ -2370,9 +2363,7 @@
   <data name="KnowledgeGen_MainSuffix" xml:space="preserve">
     <value>(Main)</value>
   </data>
-  <data name="KnowledgeGen_PaidTag" xml:space="preserve">
-    <value>Paid</value>
-  </data>
+
   <data name="KnowledgeGen_DefaultTag" xml:space="preserve">
     <value>Default</value>
   </data>

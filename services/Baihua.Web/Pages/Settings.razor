@@ -130,10 +130,7 @@
                             <option value="vision">🖼️ @L["Settings_CategoryVision"]</option>
                         </select>
                         <label class="checkbox-label">
-                            <input type="checkbox" @bind="model.IsPaid" />
-                            <span>@L["Settings_Paid"]</span>
-                        </label>
-                        <label class="checkbox-label">
+
                             <input type="checkbox" @bind="model.IsMain" 
                                    @onclick="() => SetMainModel(model)" />
                             <span>@L["Settings_Default"]</span>
@@ -866,7 +863,7 @@
                         updatedModels.Add(new AiConfigModel
                         {
                             Name = remoteModel,
-                            IsPaid = true,
+
                             IsMain = false,
                             Category = "chat"
                         });
@@ -901,7 +898,6 @@
                     Models = updatedModels.Select(m => new AiModelRequest
                     {
                         Name = m.Name,
-                        IsPaid = m.IsPaid,
                         IsMain = m.IsMain,
                         Category = m.Category ?? "chat"
                     }).ToList(),
@@ -1012,14 +1008,7 @@
                         {
                             <span class="badge badge-secondary">@L["Settings_DefaultModel"]</span>
                         }
-                        @if (model.IsPaid)
-                        {
-                            <span class="badge badge-paid">@L["Settings_PaidModel"]</span>
-                        }
-                        else
-                        {
-                            <span class="badge badge-free">@L["Settings_FreeModel"]</span>
-                        }
+
                     </div>
                 }
             </div>
@@ -1103,7 +1092,6 @@
                     .Select(m => new AiModelRequest
                     {
                         Name = m.Name,
-                        IsPaid = m.IsPaid,
                         IsMain = m.IsMain,
                         Category = m.Category
                     })
@@ -1194,7 +1182,7 @@
             Models = provider.Models.Select(m => new EditModel
             {
                 Name = m.Name,
-                IsPaid = m.IsPaid,
+
                 IsMain = m.IsMain,
                 Category = m.Category
             }).ToList(),
@@ -1270,7 +1258,7 @@
                 Models = editingProvider.Models.Select(m => new AiModelRequest
                 {
                     Name = m.Name,
-                    IsPaid = m.IsPaid,
+
                     IsMain = m.IsMain,
                     Category = m.Category
                 }).ToList(),
@@ -1311,7 +1299,7 @@
         editingProvider.Models.Add(new EditModel
         {
             Name = "",
-            IsPaid = true,
+
             IsMain = editingProvider.Models.Count == 0,
             Category = Baihua.Contracts.Ai.AiTaskCategory.Chat
         });
@@ -1390,7 +1378,7 @@
                 editingProvider.Models.Add(new EditModel
                 {
                     Name = name,
-                    IsPaid = true,
+
                     IsMain = editingProvider.Models.Count == 0
                 });
                 existingNames.Add(name);
@@ -1444,7 +1432,7 @@
     private class EditModel
     {
         public string Name { get; set; } = "";
-        public bool IsPaid { get; set; }
+
         public bool IsMain { get; set; }
         public string Category { get; set; } = Baihua.Contracts.Ai.AiTaskCategory.Chat;
     }

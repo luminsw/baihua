@@ -265,7 +265,7 @@ public class ComputePoolService : IHostedService, IDisposable
         var shareable = caps.Providers.Where(ComputePoolShareFilter.IsShareable).ToList();
         var models = shareable
             .SelectMany(p => p.Models)
-            .Select(m => new AiModelConfig { Name = m.Name, IsMain = false, IsPaid = false })
+            .Select(m => new AiModelConfig { Name = m.Name, IsMain = false })
             .GroupBy(m => m.Name)
             .Select(g => g.First())
             .ToList();
@@ -390,7 +390,7 @@ public class ComputePoolService : IHostedService, IDisposable
             ModelsJson = AiConfigService.SerializeModels(provider.Models.Select(m => new AiModelConfig
             {
                 Name = m.Name,
-                IsPaid = m.IsPaid,
+
                 IsMain = m.Name == modelName
             }).ToList()),
             IsMain = true,

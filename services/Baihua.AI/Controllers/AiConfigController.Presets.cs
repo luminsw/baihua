@@ -35,10 +35,10 @@ public partial class AiConfigController
                 BaseUrl = "https://open.bigmodel.cn/api/paas/v4",
                 Models = new()
                 {
-                    new() { Name = "glm-4-plus", IsPaid = true, IsMain = true },
-                    new() { Name = "glm-4-flash", IsPaid = false, IsMain = false },
-                    new() { Name = "glm-4-air", IsPaid = true, IsMain = false },
-                    new() { Name = "glm-4-long", IsPaid = true, IsMain = false }
+                    new() { Name = "glm-4-plus", IsMain = true },
+                    new() { Name = "glm-4-flash", IsMain = false },
+                    new() { Name = "glm-4-air", IsMain = false },
+                    new() { Name = "glm-4-long", IsMain = false }
                 }
             },
             new()
@@ -48,10 +48,10 @@ public partial class AiConfigController
                 BaseUrl = "https://ark.cn-beijing.volces.com/api/v3",
                 Models = new()
                 {
-                    new() { Name = "doubao-seed-1-6-251015", IsPaid = true, IsMain = true },
-                    new() { Name = "doubao-1-5-pro-256k-250815", IsPaid = true, IsMain = false },
-                    new() { Name = "deepseek-r1-250528", IsPaid = true, IsMain = false },
-                    new() { Name = "deepseek-v3-250528", IsPaid = true, IsMain = false }
+                    new() { Name = "doubao-seed-1-6-251015", IsMain = true },
+                    new() { Name = "doubao-1-5-pro-256k-250815", IsMain = false },
+                    new() { Name = "deepseek-r1-250528", IsMain = false },
+                    new() { Name = "deepseek-v3-250528", IsMain = false }
                 }
             },
             new()
@@ -61,11 +61,11 @@ public partial class AiConfigController
                 BaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 Models = new()
                 {
-                    new() { Name = "qwen3.7-plus", IsPaid = true, IsMain = true },
-                    new() { Name = "qwen3.7-max", IsPaid = true, IsMain = false },
-                    new() { Name = "qwen3.7-flash", IsPaid = true, IsMain = false },
-                    new() { Name = "deepseek-v3", IsPaid = true, IsMain = false },
-                    new() { Name = "deepseek-r1", IsPaid = true, IsMain = false }
+                    new() { Name = "qwen3.7-plus", IsMain = true },
+                    new() { Name = "qwen3.7-max", IsMain = false },
+                    new() { Name = "qwen3.7-flash", IsMain = false },
+                    new() { Name = "deepseek-v3", IsMain = false },
+                    new() { Name = "deepseek-r1", IsMain = false }
                 }
             },
             new()
@@ -76,8 +76,8 @@ public partial class AiConfigController
                 AnthropicBaseUrl = "https://api.deepseek.com/anthropic",
                 Models = new()
                 {
-                    new() { Name = "deepseek-v4-pro", IsPaid = true, IsMain = true },
-                    new() { Name = "deepseek-v4-flash", IsPaid = true, IsMain = false }
+                    new() { Name = "deepseek-v4-pro", IsMain = true },
+                    new() { Name = "deepseek-v4-flash", IsMain = false }
                 }
             },
             new()
@@ -87,9 +87,9 @@ public partial class AiConfigController
                 BaseUrl = "https://api.moonshot.cn/v1",
                 Models = new()
                 {
-                    new() { Name = "kimi-k3", IsPaid = true, IsMain = true },
-                    new() { Name = "kimi-k2.7-code", IsPaid = true, IsMain = false },
-                    new() { Name = "kimi-k2.6", IsPaid = true, IsMain = false }
+                    new() { Name = "kimi-k3", IsMain = true },
+                    new() { Name = "kimi-k2.7-code", IsMain = false },
+                    new() { Name = "kimi-k2.6", IsMain = false }
                 }
             },
             new()
@@ -100,9 +100,9 @@ public partial class AiConfigController
                 Tier = AiModelTier.Tier2_Local,
                 Models = new()
                 {
-                    new() { Name = "qwen3:14b", IsPaid = false, IsMain = true },
-                    new() { Name = "deepseek-r1:14b", IsPaid = false, IsMain = false },
-                    new() { Name = "llama3.2:latest", IsPaid = false, IsMain = false }
+                    new() { Name = "qwen3:14b", IsMain = true },
+                    new() { Name = "deepseek-r1:14b", IsMain = false },
+                    new() { Name = "llama3.2:latest", IsMain = false }
                 }
             },
             new()
@@ -113,7 +113,7 @@ public partial class AiConfigController
                 Tier = AiModelTier.Tier2_Local,
                 Models = new()
                 {
-                    new() { Name = "loaded-model", IsPaid = false, IsMain = true }
+                    new() { Name = "loaded-model", IsMain = true }
                 }
             }
         };

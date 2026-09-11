@@ -65,7 +65,7 @@ public partial class AiConfigController : ControllerBase
                 Models = p.GetModelOptions().Select(m => new AiConfigModel
                 {
                     Name = m.Name,
-                    IsPaid = m.IsPaid,
+
                     IsMain = m.IsMain,
                     Category = m.Category
                 }).ToList(),
@@ -158,7 +158,7 @@ public partial class AiConfigController : ControllerBase
             Models = provider.GetModelOptions().Select(m => new AiConfigModel
             {
                 Name = m.Name,
-                IsPaid = m.IsPaid,
+
                 IsMain = m.IsMain,
                 Category = m.Category
             }).ToList(),
