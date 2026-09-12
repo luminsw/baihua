@@ -11,13 +11,18 @@ namespace Baihua.Modules.Ai.Controllers;
 public partial class AiConfigController
 {
     /// <summary>
-    /// 获取预设的知名 AI 提供商列表
+    /// 获取预设的知名 AI 提供商列表。
+    ///
+    /// 只保留两个：`自定义`（OpenAI 兼容，手动填 BaseUrl/模型/Key）与 `DeepSeek`（官方）。
+    /// 其它厂商（智谱/火山/阿里/Kimi/Ollama/LM Studio）不做预置 —— 需要时用「自定义」手动填，
+    /// 避免预置里的模型名/地址随时间过期，也免去逐家维护。
     /// </summary>
     [HttpGet("presets")]
     public ActionResult<List<AiProviderPreset>> GetPresets()
     {
         var presets = new List<AiProviderPreset>
         {
+            // 手动填（OpenAI 兼容）：本地 Ollama / LM Studio / 任何兼容端点都走这条
             new()
             {
                 Id = "custom",
@@ -28,46 +33,7 @@ public partial class AiConfigController
                     new() { Name = "", IsMain = true }
                 }
             },
-            new()
-            {
-                Id = "zhipu",
-                Name = _loc["AiConfig_PresetZhipu"],
-                BaseUrl = "https://open.bigmodel.cn/api/paas/v4",
-                Models = new()
-                {
-                    new() { Name = "glm-4-plus", IsMain = true },
-                    new() { Name = "glm-4-flash", IsMain = false },
-                    new() { Name = "glm-4-air", IsMain = false },
-                    new() { Name = "glm-4-long", IsMain = false }
-                }
-            },
-            new()
-            {
-                Id = "volcano",
-                Name = _loc["AiConfig_PresetVolcano"],
-                BaseUrl = "https://ark.cn-beijing.volces.com/api/v3",
-                Models = new()
-                {
-                    new() { Name = "doubao-seed-1-6-251015", IsMain = true },
-                    new() { Name = "doubao-1-5-pro-256k-250815", IsMain = false },
-                    new() { Name = "deepseek-r1-250528", IsMain = false },
-                    new() { Name = "deepseek-v3-250528", IsMain = false }
-                }
-            },
-            new()
-            {
-                Id = "aliyun",
-                Name = _loc["AiConfig_PresetAliyun"],
-                BaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                Models = new()
-                {
-                    new() { Name = "qwen3.7-plus", IsMain = true },
-                    new() { Name = "qwen3.7-max", IsMain = false },
-                    new() { Name = "qwen3.7-flash", IsMain = false },
-                    new() { Name = "deepseek-v3", IsMain = false },
-                    new() { Name = "deepseek-r1", IsMain = false }
-                }
-            },
+            // 官方 DeepSeek
             new()
             {
                 Id = "deepseek",
@@ -79,53 +45,8 @@ public partial class AiConfigController
                     new() { Name = "deepseek-v4-pro", IsMain = true },
                     new() { Name = "deepseek-v4-flash", IsMain = false }
                 }
-            },
-            new()
-            {
-                Id = "kimi",
-                Name = _loc["AiConfig_PresetKimi"],
-                BaseUrl = "https://api.moonshot.cn/v1",
-                Models = new()
-                {
-                    new() { Name = "kimi-k3", IsMain = true },
-                    new() { Name = "kimi-k2.7-code", IsMain = false },
-                    new() { Name = "kimi-k2.6", IsMain = false }
-                }
-            },
-            new()
-            {
-                Id = "ollama",
-                Name = _loc["AiConfig_PresetLocalOllama"],
-                BaseUrl = "http://localhost:11434/v1",
-                Tier = AiModelTier.Tier2_Local,
-                Models = new()
-                {
-                    new() { Name = "qwen3:14b", IsMain = true },
-                    new() { Name = "deepseek-r1:14b", IsMain = false },
-                    new() { Name = "llama3.2:latest", IsMain = false }
-                }
-            },
-            new()
-            {
-                Id = "lmstudio",
-                Name = _loc["AiConfig_PresetLocalLmStudio"],
-                BaseUrl = "http://localhost:1234/v1",
-                Tier = AiModelTier.Tier2_Local,
-                Models = new()
-                {
-                    new() { Name = "loaded-model", IsMain = true }
-                }
             }
         };
-
-        // 根据机器能力过滤本地 Provider 预设
-        if (!_capabilityService.CanUse(Baihua.Core.Services.LocalComputeFeature.AiConfigLocalProviderPresets))
-        {
-            presets = presets.Where(p =>
-                !p.Id.Equals("ollama", StringComparison.OrdinalIgnoreCase) &&
-                !p.Id.Equals("lmstudio", StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        }
 
         return Ok(presets);
     }
