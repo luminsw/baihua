@@ -1,0 +1,32 @@
+# bh-server 的「预编译产物」构建（宿主已 publish，镜像只做 runtime 层）
+#
+# 为什么需要它：`k8s/images/Dockerfile.server` 是标准源码构建，但它的 build 阶段
+# 依赖 `bh/sdk-offline`（内含 ~800MB 的 .NET SDK 与 nuget-local 离线包源）。
+# 在只装了 runtime、或国际链路很慢的机器上，先把 SDK 镜像搬进集群不现实。
+# 这时用宿主的 .NET SDK 先 publish，再套这个 Dockerfile 只做 runtime 层，快得多。
+#
+# 用法（在仓库根执行；context = publish 输出目录，不是仓库根）：
+#   dotnet publish services/Baihua.Server/Baihua.Server.csproj -c Release -r linux-x64 -o out/k8s/server
+#   docker build -DOCKER_BUILDKIT=0 -f k8s/images/Dockerfile.server-prebuilt -t bh-server:latest out/k8s/server
+#   docker save bh-server:latest | wsl -u root k3s ctr -n k8s.io images import -
+#   wsl -u root k3s kubectl -n baihua rollout restart deploy/bh-server
+#
+# 标准路径（能构建 bh/sdk-offline 时优先用它，无需维护 out/ 产物）：`bh build server`。
+
+FROM bh/base-runtime:latest
+
+WORKDIR /app
+
+# context 就是 dotnet publish 的输出目录
+COPY . .
+
+EXPOSE 8788
+
+ENV ASPNETCORE_URLS=http://+:8788
+ENV BAIHUA_HOME=/app/data
+ENV BAIHUA_SKIP_MUTEX=true
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8788/health || exit 1
+
+ENTRYPOINT ["dotnet", "bh-server.dll"]

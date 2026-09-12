@@ -41,7 +41,8 @@ function Show-Help {
     Write-Host '  bh lan [on|off|status]        局域网入口（宿主 :80 -> WSL k3s），status 为默认'
     Write-Host '  bh install / uninstall        加入 / 移出用户 PATH'
     Write-Host ''
-    Write-Host '说明: start/deploy/up/restart/dashboard 会自动确保局域网入口（首次弹一次 UAC；已就绪则静默）'
+    Write-Host '说明: start/deploy/up/update/restart/dashboard 会自动确保局域网入口（首次弹一次 UAC；已就绪则静默）'
+    Write-Host '      start/deploy/up/update/restart 还会把配对地址（Baihua__PublicBaseUrl）校正为当前宿主 LAN IP'
     Write-Host ''
     Write-Host '部署形态: Linux k3s（PostgreSQL + 后端 + WebUI + OVMS 全部容器化）'
     Write-Host ''
@@ -114,7 +115,11 @@ if (-not $wslRepo) { Write-Error '[k8s] wslpath 不可用，请确认已安装 W
 
 function Invoke-Cell([string[]]$CellArgs, [string]$EnvPrefix = '') {
     $inner = ($CellArgs | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
-    wsl -u root -e bash -lc "cd '$wslRepo' && $EnvPrefix tools/bh/linux/k8s/bh.sh $inner"
+    # 必须经管道逐行转发：wsl.exe 是原生子进程，直接把输出写到控制台句柄，
+    # 当本脚本的 stdout 不是控制台（CI / agent harness / 被其它程序捕获）时，
+    # 紧跟着的 `exit` 会在这些输出被刷出之前终止进程 —— 表现为"命令明明成功却没有任何输出"。
+    wsl -u root -e bash -lc "cd '$wslRepo' && $EnvPrefix tools/bh/linux/k8s/bh.sh $inner" 2>&1 |
+        ForEach-Object { Write-Host $_ }
     return $LASTEXITCODE
 }
 
@@ -226,6 +231,44 @@ function Show-LanStatus {
     elseif ($st.LanUp) { Write-Host '[lan] 模式: netsh portproxy 宿主:80 -> WSL:80' }
 }
 
+# ---------------- 配对地址（Baihua__PublicBaseUrl）自动校正 ----------------
+# 背景：移动端配对二维码 / 服务器互联广播里的地址取自 ConfigMap 的 Baihua__PublicBaseUrl。
+# 容器里探测到的是 Pod IP，没法自动得出宿主地址；而宿主 LAN IP 是 DHCP 的，会变。
+# 因此由 Windows 侧（唯一知道真实宿主 IP 的地方）在 start/deploy/up/restart 后校正一次：
+#   值已一致 → 静默；不一致 → patch ConfigMap + 滚动重启 bh-server（env 是启动时读入的）
+# k8s/01-configmap.yaml 里保留该键（值仅作占位），以免 kubectl apply 时把键删掉导致回退到 Pod IP。
+
+function Get-ClusterPublicBaseUrl {
+    $v = (wsl -u root -e bash -lc "k3s kubectl -n baihua get configmap baihua-config -o jsonpath='{.data.Baihua__PublicBaseUrl}'" 2>$null | Out-String).Trim()
+    return $v
+}
+
+function Sync-PublicBaseUrl {
+    param([switch]$Quiet)
+
+    $lanIp = Get-HostLanIp
+    if (-not $lanIp) { if (-not $Quiet) { Write-Host '[lan] 未识别到宿主局域网 IP，跳过配对地址校正' }; return }
+
+    $cur = Get-ClusterPublicBaseUrl
+    if (-not $cur) {
+        if (-not $Quiet) { Write-Host '[lan] 集群内暂无 Baihua__PublicBaseUrl（ConfigMap 未就绪），跳过' }
+        return
+    }
+
+    $want = "http://$lanIp"
+    if ($cur.TrimEnd('/') -eq $want) {
+        if (-not $Quiet) { Write-Host "[lan] 配对地址已一致：$cur" }
+        return
+    }
+
+    if (-not $Quiet) { Write-Host "[lan] 配对地址需校正：$cur -> $want（滚动重启后端生效）" }
+    $json = '{"data":{"Baihua__PublicBaseUrl":"' + $want + '"}}'
+    wsl -u root -e bash -lc "k3s kubectl -n baihua patch configmap baihua-config --type merge -p '$json'" 2>&1 |
+        ForEach-Object { if ($_ -notmatch '^\s*$') { Write-Host "  $_" } }
+    wsl -u root -e bash -lc "k3s kubectl -n baihua rollout restart deployment/bh-server" 2>&1 |
+        ForEach-Object { if ($_ -notmatch '^\s*$') { Write-Host "  $_" } }
+}
+
 # dashboard 特殊处理：CLI 在 WSL 里跑，打不开 Windows 的浏览器 —— 由本包装层代开。
 if ($cell -eq 'dashboard' -or ($Rest.Count -gt 0 -and $Rest[0] -eq 'dashboard')) {
     # 公开地址：默认用 WSL 的 IP；做过宿主转发（或 mirrored）后用宿主 IP，手机也能打开
@@ -272,8 +315,11 @@ if ($cell -eq 'lan' -or ($Rest.Count -gt 0 -and $Rest[0] -eq 'lan')) {
 
 $code = Invoke-Cell $Rest
 
-# 后端类命令执行完顺带确保一次局域网入口（已就绪则静默；未就绪才弹 UAC）
-if ($Rest.Count -gt 0 -and $Rest[0] -in @('start', 'deploy', 'up', 'restart') -and $code -eq 0) {
+# 后端类命令执行完顺带做两件事（都已就绪则静默）：
+#   1) 校正配对地址（宿主 LAN IP 可能变过）
+#   2) 确保局域网入口（未就绪才弹一次 UAC）
+if ($Rest.Count -gt 0 -and $Rest[0] -in @('start', 'deploy', 'up', 'update', 'restart') -and $code -eq 0) {
+    Sync-PublicBaseUrl
     Ensure-LanExposure
 }
 

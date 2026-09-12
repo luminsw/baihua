@@ -13,8 +13,12 @@ data:
   BAIHUA_HOME: "/app/data"
 
   # 移动端二维码/广播入口地址：Traefik :80（无显式端口号），/mg/* 由 Traefik 转发到 bh-server
-  # 花记扫码后使用 http://<host>/，不再出现 :8788 显式端口
-  Baihua__PublicBaseUrl: "http://192.168.3.13"
+  # 花记扫码后使用 http://<host>/，不再出现 :8788 显式端口。
+  # 这里的值只是**占位**：宿主 LAN IP 是 DHCP 的，容器里探测到的是 Pod IP，都无法自动得出正确地址，
+  # 因此由 `bh start|deploy|up|restart` 在 Windows 侧按真实宿主 IP 自动 patch 本键并滚动重启 bh-server
+  # （见 tools/bh/bh.ps1 的 Sync-PublicBaseUrl）。请勿依赖本文件的字面值，也不要删掉这个键
+  # （删掉会被 kubectl apply 一并移除，后端退回 Pod IP，二维码就扫不通了）。
+  Baihua__PublicBaseUrl: "http://192.168.3.9"
 
   # OpenObserve 可观测性（如有部署则填实际 URL）
   OpenObserve__WebUrl: "http://openobserve:5080/"

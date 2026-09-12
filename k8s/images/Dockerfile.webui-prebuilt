@@ -1,0 +1,26 @@
+# bh-webui 的「预编译产物」构建（宿主已 publish，镜像只做 runtime 层）
+# 说明与用法见同目录 Dockerfile.server-prebuilt（把 server 换成 webui / 5177 即可）：
+#
+#   dotnet publish services/Baihua.Web/Baihua.Web.csproj -c Release -r linux-x64 -o out/k8s/webui
+#   docker build -DOCKER_BUILDKIT=0 -f k8s/images/Dockerfile.webui-prebuilt -t bh-webui:latest out/k8s/webui
+#   docker save bh-webui:latest | wsl -u root k3s ctr -n k8s.io images import -
+#   wsl -u root k3s kubectl -n baihua rollout restart deploy/bh-webui
+
+FROM bh/base-runtime:latest
+
+WORKDIR /app
+
+# context 就是 dotnet publish 的输出目录
+COPY . .
+
+EXPOSE 5177
+
+ENV ASPNETCORE_URLS=http://0.0.0.0:5177
+ENV WEBUI_CONFIG_DIR=/app/data
+# 后端只有一个：Baihua.Server（K8s Service DNS）
+ENV BaihuaServer__BaseUrl=http://bh-server:8788/
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:5177/ || exit 1
+
+ENTRYPOINT ["dotnet", "bh-webui.dll"]

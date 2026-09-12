@@ -44,6 +44,11 @@ spec:
               mountPath: /app/logs
             - name: vaults
               mountPath: /vaults
+            # 与 bh-server 同理：WebUI 也会用 Directory.Exists 检查知识库路径
+            # （VaultStatusService / Vaults.razor），而库里的路径是 $BAIHUA_HOME/vaults 下的
+            # /app/data/vaults/...，所以同一份笔记也要挂到那里，否则 UI 会误报「路径不存在」。
+            - name: vaults
+              mountPath: /app/data/vaults
           readinessProbe:
             httpGet:
               path: /
