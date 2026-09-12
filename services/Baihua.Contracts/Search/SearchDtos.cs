@@ -13,7 +13,6 @@ public class SearchStatusInfo
 {
     public bool VaultConfigured { get; set; }
     public bool VaultExists { get; set; }
-    public bool ObsidianRunning { get; set; }
     public string SearchMethod { get; set; } = "unknown";
     public string? ErrorMessage { get; set; }
 }

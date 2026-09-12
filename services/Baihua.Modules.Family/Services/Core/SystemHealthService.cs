@@ -55,7 +55,6 @@ namespace Baihua.Modules.Family.Services
             var wallClock = Stopwatch.StartNew();
             var results = await Task.WhenAll(
                 HealthCheckHelper.WithCheckDurationAsync(() => CheckGitAsync(cancellationToken)),
-                HealthCheckHelper.WithCheckDurationAsync(() => CheckObsidianAsync(cancellationToken)),
                 HealthCheckHelper.WithCheckDurationAsync(() => CheckOllamaAsync(cancellationToken)),
                 HealthCheckHelper.WithCheckDurationAsync(() => CheckPythonAsync(cancellationToken)),
                 HealthCheckHelper.WithCheckDurationAsync(() => CheckNodeAsync(cancellationToken)),

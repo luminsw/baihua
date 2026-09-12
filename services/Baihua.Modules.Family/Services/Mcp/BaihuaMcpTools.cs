@@ -10,7 +10,7 @@ namespace Baihua.Modules.Family.Services.Mcp;
 /// 百花 MCP 工具：知识库只读能力（搜索/列表/读笔记）。
 /// 挂在百花服务器的 /mcp 端点（streamable-http），供 DSH / Claude Desktop / Cursor 等 MCP 客户端使用。
 /// 检索/读笔记/写笔记统一走 <see cref="IVaultQueryService"/>（知识库模块实现，进程内直调，
-/// 与 WebUI、移动端共用同一套检索逻辑：语义 → FTS5 → obsidian-cli → 文件扫描）。
+/// 与 WebUI、移动端共用同一套检索逻辑：语义 → FTS5 → 文件扫描）。
 /// 工具名保持不变，DSH 侧 mcp__baihua__ 前缀工具名不受影响。
 /// </summary>
 [McpServerToolType]

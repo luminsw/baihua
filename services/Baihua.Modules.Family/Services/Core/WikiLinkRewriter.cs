@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace Baihua.Modules.Family.Services
 {
     /// <summary>
-    /// 修复 Obsidian wikilink 在 AI 拆分后丢失分类目录的问题：
+    /// 修复 wikilink 在 AI 拆分后丢失分类目录的问题：
     /// 例如从 [[桂枝汤]] 补全为 [[方剂/桂枝汤]]（保留 #header 与 |alias）。
     /// </summary>
     public static class WikiLinkRewriter

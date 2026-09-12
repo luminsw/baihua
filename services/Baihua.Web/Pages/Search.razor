@@ -7,7 +7,6 @@
 @inject Baihua.Web.Services.IApiService ApiService
 @inject Baihua.Web.Services.SearchStateService SearchStateService
 @inject Baihua.Web.Services.ISearchHistoryService SearchHistoryService
-@inject Baihua.Web.Services.ObsidianStatusService ObsidianStatusService
 @inject Baihua.Web.Services.VaultsService VaultsService
 @inject Microsoft.Extensions.Logging.ILogger<Search> Logger
 @inject IStringLocalizer<SharedResources> L
@@ -16,31 +15,6 @@
 <PageTitle>@L["Search_PageTitle"]</PageTitle>
 
 <h1>@L["Search_Title"]</h1>
-
-@if (obsidianStatus != null)
-{
-    @if (obsidianStatus.IsRunning)
-    {
-        <div class="obsidian-hint alert alert-success alert-dismissible fade show" role="alert">
-            <strong>@L["Search_ObsidianRunning"]</strong>
-            <p class="mb-0 small mt-1">
-                @L["Search_ObsidianRunningDesc"]
-            </p>
-            <button type="button" class="btn-close" aria-label="Close"></button>
-        </div>
-    }
-    else
-    {
-        <div class="obsidian-hint alert alert-warning alert-dismissible fade show" role="alert">
-            <strong>@L["Search_ObsidianHint"]</strong>@L["Search_ObsidianNotRunning"]
-            <p class="mb-0 small mt-1">
-                @L["Search_ObsidianNotRunningDesc"]
-                <a href="https://obsidian.md/download" target="_blank" class="alert-link">@L["Search_DownloadObsidian"]</a>
-            </p>
-            <button type="button" class="btn-close" aria-label="Close"></button>
-        </div>
-    }
-}
 
 <div class="local-search">
         @if (isVaultsLoading)
@@ -198,7 +172,7 @@
                         <p>@L["Search_NoResults"]</p>
                         @if (searchStatus != null)
                         {
-                            <p class="text-muted">@L["Search_MethodLabel"]@(searchStatus.SearchMethod == "obsidian-cli" ? L["Search_MethodObsidianCli"] : searchStatus.SearchMethod == "semantic" ? L["Search_MethodSemantic"] : L["Search_MethodFileScan"])</p>
+                            <p class="text-muted">@L["Search_MethodLabel"]@GetSearchMethodLabel(searchStatus.SearchMethod)</p>
                         }
                     }
                 </div>
@@ -239,7 +213,6 @@
     private List<string>? recentSearches;
     private HashSet<string> expandedGroups = new();
 
-    private ObsidianStatusSummary? obsidianStatus;
     private List<VaultConfig> vaults = new();
     private bool isVaultsLoading = true;
     private string selectedVaultId = "";
@@ -288,10 +261,9 @@
                 Logger.LogDebug("后台数据加载开始: {StartTime:HH:mm:ss.fff}", loadStartTime);
                 
                 var loadRecentSearchesTask = SearchHistoryService.GetRecentSearches();
-                var loadObsidianStatusTask = ObsidianStatusService.GetStatusSummaryAsync();
                 var loadVaultsTask = VaultsService.GetVaultsAsync();
                 
-                await Task.WhenAll(loadRecentSearchesTask, loadObsidianStatusTask, loadVaultsTask);
+                await Task.WhenAll(loadRecentSearchesTask, loadVaultsTask);
                 
                 var loadEndTime = DateTime.Now;
                 Logger.LogDebug("后台数据加载完成，耗时: {ElapsedMs}ms", (loadEndTime - loadStartTime).TotalMilliseconds);
@@ -299,7 +271,6 @@
                 await InvokeAsync(() =>
                 {
                     recentSearches = loadRecentSearchesTask.Result;
-                    obsidianStatus = loadObsidianStatusTask.Result;
                     var vaultsResponse = loadVaultsTask.Result;
                     vaults = vaultsResponse.Vaults;
                     selectedVaultId = "";
@@ -407,7 +378,6 @@
 
     private string GetSearchMethodBadgeClass(string method) => method switch
     {
-        "obsidian-cli" => "text-bg-primary",
         "fts5" => "text-bg-success",
         "fts5+semantic" => "text-bg-info",
         "semantic" => "text-bg-warning",
@@ -416,7 +386,6 @@
 
     private string GetSearchMethodLabel(string method) => method switch
     {
-        "obsidian-cli" => L["Search_MethodObsidianCli"],
         "fts5" => L["Search_MethodFts5"],
         "fts5+semantic" => L["Search_MethodFts5Semantic"],
         "semantic" => L["Search_MethodSemantic"],
@@ -557,18 +526,3 @@
         recentSearches = await SearchHistoryService.GetRecentSearches();
     }
 }
-
-<style>
-    .obsidian-hint {
-        margin: 1rem 0;
-        padding: 0.75rem 1rem;
-        background: linear-gradient(135deg, #f5eee8 0%, #e8dcd0 100%);
-        border: 1px solid #ff9800;
-        border-radius: 8px;
-    }
-
-    .obsidian-hint .btn-close {
-        padding: 0.5rem;
-        margin: -0.5rem -0.5rem -0.5rem auto;
-    }
-</style>

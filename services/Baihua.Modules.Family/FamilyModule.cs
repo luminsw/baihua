@@ -98,11 +98,10 @@ public sealed class FamilyModule : IBaihuaModule
         services.AddSingleton<ComputePoolService>();
         services.AddHostedService(sp => sp.GetRequiredService<ComputePoolService>());
 
-        // === 备份 / 恢复 / 笔记 CLI ===
+        // === 备份 / 恢复 ===
         services.AddSingleton<RestoreService>();
         services.AddSingleton<BackupService>();
         services.AddSingleton<DeviceBackupService>();
-        services.AddSingleton<NotesMdCliService>();
 
         // === 本地模型（OpenClaw / 本地 AI 配置）===
         services.AddSingleton<OpenClawConfigService>();
@@ -116,7 +115,6 @@ public sealed class FamilyModule : IBaihuaModule
 
         // === 后台任务 ===
         services.AddHostedService<TaskCleanupService>();
-        services.AddHostedService<ObsidianWarmupHostedService>();
         services.AddHostedService<BackupSchedulerService>();
         services.AddHostedService<StartupOrchestratorHostedService>();
     }
