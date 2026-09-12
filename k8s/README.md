@@ -682,3 +682,35 @@ k3s kubectl -n kube-system get jobs
   **换机后要改成宿主机局域网 IP**（本机 WSL 节点为 `172.30.213.225`；旧值 `192.168.3.13` 只适用旧集群）。
 - 本机实测：`http://<节点IP>/health` → 200、`/` → 302（WebUI）、`/mg/*` → 401（需 HMAC 签名，符合预期）。
 
+### 5. OVMS（bh-openvino）在 k3s 里跑起来要注意三件事（本机已踩）
+
+1. **镜像**：`openvino/model_server:latest-gpu` 约 350MB，经 `docker.1ms.run` 约 2 分钟；
+   ctr 要显式写镜像站全名，再打两个标签（清单用 `bh-openvino:latest`）：
+
+   ```bash
+   k3s ctr -n k8s.io images pull docker.1ms.run/openvino/model_server:latest-gpu
+   k3s ctr -n k8s.io images tag docker.1ms.run/openvino/model_server:latest-gpu docker.io/openvino/model_server:latest-gpu
+   k3s ctr -n k8s.io images tag docker.1ms.run/openvino/model_server:latest-gpu docker.io/library/bh-openvino:latest
+   ```
+2. **模型仓库**：`baihua-models-pvc` 的 hostPath 是 WSL 内的 `/opt/baihua/models`，默认是空目录；
+   真实模型在 Windows 侧，需要 bind-mount（不跨重启保留，WSL 重启后要重做）：
+
+   ```bash
+   mkdir -p /opt/baihua/models
+   mount --bind /mnt/c/Users/lumin/.baihua/models /opt/baihua/models
+   ```
+   模型目录里若有指向 modelscope 缓存的软链，还要把缓存目录挂进 Pod（本机已在部署里加了
+   `modelscope-cache` 卷：hostPath `/mnt/c/Users/lumin/.cache/modelscope` → 容器内同路径）。
+3. **配置驱动**：`22a-openvino.yaml` 用 `--config_path=/models/config.json`（`model_config_list`），
+   `base_path` 必须是容器内路径（`/models/<模型目录>`）。**不要把模型名硬编码进清单** ——
+   本机就因为清单里硬编码了不存在的 `Qwen2.5-VL-7B-Instruct-int4-ov` 而一直 CrashLoopBackOff。
+
+   本机可用的两个模型（GPU）：`qwen3-4b`（Qwen3-4B-int4-ov）、`qwen3-embedding-0.6b`（Qwen3-Embedding-0.6B-int8-ov）。
+   验证：`kubectl -n baihua exec deploy/bh-server -- curl -s http://bh-openvino:8000/v1/models`
+
+> Windows 上的 native `ovms` 服务（scripts/install-openvino-ovms-service.ps1）已无必要：
+> 后端经 `OpenVinoOms__BaseUrl=http://bh-openvino:8000` 走集群内 OVMS。
+> 退役需管理员权限：`powershell -ExecutionPolicy Bypass -File scripts\install-openvino-ovms-service.ps1 -Remove`
+> （只停服务+删注册，模型目录与 OVMS 二进制保留，可随时重装）。
+
+

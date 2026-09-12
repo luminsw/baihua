@@ -42,11 +42,13 @@ spec:
             - containerPort: 9000
               name: grpc
           args:
-            # 单模型 GenAI 模式：OVMS 自动创建 graph（无需 graph.pbtxt / config.json）
-            - --model_path=/models/Qwen2.5-VL-7B-Instruct-int4-ov
-            - --model_name=qwen2.5-vl-7b
-            - --task=text_generation
-            - --target_device=CPU
+            # 按配置文件启动：模型清单来自 ConfigMap baihua-ovms-config（见文件末尾），
+            # 不再把模型名硬编码进清单 —— 硬编码曾指向本机不存在的 Qwen2.5-VL-7B，导致 OVMS 反复
+            # CrashLoopBackOff（"Graph path is not a directory"）。换机器/换模型只改那个 ConfigMap。
+            #
+            # config.json 里的 base_path 必须是容器内路径（如 /models/Qwen3-4B-int4-ov）；
+            # 单模型 GenAI 模式（--model_path + --model_name + --task）仍可用，但只能一个模型。
+            - --config_path=/ovms-config/config.json
             - --rest_port=8000
             - --port=9000
             - --log_level=INFO
@@ -60,6 +62,10 @@ spec:
               mountPath: /models
             - name: cache
               mountPath: /cache
+            # OVMS 模型清单（model_config_list）：容器内路径，换模型只改这个 ConfigMap
+            - name: ovms-config
+              mountPath: /ovms-config
+              readOnly: true
             # Intel GPU 设备节点（由 intel-gpu-plugin 自动注入）
             - name: dri
               mountPath: /dev/dri
@@ -86,8 +92,10 @@ spec:
             periodSeconds: 30
             failureThreshold: 3
           resources:
+            # 注意：limits.memory 必须 ≤ 节点可分配内存，否则 Pod 永远 Pending
+            # （本机节点 15.4Gi，原先写 16Gi → 调度不进去；模型跑在 GPU 上，宿主内存只需留给加载缓冲）
             limits:
-              memory: 16Gi
+              memory: 12Gi
             requests:
               cpu: 1000m
               memory: 2Gi
@@ -101,6 +109,19 @@ spec:
             claimName: baihua-models-pvc
         - name: cache
           emptyDir: {}
+        # OVMS 模型清单（model_config_list）：条目里的 base_path 必须是容器内路径（/models/...）
+        - name: ovms-config
+          configMap:
+            name: baihua-ovms-config
+        # 【本机 WSL 专用，按需启用】模型目录里有指向 modelscope 缓存的软链时，必须把缓存也挂进来，
+        # 否则容器内软链悬空、OVMS 找不到模型。启用方式：取消下面注释 + 在 volumeMounts 里同样加上
+        #   - name: modelscope-cache
+        #     mountPath: /mnt/c/Users/lumin/.cache/modelscope
+        #     readOnly: true
+        # - name: modelscope-cache
+        #   hostPath:
+        #     path: /mnt/c/Users/lumin/.cache/modelscope
+        #     type: Directory
         # /dev/dri 由 Intel GPU Device Plugin 自动注入（真机场景）
         - name: dri
           hostPath:
@@ -136,3 +157,22 @@ spec:
       port: 9000
       targetPort: 9000
       protocol: TCP
+---
+# OVMS 模型清单（config.json）：容器内路径。
+# 换机器/换模型只改这里；base_path 必须指向 models PVC（/models）里真实存在的模型目录。
+# 本机可用（Intel Arc，WSL2 GPU-PV）：Qwen3-4B-int4-ov、Qwen3-Embedding-0.6B-int8-ov
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: baihua-ovms-config
+  namespace: baihua
+  labels:
+    app.kubernetes.io/part-of: baihua
+data:
+  config.json: |
+    {
+      "model_config_list": [
+        { "config": { "name": "qwen3-4b",             "base_path": "/models/Qwen3-4B-int4-ov",             "target_device": "GPU" } },
+        { "config": { "name": "qwen3-embedding-0.6b", "base_path": "/models/Qwen3-Embedding-0.6B-int8-ov", "target_device": "GPU" } }
+      ]
+    }
