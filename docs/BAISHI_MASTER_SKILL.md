@@ -52,7 +52,7 @@
 
 实现位置：`services/Baihua.Modules.Family/Services/Mcp/BaihuaMcpTools.cs`（由 `Baihua.Server` 挂在 `/mcp` 端点，streamable-http）。
 
-> 这些工具原本只有「读」，本次补了 `create` 和 `write_note` 两个「写」工具，才让「边练边积累」落地。别的项目可用任何等价能力（文件、数据库、向量库、Obsidian…），只要 AI 能「写」且「检索」。
+> 这些工具原本只有「读」，本次补了 `create` 和 `write_note` 两个「写」工具，才让「边练边积累」落地。别的项目可用任何等价能力（文件、数据库、向量库…），只要 AI 能「写」且「检索」。
 
 ## 五、零件四：结构化笔记（frontmatter 约定）
 

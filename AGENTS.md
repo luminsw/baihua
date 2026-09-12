@@ -20,6 +20,12 @@
   chcp 65001 > $null
   [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
   ```
+- **改动含中文的 `.ps1` 后必须复查 BOM**：不少编辑器/工具（含本仓库助手所用的文件改写工具）保存时会**丢掉 BOM**，
+  文件在 `pwsh` 下正常、在 `powershell` 5.1 下就变 GBK 乱码甚至语法错误。改完自检：
+  ```powershell
+  $b=[IO.File]::ReadAllBytes('tools\bh\bh.ps1'); $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF
+  # 补 BOM：$bom=[byte[]](0xEF,0xBB,0xBF); [IO.File]::WriteAllBytes($p, $bom + [IO.File]::ReadAllBytes($p))
+  ```
 
 ### 终端中文乱码修复（`dotnet build` 输出）
 
@@ -67,7 +73,7 @@ C:\Users\lumin\src\
 
 - **执行任务时先检查当前是 Windows 还是 Linux**，再选用对应平台的命令与路径写法（PowerShell vs bash、反斜杠 vs 正斜杠、bh 的 win 与 linux 版本等），以免用错命令。
 - **服务运行由用户手动按需启停**，助手不自动拉起/保持后台进程：
-  - Baihua.Server **8788**（单一后端）、Baihua.Web **5177**（Windows native 下 OpenVINO 由 OVMS 系统服务承载（服务名 `ovms`，REST :8000，安装见 `scripts/install-openvino-ovms-service.ps1`），`bh status` 展示状态）
+  - Baihua.Server **8788**（单一后端）、Baihua.Web **5177**（OpenVINO 推理跑在 k3s 里的 `bh-openvino`（OVMS）工作负载；Windows 原生 `ovms` 服务已退役，安装脚本仅留作回退）
   - 启停统一用 `bh start` / `bh stop`；开发调试可单独 `dotnet watch run`
   - 若某服务未监听，先询问用户是否需要启动，不要擅自拉起
 - **WebUI 与后端之间的共享数据类型和 API 接口定义必须放在 `Baihua.Contracts`**，两边禁止各自重复定义。新增或修改 API 契约时，先更新 Contracts，再让两边引用同一版本。
@@ -212,7 +218,7 @@ dotnet build services/BaiHua.slnx -c Release
   `openvino`（profile `inference`）/ `openobserve`（profile `observability`）。
 - 已退役：合并前 `family`/`ai`/`vault` 三容器、`docker-ai` profile、`host.docker.internal:8791` 跨进程访问，
   以及 `tools/bh` 的 native / docker cell（`win/native`、`win/docker`、`linux/native`）。
-- **OpenVINO 推理**仍与后端进程分离：k8s 工作负载 `openvino`（OVMS）或 Windows native 的 `ovms` 系统服务（REST :8000），
+- **OpenVINO 推理**仍与后端进程分离：k8s 工作负载 `bh-openvino`（OVMS，REST :8000）——Windows native 的 `ovms` 系统服务已退役（`scripts/install-openvino-ovms-service.ps1 -Remove`），
   后端经 `OpenVinoOms__BaseUrl` 访问（`bh openvino on|off|status` 按需启停）。
 
 **OpenObserve 凭据约定**（默认口令 `Complexpass#123` 已废弃，appsettings 中不再有默认值）：

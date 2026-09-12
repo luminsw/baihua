@@ -76,8 +76,6 @@ cmd /c mklink /J "C:\Users\lumin\.baihua" "D:\BaihuaData"
 | `BAIHUA_EMBEDDING_URL` | Embedding 服务地址 | 空（从 DB 配置读取） |
 | `BAIHUA_EMBEDDING_MODEL` | Embedding 模型名 | 空（从 DB 配置读取） |
 | `BAIHUA_LOCAL_MODEL_DIR` | 本地模型下载目录 | 空（使用 LocalAI 配置） |
-| `BAIHUA_OBSIDIAN_EXE_PATH` | Obsidian 可执行文件路径 | 自动检测 |
-| `BAIHUA_OBSIDIAN_EXE` | Obsidian 可执行文件路径（备用名） | 自动检测 |
 | `WEBUI_CONFIG_DIR` | WebUI 配置文件目录 | `BAIHUA_HOME/db` |
 | `USE_AVAHI` | Linux 下强制使用 Avahi mDNS | 空（自动检测） |
 | `DOTNET_RUNNING_IN_CONTAINER` | Docker 环境检测（自动设置） | 空 |
