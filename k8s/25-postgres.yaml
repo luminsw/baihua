@@ -1,4 +1,8 @@
-# PostgreSQL 存储（一服务一数据库：family/vault/ai 三库独立）
+# PostgreSQL 存储（整个百花只有一个数据库：baihua）
+# 合并前是 family / vault / ai 三库；现在单库单 schema，模块边界靠 DbContext 而不是物理分库。
+#
+# 注意：本清单曾被任何部署路径遗漏（deploy.sh / bh.sh 的 apply 列表里都没有它），
+# 现已加入两边的 apply 列表，否则 bh-server 启动时连不上数据库。
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -30,6 +34,7 @@ spec:
       storage: 10Gi
   volumeName: baihua-postgres-pv
 ---
+# 密码来源（与 bh-server 的 PG_PASSWORD 必须一致；此处 POSTGRES_PASSWORD 仅用于初始化超级用户）
 apiVersion: v1
 kind: Secret
 metadata:
@@ -61,11 +66,12 @@ spec:
       labels:
         app: bh-postgres
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: lumin-ubuntu
+      # 不写 nodeSelector：hostPath PV 在单节点集群上无需按主机名钉死
+      # （旧值 kubernetes.io/hostname: lumin-ubuntu 与实际节点名不符，会让 Pod 永远 Pending）
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          # postgres 18 镜像的默认数据目录已变为 <major>/docker，卷要挂到 /var/lib/postgresql（不是 /var/lib/postgresql/data）
+          image: postgres:18-alpine
           env:
             - name: POSTGRES_PASSWORD
               valueFrom:
@@ -74,21 +80,24 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: POSTGRES_USER
               value: "baihua"
+            # 单一数据库（合并前为 family / vault / ai 三库）
+            - name: POSTGRES_DB
+              value: "baihua"
             - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
+              value: /var/lib/postgresql/18/docker
           ports:
             - containerPort: 5432
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "baihua"]
+              command: ["pg_isready", "-U", "baihua", "-d", "baihua"]
             initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", "baihua"]
+              command: ["pg_isready", "-U", "baihua", "-d", "baihua"]
             initialDelaySeconds: 30
             periodSeconds: 15
           resources:

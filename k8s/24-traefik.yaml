@@ -5,9 +5,10 @@
 # 届时将各 IngressRoute 复制一份加 websecure entrypoint + tls（注意：带 tls 的 IngressRoute
 # 在明文 web 入口不匹配，HTTP/HTTPS 必须拆成独立 IngressRoute）。
 #
-# 路由映射（对应原 nginx 各 location）：
+# 路由映射（合并后只有一个后端 bh-server:8788）：
 #   bh-webui(5177):  /_framework/（1 年缓存） /css/（7 天缓存） /hubs/status /api/auth/ /（兜底）
-#   bh-family(8788): /mg/ /pair* /vault/pair /ws/devices /api/（SSE） /hubs/
+#   bh-server(8788): /mg/ /pair /vault/ /mcp /health /ws/ /api/（除 /api/auth/） /hubs/
+# 注意：/hubs/status 是 WebUI 自己的 SignalR Hub，必须优先于 bh-server 的 /hubs/
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -89,7 +90,7 @@ spec:
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
-  name: bh-family
+  name: bh-server
   namespace: baihua
   labels:
     app.kubernetes.io/part-of: baihua
@@ -97,43 +98,66 @@ spec:
   entryPoints:
     - web
   routes:
+    # 移动端（花记）：/mg/* 与配对入口。合并前 /mg/ai/ 单独转发到独立 AI 服务，现在同一进程，已删除该路由。
     - kind: Rule
-      match: PathPrefix(`/mg/ai/`)
-      priority: 760
-      middlewares:
-        - name: sec-headers
-      services:
-        - name: bh-ai
-          port: 8791
-    - kind: Rule
-      match: PathPrefix(`/mg/`) || Path(`/pair`) || Path(`/pair/code`) || Path(`/vault/pair`)
+      match: PathPrefix(`/mg/`) || Path(`/pair`) || Path(`/pair/code`)
       priority: 750
       middlewares:
         - name: sec-headers
       services:
-        - name: bh-family
+        - name: bh-server
           port: 8788
+    # 知识库域（合并前是独立的知识库服务，现同进程）
     - kind: Rule
-      match: PathPrefix(`/ws/devices`)
+      match: PathPrefix(`/vault/`)
+      priority: 745
+      middlewares:
+        - name: sec-headers
+      services:
+        - name: bh-server
+          port: 8788
+    # MCP streamable-http 端点（Baihua.Server 内 MapMcp("/mcp")）
+    - kind: Rule
+      match: Path(`/mcp`) || PathPrefix(`/mcp/`)
+      priority: 740
+      middlewares:
+        - name: sec-headers
+      services:
+        - name: bh-server
+          port: 8788
+    # 移动端设备 WebSocket（/ws/devices 等）
+    - kind: Rule
+      match: PathPrefix(`/ws/`)
       priority: 700
       middlewares:
         - name: sec-headers
       services:
-        - name: bh-family
+        - name: bh-server
           port: 8788
+    # 管理/业务 API（/api/auth/ 归 WebUI，见上）
     - kind: Rule
       match: PathPrefix(`/api/`) && !PathPrefix(`/api/auth/`)
       priority: 650
       middlewares:
         - name: sec-headers
       services:
-        - name: bh-family
+        - name: bh-server
           port: 8788
+    # SignalR Hubs（task-progress / devices / server-messages；/hubs/status 归 WebUI，见上）
     - kind: Rule
       match: PathPrefix(`/hubs/`)
       priority: 600
       middlewares:
         - name: sec-headers
       services:
-        - name: bh-family
+        - name: bh-server
+          port: 8788
+    # 健康检查（探活/排障用）
+    - kind: Rule
+      match: Path(`/health`)
+      priority: 590
+      middlewares:
+        - name: sec-headers
+      services:
+        - name: bh-server
           port: 8788

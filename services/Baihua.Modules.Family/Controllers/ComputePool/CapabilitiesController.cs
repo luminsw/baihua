@@ -17,6 +17,7 @@ public class CapabilitiesController : ControllerBase
 {
     private readonly ServerAddressService _serverAddress;
     private readonly AiSettingsService _aiSettings;
+    private readonly IAiConfigService _aiConfig;
     private readonly BenchmarkRepository _benchmarkRepository;
     private readonly ComfyDrawService _draw;
     private readonly IConfiguration _configuration;
@@ -25,6 +26,7 @@ public class CapabilitiesController : ControllerBase
     public CapabilitiesController(
         ServerAddressService serverAddress,
         AiSettingsService aiSettings,
+        IAiConfigService aiConfig,
         BenchmarkRepository benchmarkRepository,
         ComfyDrawService draw,
         IConfiguration configuration,
@@ -32,6 +34,7 @@ public class CapabilitiesController : ControllerBase
     {
         _serverAddress = serverAddress;
         _aiSettings = aiSettings;
+        _aiConfig = aiConfig;
         _benchmarkRepository = benchmarkRepository;
         _draw = draw;
         _configuration = configuration;
@@ -135,20 +138,13 @@ public class CapabilitiesController : ControllerBase
         }
     }
 
-    /// <summary>拉取 AI 服务（shim 所在服务）的提供方列表，作为本机可对外提供的算力。</summary>
-    private async Task<List<ComputeProviderDto>> GetAiServiceProvidersAsync()
+    /// <summary>本机可对外提供的算力（提供方配置归 AI 模块，进程内经 IAiConfigService 读取）。</summary>
+    private Task<List<ComputeProviderDto>> GetAiServiceProvidersAsync()
     {
         try
         {
-            var aiBase = Environment.GetEnvironmentVariable("BAIHUA_AI_URL")
-                ?? Environment.GetEnvironmentVariable("TASK_RUNNER_AI_API_URL")
-                ?? "http://127.0.0.1:8791";
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            var resp = await client.GetAsync($"{aiBase.TrimEnd('/')}/api/ai/config/providers");
-            if (!resp.IsSuccessStatusCode)
-                return new List<ComputeProviderDto>();
-            var providers = await resp.Content.ReadFromJsonAsync<List<AiProviderConfig>>();
-            return providers?
+            var providers = _aiConfig.GetProviders();
+            return Task.FromResult(providers
                 .Where(p => p.Models is { Count: > 0 })
                 .Select(p => new ComputeProviderDto
                 {
@@ -162,12 +158,12 @@ public class CapabilitiesController : ControllerBase
                         TokensPerSecond = GetBenchmarkTps(m.Name)
                     }).ToList()
                 })
-                .ToList() ?? new List<ComputeProviderDto>();
+                .ToList());
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "拉取 AI 服务提供方失败（不影响 capabilities 主流程）");
-            return new List<ComputeProviderDto>();
+            _logger.LogDebug(ex, "读取本机 AI 提供方失败（不影响 capabilities 主流程）");
+            return Task.FromResult(new List<ComputeProviderDto>());
         }
     }
 }

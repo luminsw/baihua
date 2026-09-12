@@ -4,7 +4,7 @@
 #
 # 设计目标：
 #   - 默认监听 80 端口（浏览器输入 http://<ip> 直达 WebUI）
-#   - 所有移动端流量必须经 Family :8788 授权，Nginx 不直连 Vault/AI
+#   - 所有移动端流量必须经单一后端 Baihua.Server :8788 鉴权（HMAC + 已配对设备），无旁路
 #   - 通过 .env 可调监听端口、WebUI 前缀、客户端最大上传体积
 #   - 静态资源缓存、WebSocket/SSE 长超时
 
@@ -26,13 +26,13 @@ server {
     # ==============================================================
     location ^~ ${BAIHUA_WEBUI_PREFIX}/_framework/ {
         proxy_pass http://127.0.0.1:5177${BAIHUA_WEBUI_PREFIX}/_framework/;
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
     location ^~ ${BAIHUA_WEBUI_PREFIX}/css/ {
         proxy_pass http://127.0.0.1:5177${BAIHUA_WEBUI_PREFIX}/css/;
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
         expires 7d;
         add_header Cache-Control "public";
     }
@@ -45,34 +45,34 @@ server {
         proxy_pass http://127.0.0.1:5177${BAIHUA_WEBUI_PREFIX}/hubs/status;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
         proxy_read_timeout 86400;
         proxy_buffering off;
     }
 
     # ==============================================================
-    # 3. 移动端 API（Family 统一授权入口）
-    #    关键：/mg/* /ws/devices /api/ai/chat 等必须先到 Family，
-    #    绝对不能直连 Vault/AI（否则绕过授权）
+    # 3. 移动端 API（Baihua.Server 统一鉴权入口）
+    #    关键：/mg/* /ws/devices /api/ai/chat 等必须先到后端（8788），
+    #    合并后后端只有一个进程，鉴权与业务在同一进程内完成
     # ==============================================================
     location /mg/ {
         proxy_pass http://127.0.0.1:8788/mg/;
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
         proxy_read_timeout 600;   # 大文件同步 10 分钟
     }
 
     # 配对码/配对页（PairController 同时注册 /pair /vault/pair /mg/pair）
     location = /pair {
         proxy_pass http://127.0.0.1:8788/pair;
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
     }
     location = /pair/code {
         proxy_pass http://127.0.0.1:8788/pair/code;
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
     }
     location = /vault/pair {
         proxy_pass http://127.0.0.1:8788/vault/pair;
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
     }
 
     # 移动端设备推送 WebSocket（SDK 实际路径，不是 /ws/push）
@@ -80,25 +80,25 @@ server {
         proxy_pass http://127.0.0.1:8788/ws/devices;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
         proxy_read_timeout 86400;
         proxy_buffering off;
     }
 
-    # 管理侧 API + /api/ai/chat（Family 会再分发到 AI；SSE 必须关缓冲）
+    # 管理侧 API + /api/ai/chat（AI 对话 SSE 必须关缓冲）
     location /api/ {
         proxy_pass http://127.0.0.1:8788/api/;
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
         proxy_read_timeout 3600;  # AI 长对话/SSE
         proxy_buffering off;      # SSE 流式响应必须关缓冲
     }
 
-    # Family SignalR hubs（task-progress/devices）
+    # SignalR hubs（task-progress/devices/server-messages）
     location /hubs/ {
         proxy_pass http://127.0.0.1:8788/hubs/;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
         proxy_read_timeout 86400;
         proxy_buffering off;
     }
@@ -111,7 +111,7 @@ server {
         proxy_pass http://127.0.0.1:5177/;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $http_connection;   # Blazor 推荐写法
-        include /etc/nginx/family-proxy-headers.conf;
+        include /etc/nginx/server-proxy-headers.conf;
         proxy_read_timeout 86400;
         proxy_buffering off;
         proxy_cache_bypass $http_upgrade;

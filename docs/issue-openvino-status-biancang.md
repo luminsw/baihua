@@ -4,6 +4,10 @@
 > 报告日期：2026-08-29
 > 环境：Windows 11，Intel Arc 核显，OVMS（OpenVINO Model Server）常驻托管
 
+> ⚠️ **路径为合并前快照**：文中 `services/Baihua.Family/…` 现为 `services/Baihua.Modules.Family/…`
+> （commit `aa053f1` 三服务合一，后端统一到 `Baihua.Server`，单一 `baihua` 库）；
+> `services/Baihua.AI.Provider.OpenVino/…` 路径不变。正文按当时状态保留。
+
 ---
 
 ## 一、问题现象

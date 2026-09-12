@@ -3,7 +3,7 @@ import { navigateTo, waitForBlazor, authorize } from '../helpers';
 
 // 病历本 AI 诊断结构化输出（BianCang P1）
 // 覆盖：页面加载 → 创建成员 → AI 诊断 → 结构化卡片展示 → 清理
-// 依赖：Family 8788 + WebUI 5177 + AI 模型（biancang 或主模型）运行中
+// 依赖：Baihua.Server 8788（家庭 + AI 同进程）+ WebUI 5177 + AI 模型（biancang 或主模型）运行中
 
 const API_BASE = `http://127.0.0.1:${process.env.API_PORT || '8788'}`;
 

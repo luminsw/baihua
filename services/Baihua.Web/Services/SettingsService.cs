@@ -20,8 +20,8 @@ public class SettingsService
         get => _data.AiApiUrl; 
         set { 
             _data.AiApiUrl = value; 
-            // 同步到环境变量供 Baihua 服务使用
-            Environment.SetEnvironmentVariable("TASK_RUNNER_AI_API_URL", value);
+            // 合并后 AI 与家庭/知识库同属一个后端进程，且 WebUI 与后端是两个进程：
+            // 这里设环境变量不再能影响后端。后端地址由 BaihuaServer:BaseUrl（容器内 BaihuaServer__BaseUrl）决定。
             Save(); 
         }
     }
@@ -118,6 +118,6 @@ public class SettingsService
         public string AiApiUrl { get; set; } = string.Empty;
         public string AiModel { get; set; } = string.Empty;
         public string BackendUrl { get; set; } = "http://127.0.0.1:8788";
-        // 注意：AdminPasswordHash 不再本地存储，改为从 Baihua.Family API 获取
+        // 注意：AdminPasswordHash 不再本地存储，改为从 Baihua.Server API 获取
     }
 }

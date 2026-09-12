@@ -117,7 +117,7 @@
 
 ## 与当前实现的对应关系（task_runner v1）
 
-当前 `services/Baihua.Family` 已实现以下最小接口（详见对应服务文档）：
+当前 `services/Baihua.Modules.Vault`（由唯一后端 `Baihua.Server` 承载；三服务合一前在 `services/Baihua.Family` / `services/Baihua.Vault`）已实现以下最小接口（详见对应服务文档）：
 
 - `GET /vault/manifest?vaultId=...&since=`（`since` 为空或 `0` 返回当前全部 `.md` 快照；`since` 为上次 `cursor` 时返回增量 `upsert`/`delete`；响应含 `incremental` 布尔字段）
 - `GET /vault/file?vaultId=...`（v1：仅 `.md` 文本）
@@ -139,7 +139,7 @@
 
 ## 与后台任务系统的关系
 
-- 桌面端后台服务（Baihua.Family）负责"生成/整理/索引"等耗时任务
+- 桌面端后台服务（`Baihua.Server`，合并前为 `Baihua.Family`）负责"生成/整理/索引"等耗时任务
 - 同步服务负责"把当前 vault 变更发布给移动端"
 - 两者可以是同一个进程的不同模块，也可以分开进程
 

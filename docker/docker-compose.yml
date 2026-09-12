@@ -1,60 +1,86 @@
 services:
-  family:
+  # ==============================================================
+  # 单一数据库：整个百花只有一个 PostgreSQL 库（默认 baihua）
+  # 合并前 family / vault / ai 三库 → 迁移脚本 scripts/migrate-to-single-db.ps1
+  # ==============================================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: bh-postgres
+    restart: unless-stopped
+    # 仅绑定宿主机回环：业务容器走 host 网络经 127.0.0.1 访问，不暴露到局域网
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - /opt/baihua/data/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${PG_DATABASE:-baihua}
+      POSTGRES_USER: ${PG_USER:-baihua}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?请设置 PG_PASSWORD 环境变量}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-baihua} -d ${PG_DATABASE:-baihua}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ==============================================================
+  # 百花服务器（唯一后端：家庭 / AI / 知识库 三模块合一，8788）
+  # 合并前这里是 family(8788) + vault(8790) + ai(8791) 三个服务
+  # ==============================================================
+  server:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.family
+      dockerfile: docker/Dockerfile.server
       args:
         - GIT_COMMIT=${GIT_COMMIT:-unknown}
         - GIT_BRANCH=${GIT_BRANCH:-unknown}
-    image: bh-family:latest
-    container_name: bh-family
+    image: bh-server:latest
+    container_name: bh-server
     restart: unless-stopped
-    # 使用 host 网络：WebUI 可直接通过 127.0.0.1:8788 访问 Baihua.Family，
-    # 且 nginx 反向代理配置无需修改。
-    # 家庭版需 host 网络，以便 mDNS 服务发现在局域网中正常工作。
+    # host 网络：mDNS 局域网服务发现需要；同时可直连 127.0.0.1 上的 postgres / OVMS
     network_mode: host
     user: "${USER_UID:-0}:${USER_GID:-0}"
     volumes:
-      # 数据持久化到宿主机（SQLite 数据库、配置）
+      # 数据（含加密密钥、配置、索引快照）
       - /opt/baihua/data:/app/data
-      # 日志持久化到宿主机
       - /opt/baihua/logs:/app/logs
       # 可选：宿主机自定义配置覆盖容器内配置（只读）
-      - /opt/baihua/config/family:/app/config:ro
+      - /opt/baihua/config/server:/app/config:ro
       # 知识库根路径（宿主机 VAULTS_DIR → 容器内固定 /vaults）
       - ${VAULTS_DIR:-/home/lumin/Vaults}:/vaults
     environment:
       - BAIHUA_HOME=/app/data
       - BAIHUA_SKIP_MUTEX=true
       - ASPNETCORE_URLS=http://0.0.0.0:8788
-      # OpenObserve 通过宿主机 localhost 访问
-      - OpenObserve__WebUrl=http://127.0.0.1:5082/
-      - OpenObserve__Enabled=true
-      - OpenObserve__Password=${OPENOBSERVE_PASSWORD:?请设置 OPENOBSERVE_PASSWORD 环境变量}
+      # 单一数据库（host 网络 → 127.0.0.1）
+      - PG_HOST=${PG_HOST:-127.0.0.1}
+      - PG_USER=${PG_USER:-baihua}
+      - PG_PASSWORD=${PG_PASSWORD:?请设置 PG_PASSWORD 环境变量}
+      - PG_DATABASE=${PG_DATABASE:-baihua}
       # 知识库根路径（容器内挂载点）
       - BAIHUA_VAULT_ROOT=/vaults
-      # 固定加密密钥（可选）
-      # 程序会自动在 /app/data/db/.baihua-key 生成并管理密钥，容器重建后仍然可用
-      # 高级用户可通过环境变量手动指定，覆盖自动生成的密钥
-      # 如果设置后更改，已加密的 API Key 会失效，需要重新在 WebUI 配置
       - BAIHUA_ENCRYPTION_KEY=${BAIHUA_ENCRYPTION_KEY:-}
-      # 从 .env 文件注入敏感配置
-      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
-      # 移动端 HMAC 签名密钥（配对后自动生成，通常无需手动配置）
       - MobileAuth__SharedSecret=${MOBILE_AUTH_SECRET:-}
-      # OpenVINO Model Server（host 网络：127.0.0.1:8000 = 本机 openvino 容器，见下方服务）
+      # OpenVINO Model Server（host 网络：127.0.0.1:8000 = 本机 openvino 容器）
       - OPENVINO_LLM_URL=http://127.0.0.1:8000
       - OpenVinoOms__BaseUrl=http://127.0.0.1:8000
+      # OpenObserve（可选观测栈）
+      - OpenObserve__WebUrl=http://127.0.0.1:5082/
+      - OpenObserve__Enabled=${OPENOBSERVE_ENABLED:-true}
+      - OpenObserve__Password=${OPENOBSERVE_PASSWORD:-}
     depends_on:
-      vault:
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8788/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
 
+  # ==============================================================
+  # WebUI（Blazor Server，5177）——表现层，故意与后端分开进程
+  # ==============================================================
   webui:
     build:
       context: ..
@@ -76,19 +102,14 @@ services:
     environment:
       - WEBUI_CONFIG_DIR=/app/data
       - ASPNETCORE_URLS=http://0.0.0.0:5177
-      # 通过宿主机 localhost 访问 Baihua.Family（host 网络）
-      - FamilyApi__BaseUrl=http://127.0.0.1:8788/
-      - AiApi__BaseUrl=http://127.0.0.1:8791/
-      - VaultApi__BaseUrl=http://127.0.0.1:8790/
+      # 唯一后端地址（合并前是 FamilyApi/AiApi/VaultApi 三个）
+      - BaihuaServer__BaseUrl=http://127.0.0.1:8788/
       - OpenObserve__WebUrl=http://127.0.0.1:5082/
-      - OpenObserve__Enabled=true
-      - OpenObserve__Password=${OPENOBSERVE_PASSWORD:?请设置 OPENOBSERVE_PASSWORD 环境变量}
-      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
+      - OpenObserve__Enabled=${OPENOBSERVE_ENABLED:-true}
+      - OpenObserve__Password=${OPENOBSERVE_PASSWORD:-}
       - ADMIN_IP_WHITELIST=${ADMIN_IP_WHITELIST:-}
     depends_on:
-      family:
-        condition: service_healthy
-      vault:
+      server:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:5177/"]
@@ -101,115 +122,41 @@ services:
     image: nginx:1.27-alpine
     container_name: bh-nginx
     restart: unless-stopped
-    network_mode: host             # 保持 host 网络：能直连 127.0.0.1 四个服务
+    network_mode: host             # 保持 host 网络：能直连 127.0.0.1 上的 server/webui
     volumes:
       # 模板文件（含 ${BAIHUA_*} 变量，由 entrypoint envsubst 渲染）
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       # 公共 include（静态，无变量）
-      - ./nginx/family-proxy-headers.conf:/etc/nginx/family-proxy-headers.conf:ro
+      - ./nginx/server-proxy-headers.conf:/etc/nginx/server-proxy-headers.conf:ro
       # 对外访问日志（排查配对/同步问题时有用），与 .NET 日志同根
       - ${BAIHUA_HOME:-/opt/baihua}/logs/nginx:/var/log/nginx
     environment:
-      # 传给 entrypoint envsubst 的变量，必须白名单列出
       - BAIHUA_NGINX_PORT=${BAIHUA_NGINX_PORT:-80}
       - BAIHUA_WEBUI_PREFIX=${BAIHUA_WEBUI_PREFIX:-}
       - BAIHUA_NGINX_CLIENT_MAX_BODY_SIZE=${BAIHUA_NGINX_CLIENT_MAX_BODY_SIZE:-100M}
-      - NGINX_ENVSUBST_FILTER=^BAIHUA_   # 官方 entrypoint 只替换 BAIHUA_* 前缀
+      - NGINX_ENVSUBST_FILTER=^BAIHUA_
     depends_on:
-      family:
-        condition: service_healthy
-      vault:
+      server:
         condition: service_healthy
       webui:
         condition: service_healthy
     healthcheck:
-      # 探测 nginx 自身是否响应（根路径由 WebUI location 处理，200/404 都说明 nginx 活着）
       test: ["CMD-SHELL", "curl -fs http://127.0.0.1:${BAIHUA_NGINX_PORT:-80}/ > /dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
 
-  vault:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.vault
-      args:
-        - GIT_COMMIT=${GIT_COMMIT:-unknown}
-        - GIT_BRANCH=${GIT_BRANCH:-unknown}
-    image: bh-vault:latest
-    container_name: bh-vault
-    restart: unless-stopped
-    network_mode: host
-    user: "${USER_UID:-0}:${USER_GID:-0}"
-    volumes:
-      - /opt/baihua/data:/app/data
-      - /opt/baihua/logs:/app/logs
-      - /opt/baihua/config/vault:/app/config:ro
-      - ${VAULTS_DIR:-/home/lumin/Vaults}:/vaults
-    environment:
-      - BAIHUA_HOME=/app/data
-      - ASPNETCORE_URLS=http://0.0.0.0:8790
-      - OpenObserve__WebUrl=http://127.0.0.1:5082/
-      - OpenObserve__Enabled=true
-      - OpenObserve__Password=${OPENOBSERVE_PASSWORD:?请设置 OPENOBSERVE_PASSWORD 环境变量}
-      - BAIHUA_VAULT_ROOT=/vaults
-      - BAIHUA_ENCRYPTION_KEY=${BAIHUA_ENCRYPTION_KEY:-}
-      - MobileAuth__SharedSecret=${MOBILE_AUTH_SECRET:-}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8790/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  ai:
-    # ai 默认不进容器（Windows 下 native 跑以获取 GPU；Linux 部署用 --profile docker-ai 启用）
-    profiles: ["docker-ai"]
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.ai
-      args:
-        - GIT_COMMIT=${GIT_COMMIT:-unknown}
-        - GIT_BRANCH=${GIT_BRANCH:-unknown}
-    image: bh-ai:latest
-    container_name: bh-ai
-    restart: unless-stopped
-    network_mode: host
-    user: "${USER_UID:-0}:${USER_GID:-0}"
-    volumes:
-      - /opt/baihua/data:/app/data
-      - /opt/baihua/logs:/app/logs
-      - /opt/baihua/config/ai:/app/config:ro
-      - ${VAULTS_DIR:-/home/lumin/Vaults}:/vaults
-    environment:
-      - BAIHUA_HOME=/app/data
-      - ASPNETCORE_URLS=http://0.0.0.0:8791
-      - OpenObserve__WebUrl=http://127.0.0.1:5082/
-      - OpenObserve__Enabled=true
-      - OpenObserve__Password=${OPENOBSERVE_PASSWORD:?请设置 OPENOBSERVE_PASSWORD 环境变量}
-      - BAIHUA_VAULT_ROOT=/vaults
-      - BAIHUA_ENCRYPTION_KEY=${BAIHUA_ENCRYPTION_KEY:-}
-      # OpenVINO Model Server（host 网络：127.0.0.1:8000 = 本机 openvino 容器）
-      - OPENVINO_LLM_URL=http://127.0.0.1:8000
-      - OpenVinoOms__BaseUrl=http://127.0.0.1:8000
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8791/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
+  # ==============================================================
+  # 本地推理（Intel OVMS，官方 openvino/model_server 镜像）
+  # 全容器化部署用 --profile inference 启用；k8s 部署见 k8s/22a-openvino.yaml
+  # ==============================================================
   openvino:
-    # 本地 OpenVINO 推理（Intel OVMS，官方 openvino/model_server 镜像）——与 ai 同 profile
-    # （Linux 全容器化才启用；Windows 下 OVMS 以系统服务跑在宿主机
-    #  scripts/install-openvino-ovms-service.ps1，容器经 host.docker.internal:8000 访问）。
-    # 参考: https://github.com/openvinotoolkit/model_server/blob/main/docs/deploying_server_docker.md
-    profiles: ["docker-ai"]
+    profiles: ["inference"]
     image: openvino/model_server:latest-gpu
     container_name: bh-openvino
     restart: unless-stopped
-    network_mode: host        # host 网络：family/ai 经 127.0.0.1:8000 访问（与既有架构一致）
+    network_mode: host
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
@@ -217,7 +164,6 @@ services:
         # 为已下载模型生成 graph.pbtxt（幂等；缺失跳过）
         for spec in \
           "text_generation GPU /models/Qwen2.5-7B-Instruct-int4-ov" \
-
           "text_generation GPU /models/Qwen2.5-VL-7B-Instruct-int4-ov" \
           "embeddings CPU /models/bge-small-zh-v1.5"; do
           task="${spec%% *}"; rest="${spec#* }"; dev="${rest%% *}"; path="${rest#* }"
@@ -231,11 +177,9 @@ services:
         done
         exec ovms --config_path /models/config.json --rest_port 8000 --port 9000 --log_level INFO
     volumes:
-      # 模型仓库（与 k8s 一致：/opt/baihua/models 下 4 个 OpenVINO IR 模型目录）
       - /opt/baihua/models:/models
-      # OVMS 模型注册配置（model_config_list：qwen2.5 / qwen2.5-vl-7b / bge-small-zh）
       - ./openvino-config.json:/models/config.json:ro
-      # Intel GPU（真机 /dev/dri；WSL2 后端需另加 /dev/dxg 与 /usr/lib/wsl 挂载）
+      # Intel GPU（真机 /dev/dri；WSL2 见 k8s/22a-openvino.yaml 的 /dev/dxg + /usr/lib/wsl 做法）
       - /dev/dri:/dev/dri
 
   openobserve:
@@ -245,15 +189,11 @@ services:
     container_name: bh-openobserve
     restart: unless-stopped
     ports:
-      # 仅绑定宿主机回环地址，避免 OpenObserve WebUI/API 暴露到局域网
-      # （服务端 native 运行或 host 网络容器均通过 127.0.0.1:5082 访问，见各服务 OpenObserve__WebUrl）
       - "127.0.0.1:5082:5080"
       - "127.0.0.1:5083:5081"
     volumes:
       - /opt/baihua/data/openobserve:/data
     environment:
       ZO_ROOT_USER_EMAIL: root@localhost.com
-      # 必填变量：缺失时 docker compose 直接报错（不再回退到硬编码默认密码）
       ZO_ROOT_USER_PASSWORD: ${OPENOBSERVE_PASSWORD:?请设置 OPENOBSERVE_PASSWORD 环境变量}
       ZO_DATA_DIR: /data
-

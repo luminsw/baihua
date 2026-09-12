@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { navigateTo, waitForBlazor, authorize } from '../helpers';
 
 // 个人待办清单（/todo）：家庭分类下的 TodoList 菜单页
-// 覆盖：页面加载、新增、完成勾选、两步删除（中文 UI，locale=zh-CN 固定）
+// 覆盖：页面加载、新增、完成勾选、两步删除（仅中文 UI：产品固定 zh-CN，locale fixture 兼作回归护栏）
 // 数据自清理：新增的测试项在本用例内删除；用例中断时残留项带 E2E- 前缀可手动清理。
 
 test.describe('个人待办清单（TodoList）', () => {

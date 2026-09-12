@@ -1,5 +1,7 @@
-# Baihua.Family - 百花家庭版后台服务
-# 基于预构建的基础镜像，加速构建过程
+# Baihua.Server - 百花服务器（单一后端进程：家庭 / AI / 知识库 三模块合一）
+#
+# 合并前这里是 Dockerfile.family / Dockerfile.ai / Dockerfile.vault 三份（8791 / 8790 / 8788）；
+# 现在只有一个后端进程与一个数据库，因此只有一份后端镜像。
 #
 # 首次构建前需要先构建基础镜像：
 #   docker build -f Dockerfile.base-build -t bh/base-build:latest ..
@@ -13,15 +15,19 @@ WORKDIR /src
 COPY services/Baihua.Contracts/Baihua.Contracts.csproj services/Baihua.Contracts/
 COPY services/Baihua.Data/Baihua.Data.csproj services/Baihua.Data/
 COPY services/Baihua.Core/Baihua.Core.csproj services/Baihua.Core/
-COPY services/Baihua.Family/Baihua.Family.csproj services/Baihua.Family/
 COPY services/Baihua.AI.Provider/Baihua.AI.Provider.csproj services/Baihua.AI.Provider/
+COPY services/Baihua.AI.Provider.OpenVino/Baihua.AI.Provider.OpenVino.csproj services/Baihua.AI.Provider.OpenVino/
+COPY services/Baihua.Modules.Family/Baihua.Modules.Family.csproj services/Baihua.Modules.Family/
+COPY services/Baihua.Modules.Ai/Baihua.Modules.Ai.csproj services/Baihua.Modules.Ai/
+COPY services/Baihua.Modules.Vault/Baihua.Modules.Vault.csproj services/Baihua.Modules.Vault/
+COPY services/Baihua.Server/Baihua.Server.csproj services/Baihua.Server/
 COPY libs/MobileContract/MobileContract.csproj libs/MobileContract/
-RUN dotnet restore services/Baihua.Family/Baihua.Family.csproj -r linux-x64
+RUN dotnet restore services/Baihua.Server/Baihua.Server.csproj -r linux-x64
 
 # 复制全部源码并发布
 COPY services/ services/
 COPY libs/ libs/
-RUN dotnet publish services/Baihua.Family/Baihua.Family.csproj \
+RUN dotnet publish services/Baihua.Server/Baihua.Server.csproj \
     -c Release -o /app/publish --no-restore
 
 # ==================== Runtime 阶段 ====================
@@ -44,4 +50,4 @@ ENV BAIHUA_SKIP_MUTEX=true
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8788/health || exit 1
 
-ENTRYPOINT ["dotnet", "bh-family.dll"]
+ENTRYPOINT ["dotnet", "bh-server.dll"]

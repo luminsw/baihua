@@ -8,18 +8,20 @@ import { authorize, navigateTo, waitForBlazor } from '../../../shared-e2e/tests/
  *  2. 设备管理页：OneHop Discover Tab 已移除（仅 Pending/Authorized 区域）
  *  3. 设备 API 结构正常（pending/authorized 端点）
  *  4. OpenClaw 默认模型下拉：模型列表非空、选择器可渲染
- *  5. 四服务健康检查 + QR 码地址（端口号不应硬编码 8788）
+ *  5. 单后端 + WebUI 健康检查 + QR 码地址（端口号不应硬编码 8788）
+ *
+ * 注：合并前这里是 Family(8788) / Vault(8790) / AI(8791) 三个后端 + WebUI(5177)；
+ * commit aa053f1「三服务合一」后只有唯一的后端进程 Baihua.Server(8788)
+ * （业务代码分属 Baihua.Modules.Family / .Ai / .Vault 三个类库），8790 / 8791 已不存在。
  */
 
 const webUIBase = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5177';
-const familyPort = process.env.API_PORT || '8788';
-const familyBase = `http://127.0.0.1:${familyPort}`;
-const vaultBase = 'http://127.0.0.1:8790';
-const aiBase = 'http://127.0.0.1:8791';
+const serverPort = process.env.API_PORT || '8788';
+const serverBase = `http://127.0.0.1:${serverPort}`;
 
 test.describe('【OneHop 精简】API 路径迁移验证', () => {
   test('旧路径 /mg/onehop/register-device 应返回 404', async ({ request }) => {
-    const res = await request.post(`${familyBase}/mg/onehop/register-device`, {
+    const res = await request.post(`${serverBase}/mg/onehop/register-device`, {
       data: { DeviceId: 'test-device', DeviceName: 'Test' },
       headers: { 'Content-Type': 'application/json' },
     });
@@ -28,7 +30,7 @@ test.describe('【OneHop 精简】API 路径迁移验证', () => {
   });
 
   test('新路径 /mg/register-device 可访问（缺少参数时返回 400，说明路由存在）', async ({ request }) => {
-    const res = await request.post(`${familyBase}/mg/register-device`, {
+    const res = await request.post(`${serverBase}/mg/register-device`, {
       data: {},
       headers: { 'Content-Type': 'application/json' },
     });
@@ -38,7 +40,7 @@ test.describe('【OneHop 精简】API 路径迁移验证', () => {
 
   test('签名白名单：/mg/register-device 应未在旧 onehop 路径', async ({ request }) => {
     // 无签名请求 /mg/register-device：应命中 HMAC 白名单，返回 4xx 说明进入了服务端逻辑（不是签名拒绝）
-    const res = await request.post(`${familyBase}/mg/register-device`, {
+    const res = await request.post(`${serverBase}/mg/register-device`, {
       data: { DeviceId: 'test-device' },
       headers: { 'Content-Type': 'application/json' },
     });
@@ -55,11 +57,10 @@ test.describe('【OneHop 精简】API 路径迁移验证', () => {
 });
 
 test.describe('【Nginx 端口迁移】服务健康 + QR 码地址验证', () => {
-  test('四服务 /health 均正常', async ({ request }) => {
+  test('单后端 + WebUI /health 均正常', async ({ request }) => {
     const checks = [
-      { name: 'Family (8788)', url: `${familyBase}/health` },
-      { name: 'Vault  (8790)', url: `${vaultBase}/health` },
-      { name: 'AI     (8791)', url: `${aiBase}/health` },
+      { name: 'Baihua.Server (8788)', url: `${serverBase}/health` },
+      { name: 'Baihua.Web    (5177)', url: `${webUIBase}/health` },
     ];
     for (const c of checks) {
       const res = await request.get(c.url, { timeout: 10000 });
@@ -69,7 +70,7 @@ test.describe('【Nginx 端口迁移】服务健康 + QR 码地址验证', () =>
 
   test('配对码 /pair 页面不应硬编码 8788 端口', async ({ page }) => {
     // WebUI 的 pairing 页面（不登录也能访问），检查 QR 码内容
-    const resp = await page.request.get(`${familyBase}/pair`);
+    const resp = await page.request.get(`${serverBase}/pair`);
     if (resp.ok()) {
       const text = await resp.text();
       // 断言 QR 码内容不包含 "8788" 端口号（应使用 Nginx 80 或 bare URL）
@@ -84,7 +85,7 @@ test.describe('【Nginx 端口迁移】服务健康 + QR 码地址验证', () =>
 
   test('ServerAddressService /api/pair-code 地址验证', async ({ page, request }) => {
     // 设备 API：调用配对码获取端点，返回的 baseUrl 不应包含 :8788
-    const res = await request.get(`${familyBase}/api/pair-code`, { timeout: 10000 });
+    const res = await request.get(`${serverBase}/api/pair-code`, { timeout: 10000 });
     if (res.ok()) {
       try {
         const json = await res.json();
@@ -106,12 +107,12 @@ test.describe('【设备管理页】OneHop Discover Tab 移除验证', () => {
   });
 
   test('页面含 Pending Devices 区域', async ({ page }) => {
-    // 本地化无关：中英文标题都接受（zh-CN: 待授权设备, en: Pending Devices）
-    await expect(page.getByText(/待授权设备|Pending Devices/).first()).toBeVisible({ timeout: 15000 });
+    // 仅中文（产品固定 zh-CN，不再有英文/语言切换）
+    await expect(page.getByText(/待授权设备/).first()).toBeVisible({ timeout: 15000 });
   });
 
   test('页面含 Authorized Devices 区域', async ({ page }) => {
-    await expect(page.getByText(/已授权设备|Authorized Devices/).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/已授权设备/).first()).toBeVisible({ timeout: 15000 });
   });
 
   test('OneHop Discovery / Discover / OneHop 字样不应出现在页面标题中', async ({ page }) => {
@@ -130,7 +131,7 @@ test.describe('【设备管理页】OneHop Discover Tab 移除验证', () => {
   });
 
   test('已授权设备 API：端点正常返回数组', async ({ request }) => {
-    const res = await request.get(`${familyBase}/api/devices/authorized`);
+    const res = await request.get(`${serverBase}/api/devices/authorized`);
     expect(res.status()).toBe(200);
     const json = await res.json();
     expect(Array.isArray(json)).toBeTruthy();
@@ -138,7 +139,7 @@ test.describe('【设备管理页】OneHop Discover Tab 移除验证', () => {
   });
 
   test('待授权设备 API：端点正常返回数组', async ({ request }) => {
-    const res = await request.get(`${familyBase}/api/devices/pending`);
+    const res = await request.get(`${serverBase}/api/devices/pending`);
     expect(res.status()).toBe(200);
     const json = await res.json();
     expect(Array.isArray(json)).toBeTruthy();
@@ -181,20 +182,20 @@ test.describe('【OpenClaw 页】默认模型下拉验证', () => {
           console.log('  AvailableModels:', models.slice(0, 3));
         }
       } catch {
-        // 若 WebUI 无该路由，直接打 Family 侧
+        // 若 WebUI 无该路由，直接打后端侧
       }
     }
-    // 通过 Family 侧 fallback：调用 OpenClaw 配置 API
-    const familyRes = await page.request.get(`${familyBase}/api/openclaw/default-model`, { timeout: 10000 });
-    if (familyRes.ok()) {
+    // 通过后端（Baihua.Server）fallback：调用 OpenClaw 配置 API
+    const serverRes = await page.request.get(`${serverBase}/api/openclaw/default-model`, { timeout: 10000 });
+    if (serverRes.ok()) {
       try {
-        const json = await familyRes.json();
+        const json = await serverRes.json();
         const models = json?.AvailableModels || [];
-        expect(Array.isArray(models), 'Family-side AvailableModels 应为数组').toBeTruthy();
+        expect(Array.isArray(models), 'server-side AvailableModels 应为数组').toBeTruthy();
         // 云端模型已集成，AvailableModels 不应为空
         expect(models.length, 'AvailableModels 应至少含云端模型（硅基流动/OpenAI/智谱）').toBeGreaterThan(0);
       } catch (e) {
-        console.log('  Family 侧 API 解析失败:', e instanceof Error ? e.message : String(e));
+        console.log('  后端侧 API 解析失败:', e instanceof Error ? e.message : String(e));
       }
     }
   });

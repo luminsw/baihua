@@ -99,7 +99,7 @@ spec:
   volumeName: baihua-vaults-pv
 ---
 # OpenVINO 模型存储（大模型文件，通常 5-20GB）
-# 同时挂载到 bh-openvino (RW, 推理读取) 和 bh-family (RO, 模型扫描)
+# 同时挂载到 bh-openvino (RW, 推理读取) 和 bh-server (RO, 模型扫描)
 # 单节点 hostPath 可用 RWO；多节点需改为 NFS + RWX
 apiVersion: v1
 kind: PersistentVolume

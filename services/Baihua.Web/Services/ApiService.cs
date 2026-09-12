@@ -322,9 +322,11 @@ namespace Baihua.Web.Services
 
         private string GetPrimaryBaseUrl()
         {
-            // Docker 部署：compose 通过环境变量注入 FamilyApi__BaseUrl（服务名 DNS），
-            // 必须优先于 settings 文件，否则容器内会回退到 127.0.0.1 导致 connection refused
-            var envBase = Environment.GetEnvironmentVariable("FamilyApi__BaseUrl");
+            // Docker/k8s 部署：容器通过环境变量注入后端地址（服务名 DNS），
+            // 必须优先于 settings 文件，否则容器内会回退到 127.0.0.1 导致 connection refused。
+            // 合并后后端只有一个（Baihua.Server），配置键为 BaihuaServer__BaseUrl（旧键仅作兼容回退）。
+            var envBase = Environment.GetEnvironmentVariable("BaihuaServer__BaseUrl")
+                ?? Environment.GetEnvironmentVariable("FamilyApi__BaseUrl");
             if (!string.IsNullOrWhiteSpace(envBase))
             {
                 return BaihuaEndpointHelper.NormalizeOutboundBaseUrl(envBase, _fallbackBaseUrl);

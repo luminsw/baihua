@@ -46,33 +46,41 @@ C:\Users\lumin\src\
 
 | 项目 | Linux/Mac | Windows |
 |------|-----------|---------|
-| 百花 | `./tools/bh/linux/k8s/bh.sh`（或 `linux/native/bh.sh`） | `tools\bh\win\docker\bh.ps1`（或 `win/native/bh.ps1`） |
+| 百花 | `./tools/bh/bh.sh`（或显式 `./tools/bh/linux/k8s/bh.sh`） | `tools\bh\bh.ps1`（cmd 下 `bh.cmd`；经 WSL 路由到同一 k3s cell） |
 | 花阁 | `./hg` | `.\hg.ps1` |
 
-> 当前架构已从单体后台拆分为 3 个独立后端服务：
-> - **Baihua.Family** (8788) — 家庭/亲子功能（任务、成就、OpenClaw、设备配对）
-> - **Baihua.AI** (8791) — AI 模型、聊天、配置管理
-> - **Baihua.Vault** (8790) — 知识库、同步、搜索、索引
+> 当前架构为**单一后端进程**：`Baihua.Server`（8788）承载家庭 / AI / 知识库三个模块，
+> 业务代码拆在三个类库里；WebUI（5177，Blazor Server）仍是独立进程。
+> - **Baihua.Server** (8788) — 唯一后端宿主（配置/日志/遥测、模块装配、端点映射）
+> - **Baihua.Modules.Family / .Ai / .Vault** — 业务模块类库（家庭/亲子、AI、知识库）
+> - **Baihua.Web** (5177) — WebUI，独立进程
 >
-> 3 个服务各自使用独立的 PostgreSQL 数据库（family / vault / ai 三库，一服务一库，通过 `Baihua.Data`/`Baihua.Core` 共享数据层与实体；连接见 `Baihua.Data.DbConnections`，配置 `PG_HOST`/`PG_USER`/`PG_PASSWORD`）。
+> 合并前是 `Baihua.Family`(8788) / `Baihua.AI`(8791) / `Baihua.Vault`(8790) 三个独立服务 + 三库 + 服务间 HTTP 互调，
+> 已在 commit `aa053f1` 合并（历史仅在本文件与 `docs/` 的历史章节中保留）。
+>
+> **单一 PostgreSQL 数据库**（默认 `baihua`，可用 `PG_DATABASE` 覆盖；`PG_HOST`/`PG_USER`/`PG_PASSWORD` 不变），
+> 一个 `public` schema，各模块保留自己的 `DbContext`（`Baihua.Data` 的 `FamilyDbContext`/`VaultDbContext`/`AIDbContext`），
+> 表结构由 `Baihua.Data.DatabaseInitializer` 按上下文统一建表（不再 `EnsureCreated`）。连接串见 `Baihua.Data.DbConnections.Baihua`；
+> 旧三库合并脚本 `scripts/migrate-to-single-db.ps1`（只读源库，旧库保留在磁盘上可回滚）。
 
 ## 助手 / 自动化约定
 
 - **执行任务时先检查当前是 Windows 还是 Linux**，再选用对应平台的命令与路径写法（PowerShell vs bash、反斜杠 vs 正斜杠、bh 的 win 与 linux 版本等），以免用错命令。
 - **服务运行由用户手动按需启停**，助手不自动拉起/保持后台进程：
-  - Baihua.Family **8788**、Baihua.AI **8791**、Baihua.Vault **8790**、Baihua.Web **5177**（Windows native 下 OpenVINO 由 OVMS 系统服务承载（服务名 `ovms`，REST :8000，安装见 `scripts/install-openvino-ovms-service.ps1`），`bh status` 展示状态）
+  - Baihua.Server **8788**（单一后端）、Baihua.Web **5177**（Windows native 下 OpenVINO 由 OVMS 系统服务承载（服务名 `ovms`，REST :8000，安装见 `scripts/install-openvino-ovms-service.ps1`），`bh status` 展示状态）
   - 启停统一用 `bh start` / `bh stop`；开发调试可单独 `dotnet watch run`
   - 若某服务未监听，先询问用户是否需要启动，不要擅自拉起
 - **WebUI 与后端之间的共享数据类型和 API 接口定义必须放在 `Baihua.Contracts`**，两边禁止各自重复定义。新增或修改 API 契约时，先更新 Contracts，再让两边引用同一版本。
-- **共享业务服务（如 `VaultSettingsService`、`VaultNoteIndexer`）放在 `Baihua.Core`**，`Baihua.Family`、`Baihua.Vault` 和 `Baihua.AI` 均通过引用 `Baihua.Core` 使用，避免 HTTP 调用开销。
+- **共享业务服务（如 `VaultSettingsService`、`VaultNoteIndexer`）放在 `Baihua.Core`**，`Baihua.Modules.Family`、`Baihua.Modules.Ai` 和 `Baihua.Modules.Vault` 均通过引用 `Baihua.Core` 使用（同进程直调）。
+- **跨模块调用只经 `Baihua.Core.Modules` 下的接口**（`IBaihuaModule`、`IVaultQueryService`、`IComfyArtworkStore`、`IEmbeddingConfigProvider`、`IAiConfigService`）——**进程内直调，不再有模块间 HTTP**。禁止重引入服务间 HTTP 客户端或转发中间件。
 
 ## JSON 序列化与反序列化规范（强制）
 
-> 背景：曾因 `QRToolPanel` 用裸 `JsonSerializer.Deserialize`（默认 PascalCase + 大小写敏感）反序列化后端 camelCase 响应，导致主 AI API Key 二维码不显示；又因 `Baihua.Family` 历史遗留 `PropertyNamingPolicy=null`（PascalCase）与 AI/Vault（camelCase）不一致，导致移动端 `/mg/pair` 字段全部丢失、安卓 `AuthorizationWatcher` 授权判定失效。以下规范防止同类问题。
+> 背景：曾因 `QRToolPanel` 用裸 `JsonSerializer.Deserialize`（默认 PascalCase + 大小写敏感）反序列化后端 camelCase 响应，导致主 AI API Key 二维码不显示；又因合并前 `Baihua.Family` 历史遗留 `PropertyNamingPolicy=null`（PascalCase）与 AI/Vault（camelCase）不一致，导致移动端 `/mg/pair` 字段全部丢失、安卓 `AuthorizationWatcher` 授权判定失效。以下规范防止同类问题。
 
-### 后端（三个服务统一）
-- **JSON 序列化统一 camelCase**（ASP.NET Core 默认）。`AddJsonOptions` 中**禁止**设 `PropertyNamingPolicy = null`；并显式加 `PropertyNameCaseInsensitive = true`（容错入参大小写）。`Baihua.Family`/`Baihua.AI`/`Baihua.Vault` 三服务保持一致。
-- SignalR `PayloadSerializerOptions`：Family 当前保留 PascalCase（内部 WebUI 消费，case-insensitive 容错）；新增 hub 应 camelCase 统一，避免新坑。
+### 后端（Baihua.Server 统一）
+- **JSON 序列化统一 camelCase**（ASP.NET Core 默认）。`AddJsonOptions` 中**禁止**设 `PropertyNamingPolicy = null`；并显式加 `PropertyNameCaseInsensitive = true`（容错入参大小写）。合并后只有一个宿主配置 JSON（`services/Baihua.Server/Program.cs`），三个模块的控制器共享同一套选项。
+- SignalR `PayloadSerializerOptions`：`Baihua.Server` 当前保留 PascalCase（内部 WebUI 消费，case-insensitive 容错）；新增 hub 应 camelCase 统一，避免新坑。
 - 具名 DTO 若需对移动端/外部暴露特定 key，用 `[JsonPropertyName("camelCase")]` 显式标注（参考 `DeviceBackupDtos.cs`）。
 
 ### C# 消费端（WebUI / 服务间互调）
@@ -97,7 +105,7 @@ C:\Users\lumin\src\
 |---|---|---|---|
 | `baihua-dsh-plugin` | 百花 Web → DSH | 桥接：agent 会话驱动（HTTP+WS `/dsh-bridge/*`）、`bh_*` 运维工具、`baihua_draw*` 绘图、DSH 设置页「百花服务状态」卡片 | DSH web profile（127.0.0.1:3080），`lanListen 0.0.0.0:3081` 局域网桥 |
 | `baihua-local-ai-dsh-plugin` | DSH → 百花本地 AI | 探测 OVMS/shim/算力池，注册 `baihua-local` LLM provider + `local_ai_small_task` 小任务工具（省线上 token） | DSH web profile |
-| _（百花内置）_ | 百花 → 任意 MCP 客户端 | 标准 MCP（streamable-http `/mcp` 端点，挂在 `Baihua.Family`）：知识库 / 家庭能力（检索/列表/读笔记/创建知识库/写笔记 + 记账/任务），DSH 经 `dsh-mcp-client` 接入（工具名带 `mcp__baihua__` 前缀） | `Baihua.Family:8788/mcp` |
+| _（百花内置）_ | 百花 → 任意 MCP 客户端 | 标准 MCP（streamable-http `/mcp` 端点，挂在 `Baihua.Server`）：知识库 / 家庭能力（检索/列表/读笔记/创建知识库/写笔记 + 记账/任务），DSH 经 `dsh-mcp-client` 接入（工具名带 `mcp__baihua__` 前缀） | `Baihua.Server:8788/mcp` |
 
 **agent 可直接调用的工具**（由上述插件注册）：
 
@@ -105,7 +113,7 @@ C:\Users\lumin\src\
 - `bh_start` / `bh_stop` / `bh_restart` / `bh_build` / `bh_build_restart` / `bh_update` / `bh_git_commit_push` / `bh_dsh_restart` / `bh_bootstrap` — 变更类运维/宿主机操作，**执行前先询问用户**（插件侧已挂审批门：ask 策略时在 DSH 界面确认，never 时自动拒绝）；编译/更新为长操作，用返回的 `opId` 轮询 `bh_op_status`
 - `baihua_draw` / `baihua_draw_video` — 经算力池绘图网关出图/出视频（txt2img / txt2video，支持跨机）
 - `local_ai_small_task` — 小而有界的文本任务（短摘要/分类/取词/起标题/简短改写）交给本机 AI，省线上 token；**长文档 / 多步推理 / 写代码用远程模型**
-- `mcp__baihua__*` — 百花数据工具：只读（知识库检索/列表/读笔记、记账汇总、任务列表）+ 写（`baihua_vault_create` 建知识库、`baihua_vault_write_note` 写笔记），统一经 `Baihua.Family` 内置 `/mcp` 端点暴露（`baihua-dsh-plugin` 不再注册数据工具）
+- `mcp__baihua__*` — 百花数据工具：只读（知识库检索/列表/读笔记、记账汇总、任务列表）+ 写（`baihua_vault_create` 建知识库、`baihua_vault_write_note` 写笔记），统一经 `Baihua.Server` 内置 `/mcp` 端点暴露（实现见 `services/Baihua.Modules.Family/Services/Mcp/BaihuaMcpTools.cs`；`baihua-dsh-plugin` 不再注册数据工具）
 
 > 插件配置在 `~/.dsh/cordis.patch.yml`（token / drawGatewayUrl / drawToken / comfyModelType 等）；
 > 三个自研 DSH 插件已改**本地 link 方式**安装：`~/.dsh/profiles/web/package.json` 依赖为
@@ -115,15 +123,16 @@ C:\Users\lumin\src\
 
 ## 目录
 
-- `services/Baihua.Family/`：家庭版主后台（亲子功能、设备管理）
-- `services/Baihua.AI/`：AI 微服务（模型、聊天、配置）
-- `services/Baihua.Vault/`：知识库微服务（Vault、Sync、Search）
-- `services/Baihua.Web/`：家庭版 Web 界面（Blazor Server）
+- `services/Baihua.Server/`：单一后端宿主（8788；唯一进程：配置/日志/遥测、模块装配、控制器/SignalR/MCP/WebSocket 端点映射）
+- `services/Baihua.Modules.Family/`：家庭模块（亲子功能、设备配对、算力池绘图网关、内置 MCP 工具）
+- `services/Baihua.Modules.Ai/`：AI 模块（模型、聊天、配置、OpenAI 兼容端点）
+- `services/Baihua.Modules.Vault/`：知识库模块（Vault、Sync、Search）
+- `services/Baihua.Web/`：家庭版 Web 界面（Blazor Server，5177，仍是独立进程）
 - `services/Baihua.Contracts/`：共享 DTO 与接口契约
-- `services/Baihua.Core/`：共享服务层（含 VaultSettingsService、DeviceService 等）
-- `services/Baihua.Data/`：共享 EF Core 数据层
+- `services/Baihua.Core/`：共享服务层（含 VaultSettingsService、DeviceService 等；跨模块接口在 `Baihua.Core/Modules/`）
+- `services/Baihua.Data/`：共享 EF Core 数据层（单库多 DbContext + `DatabaseInitializer`）
 - `services/BaiHua.slnx`：服务端解决方案（包含所有 services/ 项目及 libs/MobileContract）
-- `tools/bh/`：极简 CLI 工具（Linux: k8s/native，Windows: docker/native，均统一命令名 `bh`）
+- `tools/bh/`：极简 CLI 工具（唯一 cell = `linux/k8s`，Windows 经 WSL 复用同一 cell；命令名统一 `bh`）
 - `libs/BaihuaSdk/`：跨平台移动端 SDK（net9.0;net10.0，零 MAUI 依赖，主要 target net10.0）
 - `libs/MobileContract/`：移动端契约（DTO、接口定义）
 - `clients/Huapu/`：花圃（BaiHua.Nursery）— 移动端技术实验与验证工具（非正式发布 App，详见下方说明）
@@ -138,25 +147,21 @@ C:\Users\lumin\src\
 
 ```bash
 # 一键打开管理面板（自动启动服务）
-./bh dashboard
+bh dashboard
 ```
 
-WebUI（5177）用 CLI Token Cookie 登录；管理 API（8788/8791/8790）默认仅允许 loopback 访问，容器/反向代理部署用 `BAIHUA_ADMIN_ALLOWED_NETS`（CIDR 列表）显式放行网段，`BAIHUA_TRUSTED_PROXY_NETS` 声明受信任代理网段；移动端走 `/mg/*` 公开端点 + HMAC 签名设备鉴权。
+WebUI（5177）用 CLI Token Cookie 登录；管理 API（8788）默认仅允许 loopback 访问，容器/反向代理部署用 `BAIHUA_ADMIN_ALLOWED_NETS`（CIDR 列表）显式放行网段，`BAIHUA_TRUSTED_PROXY_NETS` 声明受信任代理网段；移动端走 `/mg/*` 公开端点 + HMAC 签名设备鉴权。
 
 ## 常用命令
 
 ```bash
-# 开发模式（Linux/macOS，一键启动全部 3 个后台 + WebUI）
-cd services && ./bh dashboard
+# 一键打开管理面板（自动启动/登录 WebUI）
+bh dashboard
 
-# 或手动分别启动
-# 终端 1
-cd services/Baihua.AI && dotnet watch run --non-interactive --no-hot-reload --urls "http://0.0.0.0:8791"
-# 终端 2
-cd services/Baihua.Vault && dotnet watch run --non-interactive --no-hot-reload --urls "http://0.0.0.0:8790"
-# 终端 3
-cd services/Baihua.Family && dotnet watch run --non-interactive --no-hot-reload
-# 终端 4
+# 或手动分别启动（合并后只有 1 个后端进程 + 1 个 WebUI）
+# 终端 1：后端（家庭 / AI / 知识库 三模块同一进程）
+cd services/Baihua.Server && dotnet watch run --non-interactive --no-hot-reload --urls "http://0.0.0.0:8788"
+# 终端 2：WebUI
 cd services/Baihua.Web && dotnet watch run --non-interactive
 
 # 编译验证（推送前必须执行）
@@ -167,36 +172,53 @@ dotnet build services/BaiHua.slnx -c Release
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| Baihua.Family | 8788 | HTTP API（家庭/亲子功能、设备管理） |
-| Baihua.AI | 8791 | HTTP API（AI 模型与配置） |
-| Baihua.Vault | 8790 | HTTP API（知识库、同步、搜索） |
-| Baihua.Web | 5177 | HTTP Blazor Server |
+| Baihua.Server | 8788 | 唯一后端 HTTP API（家庭/亲子、AI、知识库三模块合一；含 MCP `/mcp`） |
+| Baihua.Web | 5177 | HTTP Blazor Server（仍是独立进程） |
+
+> 合并前的 `Baihua.AI`(8791) / `Baihua.Vault`(8790) 两个端口已随服务合并消失；除 8788 / 5177 之外不再有后端端口。
+
+**路由命名（合并后）**：单进程下 `api/AI/*` 与 `api/ai/*` 在 ASP.NET Core 大小写不敏感路由下冲突，
+助手域（ask / chat / chat-stream / providers / prompt-templates / generate-missing-note / functions-call）
+已改名 **`api/assistant/*`**；AI 模块的移动端聊天端点仍在 `api/ai/chat/completion`、`api/ai/chat/stream`
+（花记在用，**不得改动**）。端点级回归锁见 `NoAmbiguousRoutesTests`。
 
 ## 命名约定（TaskRunner → Baihua 已全部统一）
 
 > 项目早期名为 **TaskRunner**，现已按服务域全部统一为 **Baihua.***，**代码/配置/部署中不得再出现 TaskRunner**。
 > 各层命名必须与下表一致：
 
-| 层 | 主服务 (8788) | AI (8791) | Vault (8790) | Web (5177) |
-|---|---|---|---|---|
-| 命名空间 / 目录 | `Baihua.Family` | `Baihua.AI` | `Baihua.Vault` | `Baihua.Web` |
-| Docker compose 服务名 | `family` | `ai` | `vault` | `webui` |
-| 容器名 | `bh-family` | `bh-ai` | `bh-vault` | `bh-webui` |
-| 可执行文件 / dll | `bh-family` | `bh-ai` | `bh-vault` | `bh-webui` |
-| HttpClient / 配置键 | `FamilyApi` | `AiApi` | `VaultApi` | — |
-| 环境变量前缀 | `BAIHUA_*` | `BAIHUA_*` | `BAIHUA_*` | — |
-| 日志 / 指标服务名 | `Baihua.Family` | `Baihua.AI` | `Baihua.Vault` | `Baihua.Web` |
-| Dockerfile | `Dockerfile.family` | `Dockerfile.ai` | `Dockerfile.vault` | `Dockerfile.webui` |
-| 配置目录 | `/opt/baihua/config/family` | `/opt/baihua/config/ai` | `/opt/baihua/config/vault` | `/opt/baihua/config/webui` |
-| 数据库（PostgreSQL） | `family` 库 | `ai` 库 | `vault` 库 | — |
+| 层 | Server (8788) | Web (5177) |
+|---|---|---|
+| 命名空间 / 目录 | `Baihua.Server`（宿主）+ `Baihua.Modules.Family` / `Baihua.Modules.Ai` / `Baihua.Modules.Vault` | `Baihua.Web` |
+| Docker compose 服务名 | `server` | `webui` |
+| 容器名 | `bh-server` | `bh-webui` |
+| 可执行文件 / dll | `bh-server` | `bh-webui` |
+| HttpClient / 配置键 | `BaihuaServer:BaseUrl`（WebUI 侧唯一的后端配置键） | — |
+| 环境变量前缀 | `BAIHUA_*` | — |
+| 日志 / 指标服务名 | `Baihua.Server` | `Baihua.Web` |
+| Dockerfile | `Dockerfile.server` | `Dockerfile.webui` |
+| 配置目录 | `/opt/baihua/config/server`（合并前为 family/ai/vault 三份） | `/opt/baihua/config/webui` |
+| 数据库（PostgreSQL） | `baihua` 库（单库单 schema；合并前为 `family`/`ai`/`vault` 三库） | — |
 
-**部署形态**：
-- **Windows**（`tools/bh/win/docker/bh.ps1`）：`ai` 服务 **native 运行**（Windows 进程，直接访问 Arc GPU 做 OpenVINO 推理），`family`/`vault`/`webui`/`nginx` 走 docker compose；compose 里 `ai` 带 `profiles: ["docker-ai"]`（默认不启动容器），容器通过 `host.docker.internal:8791` 访问 native ai
-- **Linux**（`deploy-docker.sh`）：全部容器化，`docker compose --profile docker-ai up -d` 启动含 ai
+> 合并前的 `bh-family`/`bh-ai`/`bh-vault` 容器名已删除，不得再出现；WebUI 侧不再读取
+> `FamilyApi:BaseUrl` / `AiApi:BaseUrl` / `VaultApi:BaseUrl` 三个配置键（源码里 `FamilyApi`/`AiApi`/`VaultApi`
+> 仅作为 HttpClient 名字保留兼容别名，实际都指向唯一的 `BaihuaServer:BaseUrl`）。
+
+**部署形态**（合并后只有**一种** cell：Linux k3s；原 native / docker cell 已随三服务合一删除，Windows 经 WSL 调用同一 cell）：
+- **k3s（唯一形态）**：`server`（8788）+ `webui`（5177）+ `postgres` + `openvino`（OVMS，profile 可选）等工作负载；
+  k8s 清单见 `k8s/20-server.yaml` / `23-webui.yaml` / `25-postgres.yaml` / `22a-openvino.yaml`，
+  `bh build server webui` → `bh deploy` / `bh up`（详见 `tools/bh/README.md`）。
+- **compose 对应关系**（`docker/docker-compose.yml`，供本地/参考）：服务名 `server` / `webui` / `nginx` / `postgres` /
+  `openvino`（profile `inference`）/ `openobserve`（profile `observability`）。
+- 已退役：合并前 `family`/`ai`/`vault` 三容器、`docker-ai` profile、`host.docker.internal:8791` 跨进程访问，
+  以及 `tools/bh` 的 native / docker cell（`win/native`、`win/docker`、`linux/native`）。
+- **OpenVINO 推理**仍与后端进程分离：k8s 工作负载 `openvino`（OVMS）或 Windows native 的 `ovms` 系统服务（REST :8000），
+  后端经 `OpenVinoOms__BaseUrl` 访问（`bh openvino on|off|status` 按需启停）。
 
 **OpenObserve 凭据约定**（默认口令 `Complexpass#123` 已废弃，appsettings 中不再有默认值）：
-- native 部署：`bh.ps1(win/native)` 启动时从 `$BAIHUA_HOME\openobserve-password.txt` 注入 `OpenObserve__Password`（文件缺失则该配置为空）
-- compose 部署：`OPENOBSERVE_PASSWORD` 环境变量必填（`bh.ps1(win/docker)` 与 `deploy-docker.sh` 会自动生成并写入 `docker/.env`）
+- `openobserve` 为可选观测栈（compose profile `observability` / k8s 可选清单）；
+  `OPENOBSERVE_PASSWORD` **必填**（缺失时 compose 直接报错、不启动该服务），由 `docker/.env` / k8s Secret 提供。
+- 历史：native cell 曾由 `bh.ps1(win/native)` 从 `$BAIHUA_HOME\openobserve-password.txt` 注入 —— 该 cell 已删除，此机制退役。
 
 **例外（名实相符，保留原名）**：
 - `TaskRunner.Cloud` — 官网版（mdyj-cloud 仓库）的真实项目名，与本仓库无关
@@ -206,13 +228,19 @@ dotnet build services/BaiHua.slnx -c Release
 
 移动端（鸿蒙/安卓）通过 `http://<server>/`（**默认 80 端口，无显式端口号**）发现服务器并调用 API。
 k8s 部署下 **Traefik**（IngressRoute，svclb 绑定宿主 :80）作为统一入口，`/mg/*`、`/pair` 等路径由
-Traefik 转发到 `Baihua.Family`（8788）；配对二维码的 `baseUrl` 由 `Baihua:PublicBaseUrl` 决定
+Traefik 转发到 `Baihua.Server`（8788）；配对二维码的 `baseUrl` 由 `Baihua:PublicBaseUrl` 决定
 （k8s 已注入 `http://<节点IP>`，无端口）。
-`Baihua.Family` 在 8788 上保留了**转发中间件**，将移动端调用的 Vault 域 API 路径（如 `/mg/manifest`、`/mg/file`、`/mg/cards`、`/mg/vaults` 等）透明转发到 `Baihua.Vault`（8790）。因此 **移动端代码无需任何改动**。
+合并后**不再有跨服务转发**：原 family→vault / family→ai 两个转发中间件已删除，改为 `Baihua.Server`
+内的**一个设备授权中间件**（见 `services/Baihua.Server/Program.cs`）——
+先做 HMAC 签名校验，再要求"必须是已配对设备"：携带 `X-Device-Id` 且 `DeviceService` 中该设备已授权
+（有 `AccessToken`），否则 401；对知识库同步路径在进程内注入 `Authorization: Bearer <accessToken>`
+（等价于原转发行为）。因此 **移动端代码无需任何改动**，移动端契约（路径、字段、签名）保持不变。
 
 授权与认证：
-- 局域网发现/配对阶段通过 HMAC 签名（共享 `sharedSecret`）校验设备身份。
-- 转发到 `Baihua.Vault` 时，`Baihua.Family` 会为已授权设备自动附加 `Authorization: Bearer <accessToken>`，Vault 侧校验 Bearer Token 或本机回环请求。
+- 局域网发现/配对阶段通过 HMAC 签名（共享 `sharedSecret`）校验设备身份——HMAC 只证明"持有共享密钥"，不代表"已配对"。
+- 设备授权中间件随后校验设备已配对；知识库同步/下载路径（`/mg/manifest`、`/mg/file`、`/mg/cards`、
+  `/mg/vaults`、`/api/sync/*`、`/vault/*`、`/mobile-vaults/push` 等）与 `/api/ai/chat/*` 均走此校验，
+  知识库路径由中间件注入 Bearer Token，供知识库模块的 `ISyncAuthorizationStrategy` 校验（原跨进程转发附加的 `Authorization` 头由此等价替代）。
 
 ## BaihuaSdk（跨平台移动端 SDK）
 
@@ -361,9 +389,9 @@ dotnet test tests/BaihuaSdk.Tests/BaihuaSdk.Tests.csproj --filter Integration
 dotnet test tests/MobileApp.Maui.Tests/MobileApp.Maui.Tests.csproj
 ```
 
-### Baihua.Family 测试
+### 后端测试（tests/Baihua.Family.Tests）
 
-**后端配对服务测试**：
+**后端配对服务测试**（测试项目名沿用 `Baihua.Family.Tests`，覆盖 `Baihua.Server` 宿主 + 各模块）：
 
 ```bash
 dotnet test tests/Baihua.Family.Tests/Baihua.Family.Tests.csproj

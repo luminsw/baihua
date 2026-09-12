@@ -4,6 +4,27 @@
 > 状态：待审阅（计划文档，审阅通过后分阶段实施）
 > 目标：百花 AI 只保留「不变 / 变化慢」的稳定能力；「变化快」的能力删除，或改由 DSH Agent 用提示词 + 工具动态完成，避免随软硬件迭代而过时。
 
+> ## ⚠️ 已被三服务合一取代（commit `aa053f1`）
+>
+> **本计划写于「ai(8791) / vault(8790) / family(8788) 三服务 + 三库」时期，其服务归属与目录划分已被
+> `aa053f1`「百花三服务合一 + 单库 + 仅中文」取代。** 阅读时请注意：
+> - **§2.1 的服务/插件职责表是历史快照**：现状是单一后端进程 `Baihua.Server`（8788）+
+>   `Baihua.Modules.Family` / `.Ai` / `.Vault` 三个类库 + 单一 `baihua` 库；`Baihua.AI` / `Baihua.Family` /
+>   `Baihua.Vault` 三个服务已不存在，8790 / 8791 两个端口已消失。WebUI（5177）仍是独立进程。
+> - **文中出现的旧路径按下表理解**（旧路径仅作历史记录，实际文件已迁移）：
+>
+>   | 文中旧路径 | 当前路径 |
+>   |---|---|
+>   | `services/Baihua.AI/…`（Controller / `Program.cs`） | `services/Baihua.Modules.Ai/…`（宿主为 `services/Baihua.Server/Program.cs`） |
+>   | `services/Baihua.Family/…`（Controller / `Services/…`） | `services/Baihua.Modules.Family/…` |
+>   | `services/Baihua.Vault/…` | `services/Baihua.Modules.Vault/…` |
+>   | `Baihua.AI.Provider/`、`Baihua.AI.Provider.OpenVino/` | 路径不变（仍是共享库） |
+> - **§四「目标架构」里的 `AI 8791` / `Family 8788` 划分已不成立**：两者现在是同一个 8788 进程，
+>   端点路径本身（`mg/ai/v1`、`api/ai/*`、`/mg/pool/v1`、`/mcp`）不变，只是不再分进程/分库。
+> - 计划里「删/留」的**判断与结论**（保留协议层、下沉易变层、本地推理统一 OVMS、算力池保留、
+>   CodeAgent 删除等）**仍然有效**，可继续执行——只是实施时落点改为 `Baihua.Modules.*` / `Baihua.Server`。
+> - 其余章节保持原样，作为当时的调查记录。
+
 ---
 
 ## 一、背景与动机
@@ -22,6 +43,9 @@
 
 ### 2.1 服务与插件职责现状
 
+> 📌 **历史快照（合并前，三服务三库时期）** —— 见文首的取代说明。当前为单一 `Baihua.Server`(8788)
+> + `Baihua.Modules.*` + 单库 `baihua`；下表仅记录当时的调查结论。
+
 | 组件 | 位置 | 职责 |
 |---|---|---|
 | Baihua.AI（8791） | `services/Baihua.AI/` | AI 计算 + 配置管理，独占 `ai` 库 |
@@ -34,6 +58,9 @@
 | openvino-dsh-plugin | `~/src/openvino-dsh-plugin` | OpenVINO 环境诊断/扫描/状态/基准/INT4 转换 |
 
 ### 2.2 百花 AI 侧的功能清单（按稳定性分类）
+
+> 表中文件路径为合并前路径；对照见文首「旧路径 → 当前路径」表
+> （`services/Baihua.AI/` → `services/Baihua.Modules.Ai/`，`services/Baihua.Family/` → `services/Baihua.Modules.Family/`）。
 
 **A 类：稳定协议/接口层（保留）**
 
@@ -196,6 +223,9 @@ DSH Agent（编排面，提示词驱动）
 ---
 
 ## 七、关键文件索引
+
+> 下表为**合并前**路径（历史）；当前对应关系见文首「旧路径 → 当前路径」表，
+> 宿主改为 `services/Baihua.Server/`，业务代码在 `services/Baihua.Modules.*/`。
 
 - `services/Baihua.AI/`（AI 服务 + 全部 Controller + `Program.cs`）
 - `services/Baihua.AI.Provider/`、`services/Baihua.AI.Provider.OpenVino/`

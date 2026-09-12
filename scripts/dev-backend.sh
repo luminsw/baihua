@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # macOS/Linux 开发启动脚本
-# 在独立终端中启动 Baihua.AI、Baihua.Vault、Baihua.Family 和 WebUI
+# 合并后只有两个进程：Baihua.Server（后端，8788）与 Baihua.Web（WebUI，5177）
+# 数据库为单一 PostgreSQL 库（默认 baihua，可用 PG_DATABASE 覆盖）
 
 set -euo pipefail
 
@@ -38,19 +39,13 @@ launch_in_terminal() {
         echo "  请手动在终端运行: cd \"$dir\" && dotnet watch run --non-interactive --no-hot-reload --urls 'http://0.0.0.0:$port'"
 }
 
-# 启动 Baihua.AI
-launch_in_terminal "Baihua.AI" "$ROOT/services/Baihua.AI" "8791"
-
-# 启动 Baihua.Vault
-launch_in_terminal "Baihua.Vault" "$ROOT/services/Baihua.Vault" "8790"
-
-# 启动 Baihua.Family
-launch_in_terminal "Baihua.Family" "$ROOT/services/Baihua.Family" "8788"
+# 启动唯一后端（家庭 / AI / 知识库 三模块在同一进程内）
+launch_in_terminal "Baihua.Server" "$ROOT/services/Baihua.Server" "8788"
 
 # 启动 WebUI
-echo "[WebUI] 启动 WebUI.Family (端口 5177)..."
-osascript -e "tell application \"Terminal\" to do script \"cd '$ROOT/services/WebUI.Family' && dotnet watch run --non-interactive\"" 2>/dev/null || \
-    echo "  请手动在终端运行: cd \"$ROOT/services/WebUI.Family\" && dotnet watch run --non-interactive"
+echo "[WebUI] 启动 Baihua.Web (端口 5177)..."
+osascript -e "tell application \"Terminal\" to do script \"cd '$ROOT/services/Baihua.Web' && dotnet watch run --non-interactive\"" 2>/dev/null || \
+    echo "  请手动在终端运行: cd \"$ROOT/services/Baihua.Web\" && dotnet watch run --non-interactive"
 
 echo ""
 echo "========================================"
@@ -58,11 +53,13 @@ echo "服务启动中..."
 echo "========================================"
 echo ""
 echo "后端服务:"
-echo "  - Baihua.AI    http://localhost:8791"
-echo "  - Baihua.Vault http://localhost:8790"
-echo "  - Baihua.Family http://localhost:8788"
+echo "  - Baihua.Server  http://localhost:8788   （家庭 / AI / 知识库 三模块合一）"
 echo ""
 echo "前端界面:"
-echo "  - WebUI            http://localhost:5177"
+echo "  - Baihua.Web     http://localhost:5177"
+echo ""
+echo "数据库: 单一 PostgreSQL 库（默认 baihua；PG_HOST/PG_USER/PG_PASSWORD/PG_DATABASE）"
+echo "  · 首次使用可先跑 scripts/init-pg.ps1（建库）"
+echo "  · 旧三库（family/vault/ai）迁移见 scripts/migrate-to-single-db.ps1"
 echo ""
 echo "提示: 使用 Ctrl+C 停止服务"

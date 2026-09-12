@@ -1,7 +1,7 @@
 name: Release
 
 # 打 tag v* 自动发布（如 v0.1.0）；也可手动触发指定 tag。
-# 产物：ai/family/vault/webui 四个服务，win-x64 + linux-x64 双平台 zip，附加到 GitHub Release。
+# 产物：server（唯一后端）+ webui 两个服务，win-x64 + linux-x64 双平台 zip，附加到 GitHub Release。
 on:
   push:
     tags:
@@ -43,15 +43,13 @@ jobs:
 
       - name: Publish services (${{ matrix.rid }})
         run: |
-          dotnet publish services/Baihua.AI/Baihua.AI.csproj      -c Release -r ${{ matrix.rid }} --self-contained false -o publish/${{ matrix.rid }}/ai
-          dotnet publish services/Baihua.Family/Baihua.Family.csproj -c Release -r ${{ matrix.rid }} --self-contained false -o publish/${{ matrix.rid }}/family
-          dotnet publish services/Baihua.Vault/Baihua.Vault.csproj  -c Release -r ${{ matrix.rid }} --self-contained false -o publish/${{ matrix.rid }}/vault
-          dotnet publish services/Baihua.Web/Baihua.Web.csproj      -c Release -r ${{ matrix.rid }} --self-contained false -o publish/${{ matrix.rid }}/webui
+          dotnet publish services/Baihua.Server/Baihua.Server.csproj -c Release -r ${{ matrix.rid }} --self-contained false -o publish/${{ matrix.rid }}/server
+          dotnet publish services/Baihua.Web/Baihua.Web.csproj         -c Release -r ${{ matrix.rid }} --self-contained false -o publish/${{ matrix.rid }}/webui
 
       - name: Package zip
         run: |
           cd publish/${{ matrix.rid }}
-          zip -qr ../../baihua-${{ matrix.rid }}.zip ai family vault webui
+          zip -qr ../../baihua-${{ matrix.rid }}.zip server webui
           cd ../..
           ls -lh baihua-${{ matrix.rid }}.zip
 

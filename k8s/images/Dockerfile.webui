@@ -29,9 +29,9 @@ EXPOSE 5177
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:5177
 ENV WEBUI_CONFIG_DIR=/app/data
-ENV FamilyApi__BaseUrl=http://127.0.0.1:8788/
-ENV VaultApi__BaseUrl=http://127.0.0.1:8790/
-ENV AiApi__BaseUrl=http://127.0.0.1:8791/
+# 后端只有一个：Baihua.Server（K8s Service DNS）。
+# 合并前的 FamilyApi__BaseUrl / VaultApi__BaseUrl / AiApi__BaseUrl 三个键已删除。
+ENV BaihuaServer__BaseUrl=http://bh-server:8788/
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:5177/ || exit 1

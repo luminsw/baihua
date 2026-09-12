@@ -53,7 +53,7 @@ public class FamilySyncAuthorizationStrategy : ISyncAuthorizationStrategy
             }
         }
 
-        // 仅允许本机回环请求（Baihua.Family 转发而来，已在转发层按 X-Device-Id 完成授权验证）。
+        // 仅允许本机回环请求（单进程合并后由宿主中间件按 X-Device-Id 完成设备授权并注入 Bearer）。
         // 不做来源 IP 与已授权设备匹配：IP 是动态的，不同设备在不同时间可能分配相同 IP，
         // 会导致未授权设备借已授权设备的 IP 绕过授权验证。
         var remoteIp = httpContext.Connection.RemoteIpAddress;

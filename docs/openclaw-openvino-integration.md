@@ -2,6 +2,10 @@
 > 状态：✅ **真实环境端到端验证通过（2026-08-08 第二轮优化）**。第一版（bf7eef1）的 API 链路（Contracts → Core 服务 → Family 接口 → WebUI 前端）已打通；本轮基于真实机器（Intel Core Ultra 5 225H + Arc 130T + NPU，Python 3.12 + openvino_genai 2026.2.1）完成「检测 → 自动启动 → 健康检查 → 同步模型 → OpenAI 兼容推理」全链路实测。
 > 本文档为功能设计、实现记录、问题与待完善项汇总。
 
+> ⚠️ **文件清单为合并前快照**：表中 `Baihua.Family` 下的 `Services/OpenClaw/…` 现位于
+> `services/Baihua.Modules.Family/Services/OpenClaw/…`，宿主的 DI/端点注册在 `services/Baihua.Server/`；
+> `Baihua.AI.Provider*` 路径不变（commit `aa053f1` 三服务合一）。正文按当时记录保留。
+
 ---
 
 ## 1. 背景

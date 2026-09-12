@@ -10,8 +10,8 @@ import { authorize } from '../helpers';
  *  - describe 标题加 [legacy-e2e] 前缀以区分迁移用例。
  */
 
-const WEBUI_BASE = 'http://127.0.0.1:5177';
-const FAMILY_BASE = 'http://127.0.0.1:8788';
+const WEBUI_BASE = 'http://127.0.0.1:5177';   // WebUI（仍是独立进程）
+const SERVER_BASE = 'http://127.0.0.1:8788';  // 唯一后端 Baihua.Server（三服务合一）
 
 // 获取 CLI token 用于自动认证（仅用于验证该端点本身）
 async function getCliToken(): Promise<string> {
@@ -21,10 +21,10 @@ async function getCliToken(): Promise<string> {
   return data.token;
 }
 
-test.describe('[legacy-e2e] 冒烟测试 - Family 版', () => {
+test.describe('[legacy-e2e] 冒烟测试 - 百花', () => {
 
-  test('Baihua.Family 健康检查', async ({ request }) => {
-    const resp = await request.get(`${FAMILY_BASE}/health`);
+  test('Baihua.Server 健康检查', async ({ request }) => {
+    const resp = await request.get(`${SERVER_BASE}/health`);
     expect(resp.status()).toBe(200);
   });
 
@@ -45,7 +45,7 @@ test.describe('[legacy-e2e] 冒烟测试 - Family 版', () => {
     await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
     await expect(page.locator('main')).toBeVisible({ timeout: 20000 });
     // 首页可能显示 FamilyHome 或 Onboarding 首次配置页，两者都算正常
-    const hasHome = await page.locator('text=/少就是多|Less is more/').first().isVisible().catch(() => false);
+    const hasHome = await page.locator('text=/少就是多/').first().isVisible().catch(() => false);
     const hasOnboarding = await page.locator('text=首次配置').first().isVisible().catch(() => false);
     expect(hasHome || hasOnboarding, '首页应显示家庭首页或首次配置').toBe(true);
   });
@@ -109,67 +109,67 @@ test.describe('[legacy-e2e] 冒烟测试 - Family 版', () => {
     await authorize(page);
     await page.goto('/log-settings');
     await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('h1', { hasText: /日志配置|Log Settings/ })).toBeVisible();
+    await expect(page.locator('h1', { hasText: /日志配置/ })).toBeVisible();
   });
 
   test('AI 设置页面加载', async ({ page }) => {
-    // 迁移后跳过：页面本身可加载（main 可见），但原断言文案 /AI 提供商配置|AI Settings/
+    // 迁移后跳过：页面本身可加载（main 可见），但原断言文案（中英双分支）
     // 在当前版本设置页已不存在（标题文案已变更），需产品侧确认新文案后修复断言。
     test.skip('AI 设置页标题文案断言已失效（页面可加载，文案变更）');
     return;
     await authorize(page);
     await page.goto('/settings');
     await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('text=/AI 提供商配置|AI Settings/').first()).toBeVisible();
+    await expect(page.locator('text=/AI 提供商配置/').first()).toBeVisible();
   });
 
   test('每日一帖页面加载', async ({ page }) => {
     await authorize(page);
     await page.goto('/daily-card');
     await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('h1', { hasText: /每日一帖|Daily Card/ })).toBeVisible();
+    await expect(page.locator('h1', { hasText: /每日一帖/ })).toBeVisible();
   });
 
   test('成就墙页面加载', async ({ page }) => {
     await authorize(page);
     await page.goto('/achievements');
     await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('h1', { hasText: /成就墙|Achievements/ })).toBeVisible();
+    await expect(page.locator('h1', { hasText: /成就墙/ })).toBeVisible();
   });
 
   test('赛舟榜页面加载', async ({ page }) => {
     await authorize(page);
     await page.goto('/leaderboard');
     await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('h1', { hasText: /家庭赛舟榜|Regatta/ })).toBeVisible();
+    await expect(page.locator('h1', { hasText: /家庭赛舟榜/ })).toBeVisible();
   });
 
   test('家长看板页面加载', async ({ page }) => {
     await authorize(page);
     await page.goto('/dashboard');
     await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('h1', { hasText: /家长看板|Dashboard/ })).toBeVisible();
+    await expect(page.locator('h1', { hasText: /家长看板/ })).toBeVisible();
   });
 
   test('AI 对话页面加载', async ({ page }) => {
     await authorize(page);
     await page.goto('/messages');
     await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('h1', { hasText: /AI 对话|AI Chat/ })).toBeVisible();
+    await expect(page.locator('h1', { hasText: /AI 对话/ })).toBeVisible();
   });
 
   test('硬件评测页面显示 INT8/INT4 算力', async ({ page }) => {
     await authorize(page);
     await page.goto('/hardware-benchmark');
     await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('th', { hasText: /INT8 算力|INT8 TFLOPS/ })).toBeVisible();
-    await expect(page.locator('th', { hasText: /INT4 算力|INT4 TFLOPS/ })).toBeVisible();
-    const fp16Cells = page.locator('th', { hasText: /FP16 算力|FP16 TFLOPS/ });
+    await expect(page.locator('th', { hasText: /INT8 算力/ })).toBeVisible();
+    await expect(page.locator('th', { hasText: /INT4 算力/ })).toBeVisible();
+    const fp16Cells = page.locator('th', { hasText: /FP16 算力/ });
     await expect(fp16Cells).toHaveCount(0);
   });
 
   test('搜索页通过 ?q= 参数自动搜索', async ({ page }) => {
-    // 迁移后跳过：新套件 locale=zh-CN 下搜索页渲染两个匹配输入框（placeholder 搜索.../搜索笔记...），
+    // 迁移后跳过：新套件 locale=zh-CN 固定中文下搜索页渲染两个匹配输入框（placeholder 搜索.../搜索笔记...），
     // 原选择器 input[placeholder*="搜索"] 触发 strict mode violation；
     // 需确认 ?q= 实际绑定哪个输入框后收窄选择器。
     test.skip('搜索页存在两个匹配输入框（选择器歧义），待确认 ?q= 绑定目标后修复');
@@ -179,7 +179,7 @@ test.describe('[legacy-e2e] 冒烟测试 - Family 版', () => {
     await page.goto('/search?q=%E9%BC%BB%E6%B8%8A');
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
     // 搜索框应显示关键字的初始值
-    const searchInput = page.locator('input[placeholder*="搜索"], input[placeholder*="Search"]');
+    const searchInput = page.locator('input[placeholder*="搜索"]');
     await expect(searchInput).toHaveValue('鼻渊', { timeout: 15000 });
     // 等待片刻后检查关键字仍保留（表示无意外刷新丢失状态）
     await page.waitForTimeout(2000);
@@ -190,14 +190,14 @@ test.describe('[legacy-e2e] 冒烟测试 - Family 版', () => {
     await authorize(page);
     await page.goto('/openclaw');
     await expect(page.locator('main')).toBeVisible({ timeout: 15000 });
-    await expect(page.locator('text=/OpenClaw 任务委派|OpenClaw Task Delegation/')).toBeVisible();
+    await expect(page.locator('text=/OpenClaw 任务委派/')).toBeVisible();
   });
 
   test('能力评估 API 返回正确格式', async ({ request }) => {
-    const resp = await request.get(`${FAMILY_BASE}/api/capability`);
+    const resp = await request.get(`${SERVER_BASE}/api/capability`);
     expect(resp.status()).toBe(200);
     const data: any = await resp.json();
-    // 兼容 PascalCase（当前）与 camelCase（旧版）
+    // 兼容 camelCase（当前：三服务合一后统一）与 PascalCase（合并前 Baihua.Family 特例）
     expect(data.Level ?? data.level).toBeTruthy();
     expect(data.AvailableFeatures ?? data.availableFeatures).toBeTruthy();
     expect(Array.isArray(data.AvailableFeatures ?? data.availableFeatures)).toBe(true);
@@ -205,7 +205,7 @@ test.describe('[legacy-e2e] 冒烟测试 - Family 版', () => {
   });
 
   test('模型推荐只返回 INT4/INT8 模型', async ({ request }) => {
-    const resp = await request.get(`${FAMILY_BASE}/api/local-models/recommend`);
+    const resp = await request.get(`${SERVER_BASE}/api/local-models/recommend`);
     expect(resp.status()).toBe(200);
     const models = await resp.json();
     expect(Array.isArray(models)).toBe(true);

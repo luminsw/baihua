@@ -38,11 +38,9 @@ EXPOSE 5177
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:5177
 ENV WEBUI_CONFIG_DIR=/app/data
-# Docker 网络内通过服务名访问 Baihua 服务
-# host 网络模式下通过 localhost 访问 Baihua 服务
-# bridge 网络模式下改为 http://family:8788/
-ENV FamilyApi__BaseUrl=http://127.0.0.1:8788/
-ENV VaultApi__BaseUrl=http://127.0.0.1:8790/
+# 后端已合并为单一服务 Baihua.Server（8788）：WebUI 只需一个后端地址；
+# docker compose 里用服务名 server 覆盖（BaihuaServer__BaseUrl=http://server:8788/）
+ENV BaihuaServer__BaseUrl=http://127.0.0.1:8788/
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:5177/ || exit 1

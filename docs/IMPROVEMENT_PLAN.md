@@ -4,7 +4,9 @@
 > 状态：高优先级（1-5）、中优先级（6-9）、低优先级（10-12）均已执行完成  
 > 入口说明：本文件供新会话继续执行，任务按优先级排序。已完成项带 ✅ 与执行记录。
 >
-> **2026-08-28 更新**：原独立 `baihua-mcp-server` 仓库已迁移到 `Baihua.Family` 内置 `/mcp` 端点（streamable-http，`ModelContextProtocol.AspNetCore`），仓库已删除。下方涉及 `baihua-mcp-server` 的条目为迁移前历史记录，工具名 `mcp__baihua__*` 不变。
+> **2026-08-28 更新**：原独立 `baihua-mcp-server` 仓库已迁移到百花内置 `/mcp` 端点（streamable-http，`ModelContextProtocol.AspNetCore`），仓库已删除。下方涉及 `baihua-mcp-server` 的条目为迁移前历史记录，工具名 `mcp__baihua__*` 不变。
+>
+> **2026-09-12 补充**：`aa053f1` 三服务合一后，`/mcp` 端点由唯一后端 `Baihua.Server`(8788) 提供（文中「`Baihua.Family` 内置」为当时叫法）。
 
 ## 执行进度（2026-08-23）
 

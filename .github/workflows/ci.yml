@@ -38,7 +38,7 @@ jobs:
       - name: Run Huapu tests
         run: dotnet test tests/Huapu.Tests/Huapu.Tests.csproj -c Release
 
-      - name: Run Baihua.Family tests
+      - name: Run backend tests (Baihua.Server + modules)
         run: dotnet test tests/Baihua.Family.Tests/Baihua.Family.Tests.csproj -c Release -r linux-x64
 
   # ── 服务端全方案编译（防止 Contract/适配器变更后编译失败） ──
@@ -121,12 +121,8 @@ jobs:
           # 与本地开发一致：Development 环境 + 统一 BAIHUA_HOME
           export ASPNETCORE_ENVIRONMENT=Development
           export BAIHUA_HOME=/tmp/baihua-data
-          export BAIHUA_VAULT_URL=http://127.0.0.1:8790
-          export BAIHUA_AI_URL=http://127.0.0.1:8791
-          # 4 个服务后台启动，日志重定向（--no-launch-profile 避免 launchSettings 的 launchBrowser/端口干扰）
-          dotnet run --project services/Baihua.Vault  --no-build --no-launch-profile --urls http://127.0.0.1:8790 > /tmp/baihua-logs/vault.log 2>&1 &
-          dotnet run --project services/Baihua.AI     --no-build --no-launch-profile --urls http://127.0.0.1:8791 > /tmp/baihua-logs/ai.log 2>&1 &
-          dotnet run --project services/Baihua.Family --no-build --no-launch-profile --urls http://127.0.0.1:8788 > /tmp/baihua-logs/family.log 2>&1 &
+          # 合并后只有两个进程：单一后端（Baihua.Server，8788）+ WebUI（5177）
+          dotnet run --project services/Baihua.Server --no-build --no-launch-profile --urls http://127.0.0.1:8788 > /tmp/baihua-logs/server.log 2>&1 &
           dotnet run --project services/Baihua.Web    --no-build --no-launch-profile --urls http://127.0.0.1:5177 > /tmp/baihua-logs/web.log 2>&1 &
 
       - name: Wait for services healthy
@@ -144,9 +140,7 @@ jobs:
             echo "::error::$name 未在 120s 内就绪: $url"
             return 1
           }
-          wait_for http://127.0.0.1:8790/health Vault
-          wait_for http://127.0.0.1:8791/health AI
-          wait_for http://127.0.0.1:8788/health Family
+          wait_for http://127.0.0.1:8788/health Server
           wait_for http://127.0.0.1:5177/ WebUI
 
       - name: Run Playwright tests (navigation/dashboard/migration)

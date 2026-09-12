@@ -17,8 +17,8 @@
 ```bash
 cd <baihua 仓库>
 git pull origin main        # 拉到含 /api/dsh/config、/api/dsh/pool、鉴权硬化、vault DI 修复的版本
-# k8s 部署：
-bh build family ai vault webui && bh deploy     # 或 bh update（会 git pull + build + deploy）
+# k8s 部署（三服务合一后只有 server + webui 两个镜像）：
+bh build server webui && bh deploy     # 或 bh update（会 git pull + build + deploy）
 # 验证服务起来：
 bh status --json | grep -E '"name"|"ready"|"upToDate"'
 ```
@@ -45,8 +45,8 @@ bh_dsh_restart 或手动重启
 ### A. 零配置自举（本机 DSH → 本机百花）
 | # | 操作 | 预期 |
 |---|---|---|
-| A1 | `curl http://127.0.0.1/api/dsh/config` | 200，返回 `familyUrl/vaultUrl/aiUrl/webUrl/drawGatewayUrl/poolUrl/aiShimUrl/drawToken/poolToken/comfyModelType/comfyCheckpoint`，地址为宿主机可达（127.0.0.1 或本机 ClusterIP），无需 token |
-| A2 | 等待 DSH 插件 apply 自举 | 设置 → 插件 →「百花服务状态」卡片出现「**已自动发现（零配置自举）**」块，显示 Family/Vault/AI/算力池/绘图 地址 |
+| A1 | `curl http://127.0.0.1/api/dsh/config` | 200，返回 `familyUrl/vaultUrl/aiUrl/webUrl/drawGatewayUrl/poolUrl/aiShimUrl/drawToken/poolToken/comfyModelType/comfyCheckpoint`，地址为宿主机可达（127.0.0.1 或本机 ClusterIP），无需 token。**合并后 family/vault/ai 是同一个 8788 进程**：`familyUrl`/`vaultUrl`/`aiUrl` 都应落在 8788 上；若仍返回 8790/8791，说明后端还有未清理的旧读取点 |
+| A2 | 等待 DSH 插件 apply 自举 | 设置 → 插件 →「百花服务状态」卡片出现「**已自动发现（零配置自举）**」块，显示 family/vault/ai（同一 server）/算力池/绘图 地址 |
 | A3 | `mcp__baihua__baihua_vault_list` / `baihua_budget_summary` / `baihua_tasks_list` | 返回正常数据（不等 token 报错） |
 
 ### B. 算力池目录（peer 名 → 能力）
@@ -98,7 +98,7 @@ bh status --json
 ---
 
 ## 4. 回滚
-- 百花后端：`git -C <repo> checkout main~1 && bh build family ai vault webui && bh deploy`（或 `bh update` 前先记下 commit，失败时 `git reset --hard <前一张>` + 重部署）。
+- 百花后端：`git -C <repo> checkout main~1 && bh build server webui && bh deploy`（或 `bh update` 前先记下 commit，失败时 `git reset --hard <前一张>` + 重部署）。
 - DSH 插件：`pnpm update <plugin>@<上一版本提交>` 或改回 `github:luminsw/<repo>` 后重装；`pnpm install` 下拉历史版本。
 - 若跨机绘图异常：确认 `/api/dsh/pool` 对端 `online` 与 `draw.comfyOnline`，以及对端是否开启 `BAIHUA_AI_EXTERNAL_TOKEN`（DSH 需带 token）。
 

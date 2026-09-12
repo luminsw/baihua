@@ -4,7 +4,8 @@
 > 局域网内其它**百花服务器**或安装了 **DSH 插件**的 **DSH**，可通过统一绘图网关跨机调用本机的绘图能力。
 >
 > 配套代码：Baihua.Contracts 的 DrawCapabilityDto、Baihua.Core 的 ComfyDrawService、
-> Baihua.Family 的 DrawController（本机 API）与 DrawGatewayController（跨机网关）。
+> Baihua.Modules.Family 的 DrawController（本机 API）与 DrawGatewayController（跨机网关），
+> 都跑在唯一的后端进程 `Baihua.Server`（8788）里。
 > 相关：docs/LAN_COMPUTE_POOL.md（算力池整体架构）。
 
 ---
@@ -19,7 +20,7 @@
 | POST | /api/draw/video | 文生视频（LTX Video） |
 | GET | /api/draw/file?filename=... | 取生成文件（图片/视频字节） |
 
-> 这些走 /api/draw/*，受 Family 管理 API 的 loopback / BAIHUA_ADMIN_ALLOWED_NETS 限制。
+> 这些走 /api/draw/*，受后端管理 API（`Baihua.Server`，8788）的 loopback / BAIHUA_ADMIN_ALLOWED_NETS 限制。
 
 ### 算力池绘图网关（**跨机可用**，token 鉴权）
 | 方法 | 路径 | 说明 |
@@ -42,7 +43,7 @@ GET /mg/capabilities 返回 ComputeNodeCapabilitiesDto.Draw，即 { ComfyOnline,
 - 校验行为：未设 token → 放行；已设 token → 无/错 token 返回 401 {"error":"invalid token"}，正确的返回 200。
 
 ### 如何设置 token（Windows native）
-tools/bh/win/native/bh.ps1 已内置：family 启动时从 **~/.baihua/ai-external-token.txt** 读取并注入 BAIHUA_AI_EXTERNAL_TOKEN。
+tools/bh/win/native/bh.ps1 已内置：后端（server）启动时从 **~/.baihua/ai-external-token.txt** 读取并注入 BAIHUA_AI_EXTERNAL_TOKEN。
 
 1. 生成并写入密钥文件：
    ```powershell
@@ -51,10 +52,10 @@ tools/bh/win/native/bh.ps1 已内置：family 启动时从 **~/.baihua/ai-extern
    $token = ($bytes | ForEach-Object { $_.ToString('x2') }) -join ''
    [System.IO.File]::WriteAllText("$HOME/.baihua/ai-external-token.txt", $token)
    ```
-2. bh restart family。
+2. bh restart server。
 3. 对端（另一台百花 / DSH 插件）使用**同一个 token**。
 
-> 手动部署则直接设环境变量 BAIHUA_AI_EXTERNAL_TOKEN=<token> 再启动 family。
+> 手动部署则直接设环境变量 BAIHUA_AI_EXTERNAL_TOKEN=<token> 再启动后端（`Baihua.Server`）。
 >
 > ⚠️ 注意：bh.ps1 为 **UTF-8 带 BOM**，修改时不要破坏 BOM，否则 PowerShell 5.1 会按 GBK 误读导致中文乱码。
 
@@ -68,16 +69,18 @@ tools/bh/win/native/bh.ps1 已内置：family 启动时从 **~/.baihua/ai-extern
 ```yaml
 - id: dsh-baihua-bridge
   config:
-    familyUrl: http://127.0.0.1:8788          # 本机默认
-    drawGatewayUrl: http://192.168.3.9:8788   # 目标百花节点（跨机时填对方；留空=用 familyUrl）
-    drawToken: <BAIHUA_AI_EXTERNAL_TOKEN>     # 目标节点 token（本地回环且未设 token 时可留空）
+    drawGatewayUrl: http://127.0.0.1:8788       # 本机默认（跨机填对方节点，如 http://192.168.3.9:8788）
+    drawToken: <BAIHUA_AI_EXTERNAL_TOKEN>       # 目标节点 token（本地回环且未设 token 时可留空）
 ```
+
+> 合并后 `baihua-dsh-plugin` 已不再消费 `familyUrl` / `vaultUrl` / `comfyUrl`：
+> 8788 就是唯一后端（`Baihua.Server`），绘图统一走 `drawGatewayUrl`，知识库/家庭数据走内置 `/mcp`。
 
 ### 工具
 - **baihua_draw**：文生图。参数 prompt（必填）、negativePrompt、width/height（默认 512）、steps（默认 20）。返回图片访问 URL。
 - **baihua_draw_video**：文生视频（LTX）。参数 prompt、negativePrompt、width/height（建议 ≤768）、length（帧数，默认 97 ≈4s）、fps（默认 25）、steps（默认 20）。生成约 1-5 分钟，返回视频访问 URL。
 
-**本机**：drawGatewayUrl 留空（或指向本机 family），即可在 DSH 里用 baihua_draw / baihua_draw_video 出图/出视频。
+**本机**：drawGatewayUrl 留空（或指向本机后端 127.0.0.1:8788），即可在 DSH 里用 baihua_draw / baihua_draw_video 出图/出视频。
 **跨机**：把 drawGatewayUrl 指向目标百花节点，DSH 即调用该节点的绘图能力。
 
 ---
