@@ -75,7 +75,7 @@ string[] vaultMobilePaths =
     "/mg/vaults", "/mg/verify-token", "/mg/note-count",
     "/api/sync/",
     "/vault/manifest", "/vault/file", "/vault/file_chunk",
-    "/mobile-vaults/push"
+    "/mobile-vaults/push", "/mobile-vaults/unpush"
 ];
 
 // ---------------- 控制器 / JSON / 全局异常 ----------------
@@ -347,7 +347,7 @@ app.Use(async (context, next) =>
         "/vault/manifest", "/vault/file", "/vault/file_chunk",
         "/api/vaults", "/vault/pair", "/pair",
         "/api/sync/notes", "/api/sync/system", "/api/sync",
-        "/mobile-vaults/push",
+        "/mobile-vaults/push", "/mobile-vaults/unpush",
         "/mg/manifest", "/mg/file", "/mg/cards",
         "/mg/vaults", "/mg/pair",
         "/mg/devices/revoke",
@@ -470,7 +470,7 @@ app.Use(async (context, next) =>
         "/api/vaults", "/vault/pair", "/pair",
         "/api/sync/notes", "/api/sync/system", "/api/sync",
         "/api/discovery", "/mg/discovery",
-        "/mobile-vaults/push",
+        "/mobile-vaults/push", "/mobile-vaults/unpush",
         "/mg/vaults", "/mg/manifest", "/mg/file", "/mg/cards",
         "/mg/pair", "/mg/pair/check",
         "/mg/register-device",
