@@ -624,3 +624,61 @@ kubectl -n baihua get endpoints
 5. **日志**：Fluentd/Fluent Bit 收集到 OpenObserve
 6. **镜像仓库**：使用 Harbor / ACR 推送镜像，避免 `imagePullPolicy: IfNotPresent`
 7. **OpenVINO 扩缩容**：多 GPU 节点时可 `kubectl scale deployment/bh-openvino --replicas=N`
+
+## 本机实测备忘（WSL2 + k3s，单后端合并后首次真机部署）
+
+以下都是首次真正部署时踩到并已修好的问题，重装/换机时按此检查。
+
+### 1. k3s 拉不到镜像（症状：`k3s ctr images ls` 为空、Traefik 卡在 ContainerCreating 数天）
+
+本机 WSL **访问不到 registry-1.docker.io**（Windows 侧 hysteria 代理只监听 127.0.0.1，
+WSL 经 NAT 网关够不到），于是 k3s 的 helm 安装（Traefik + CRD）一直拉不到镜像。
+修复：给 k3s containerd 配镜像站并重启（本机已应用）：
+
+```bash
+cat > /etc/rancher/k3s/registries.yaml <<'EOF'
+mirrors:
+  docker.io:
+    endpoint:
+      - "https://docker.m.daocloud.io"
+  registry-1.docker.io:
+    endpoint:
+      - "https://docker.m.daocloud.io"
+EOF
+systemctl restart k3s
+# 卡了很久的 helm job 要删掉让 helm controller 重试（本机删后 60s 内 Traefik + CRD 全部就绪）
+k3s kubectl -n kube-system get jobs
+```
+
+> `k3s ctr images pull docker.io/...` **不读** registries.yaml（那是 CRI 层配置）：用 ctr 手动拉时
+> 要写镜像站全名（`docker.m.daocloud.io/<repo>`）再 `k3s ctr images tag` 回原名。
+
+### 2. 构建应用镜像：代理、BuildKit、SDK 体积
+
+- `/etc/docker/daemon.json` 里若配了 `proxies: http://172.30.208.1:7890`（Windows 代理），
+  从 WSL 不可达 → `docker pull` 全部失败。本机已改为 `{}`（原文件备份为 `daemon.json.bak.*`）。
+- 本机 docker **没有 buildx**：`DOCKER_BUILDKIT=1 docker build` 会报
+  "BuildKit is enabled but the buildx component is missing" → 用 `DOCKER_BUILDKIT=0`（legacy builder）。
+- `docker/Dockerfile.server` 的 build 阶段要拉 ~800MB 的 dotnet SDK 镜像（本机国际链路很慢）。
+  实用替代：宿主机 `dotnet publish -c Release -r linux-x64 -o out/k8s/server`，
+  再基于 `k8s/images/Dockerfile.base-runtime` 只做 runtime 层（COPY 产物），
+  最后 `docker save bh-server:latest | k3s ctr -n k8s.io images import -`。
+
+### 3. 启动顺序与数据库（已修）
+
+- `20-server.yaml` 带 `initContainer: wait-for-postgres`；后端自身在
+  `Baihua.Server/Program.cs` 还有数据库初始化重试（最多 20 次）兜底 —— 两层都要在，
+  因为 k8s 不保证 Pod 启动顺序，首次实测正是"后端先起、数据库后起"导致缺表。
+- 数据库口令只有一份：`baihua-secret.PG_PASSWORD`（server 走 `envFrom`，postgres 走
+  `secretKeyRef` 读同一键）。**上线前务必改掉默认值。**
+- 表结构由后端启动时的 `DatabaseInitializer` 建：三个 DbContext 共用一个库，缺表按需补齐
+  （半成品 schema 能自愈）。本机实测单库 38 张表（Family 31 + Vault 2 + AI 4 + CodeAgentSessions 1）。
+
+### 4. 入口与地址
+
+- Traefik CRD 是硬前提（`24-traefik.yaml`）。集群未装 Traefik 时 `bh deploy` 会跳过该清单并提示，
+  可用 `kubectl port-forward svc/bh-server 8788:8788` 临时访问。
+- `01-configmap.yaml` 的 `Baihua__PublicBaseUrl` 决定移动端配对二维码/广播地址，
+  **换机后要改成宿主机局域网 IP**（本机 WSL 节点为 `172.30.213.225`；旧值 `192.168.3.13` 只适用旧集群）。
+- 本机实测：`http://<节点IP>/health` → 200、`/` → 302（WebUI）、`/mg/*` → 401（需 HMAC 签名，符合预期）。
+
