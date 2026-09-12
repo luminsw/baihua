@@ -57,1856 +57,1858 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <!-- zh-CN: Same as neutral (Chinese is default language) -->
   <data name="AiChat_MessageEmpty" xml:space="preserve">
-    <value>Message cannot be empty</value>
+    <value>消息不能为空</value>
   </data>
   <data name="AiProvider_NotConfigured" xml:space="preserve">
-    <value>No AI provider configured</value>
+    <value>未配置 AI 提供商</value>
   </data>
   <data name="AiProvider_NotFound" xml:space="preserve">
-    <value>No available AI provider found</value>
+    <value>未找到可用的AI提供商</value>
   </data>
   <data name="ApiKey_InvalidFormat" xml:space="preserve">
-    <value>Invalid API key format</value>
+    <value>API Key 格式无效</value>
   </data>
   <data name="Auth_SignatureInvalid" xml:space="preserve">
-    <value>Invalid request signature</value>
+    <value>无效的请求签名</value>
   </data>
   <data name="Auth_TokenInvalid" xml:space="preserve">
-    <value>Invalid access token</value>
+    <value>无效的访问令牌</value>
   </data>
   <data name="Auth_TokenRequired" xml:space="preserve">
-    <value>Bearer Token authentication required</value>
+    <value>需要 Bearer Token 认证</value>
   </data>
   <data name="Capability_Insufficient" xml:space="preserve">
-    <value>Current machine configuration is insufficient for this feature.</value>
+    <value>当前机器配置不足以使用该功能。</value>
   </data>
   <data name="Capability_MemoryInsufficient" xml:space="preserve">
-    <value>Insufficient memory (&lt; 8GB), unable to use local model features. Please use cloud AI services.</value>
+    <value>当前机器内存不足（&lt; 8GB），无法使用本地模型功能。建议使用云端 AI 服务。</value>
   </data>
   <data name="Capability_NoGpu" xml:space="preserve">
-    <value>No dedicated GPU found. Local model features are hidden. You can continue using cloud AI services.</value>
+    <value>当前机器无独立显卡，本地大模型功能已隐藏。您可以继续使用云端 AI 服务。</value>
   </data>
   <data name="Common_DeleteFailed" xml:space="preserve">
-    <value>Delete failed</value>
+    <value>删除失败</value>
   </data>
   <data name="Common_DeleteSuccess" xml:space="preserve">
-    <value>Configuration deleted</value>
+    <value>配置已删除</value>
   </data>
   <data name="Common_NotConfigured" xml:space="preserve">
-    <value>Not configured</value>
+    <value>未配置</value>
   </data>
   <data name="Common_NotFound" xml:space="preserve">
-    <value>Not found</value>
+    <value>未找到</value>
   </data>
   <data name="Common_SaveFailed" xml:space="preserve">
-    <value>Save failed</value>
+    <value>保存失败</value>
   </data>
   <data name="Common_SaveSuccess" xml:space="preserve">
-    <value>Configuration saved</value>
+    <value>配置已保存</value>
   </data>
   <data name="Device_AlreadyAuthorized" xml:space="preserve">
-    <value>Device already authorized</value>
+    <value>设备已授权</value>
   </data>
   <data name="Device_NotAuthorized" xml:space="preserve">
-    <value>Device not authorized. Please complete pairing first.</value>
+    <value>设备未授权，请先完成配对</value>
   </data>
   <data name="Encryption_CbcDataInvalid" xml:space="preserve">
-    <value>Invalid CBC encrypted data</value>
+    <value>无效的 CBC 加密数据</value>
   </data>
   <data name="Encryption_DecryptFailed" xml:space="preserve">
-    <value>Unable to decrypt data. Please check your password.</value>
+    <value>无法解密数据，请检查密码是否正确</value>
   </data>
   <data name="Encryption_EncryptFailed" xml:space="preserve">
-    <value>Unable to encrypt data</value>
+    <value>无法加密数据</value>
   </data>
   <data name="Encryption_GcmDataInvalid" xml:space="preserve">
-    <value>Invalid GCM encrypted data</value>
+    <value>无效的 GCM 加密数据</value>
   </data>
   <data name="Encryption_PasswordEmpty" xml:space="preserve">
-    <value>Password cannot be empty</value>
+    <value>密码不能为空</value>
   </data>
   <data name="LocalModel_NotRunning" xml:space="preserve">
-    <value>Local AI service is not running and auto-start failed. Please start manually and retry.</value>
+    <value>本地 AI 服务未运行且自动启动失败，请手动启动后重试。</value>
   </data>
   <data name="Pair_CodeEmpty" xml:space="preserve">
-    <value>Pairing code cannot be empty</value>
+    <value>配对码不能为空</value>
   </data>
   <data name="Pair_CodeInvalid" xml:space="preserve">
-    <value>Invalid pairing code</value>
+    <value>配对码错误</value>
   </data>
   <data name="Pair_CodeRefreshed" xml:space="preserve">
-    <value>Pairing code refreshed</value>
+    <value>配对码已刷新</value>
   </data>
   <data name="Pair_UnknownDevice" xml:space="preserve">
-    <value>Unknown device</value>
+    <value>未知设备</value>
   </data>
   <data name="Task_CancelOnlyRunning" xml:space="preserve">
-    <value>Only running or pending tasks can be cancelled</value>
+    <value>只能取消运行中或待执行的任务</value>
   </data>
   <data name="Task_CancelSuccess" xml:space="preserve">
-    <value>Task cancelled</value>
+    <value>任务已取消</value>
   </data>
   <data name="Task_NotFound" xml:space="preserve">
-    <value>Task not found</value>
+    <value>任务不存在</value>
   </data>
   <data name="Task_RetryOnly" xml:space="preserve">
-    <value>Only failed, timed out, or cancelled tasks can be retried</value>
+    <value>只能重试失败、超时或已取消的任务</value>
   </data>
   <data name="Vault_NameExists" xml:space="preserve">
-    <value>Vault name '{0}' already exists. Please use a different name.</value>
+    <value>知识库名称 '{0}' 已存在，请勿重复创建。</value>
   </data>
   <data name="Vault_NotConfigured" xml:space="preserve">
-    <value>No vault configured</value>
+    <value>没有配置知识库</value>
   </data>
   <data name="Vault_NotFound" xml:space="preserve">
-    <value>Vault not found</value>
+    <value>知识库不存在</value>
   </data>
   <data name="Vault_NotesDirMissing" xml:space="preserve">
-    <value>Notes directory does not exist</value>
+    <value>笔记目录不存在</value>
   </data>
   <data name="Vault_PathInvalid" xml:space="preserve">
-    <value>Invalid vault path</value>
+    <value>知识库路径无效</value>
   </data>
   <data name="Vault_PathNotExists" xml:space="preserve">
-    <value>Vault path does not exist</value>
+    <value>知识库路径不存在</value>
   </data>
   <data name="Vault_PathOccupied" xml:space="preserve">
-    <value>Path '{0}' is already used by '{1}'. Please use a different path.</value>
+    <value>知识库路径 '{0}' 已被 '{1}' 占用，请勿重复创建。</value>
   </data>
   <data name="Vault_Required" xml:space="preserve">
-    <value>A valid vault must be specified</value>
+    <value>必须指定有效的知识库</value>
   </data>
   <data name="Task_IndustryKeywordEmpty" xml:space="preserve">
-    <value>Industry and keyword cannot be empty</value>
+    <value>行业和关键词不能为空</value>
   </data>
   <data name="Task_VaultGenAiProviderMissing" xml:space="preserve">
-    <value>No available AI provider found, please check model configuration</value>
+    <value>未找到可用的 AI 提供商，请检查模型配置</value>
   </data>
   <data name="Task_OutlineFailed" xml:space="preserve">
-    <value>Note outline generation failed, returned empty list</value>
+    <value>笔记大纲生成失败，返回空列表</value>
   </data>
   <data name="Task_Created" xml:space="preserve">
-    <value>Task created</value>
+    <value>任务已创建</value>
   </data>
   <data name="Task_CreateFailed" xml:space="preserve">
-    <value>Create failed: {0}</value>
+    <value>创建失败：{0}</value>
   </data>
   <data name="Task_Progress_VaultName" xml:space="preserve">
-    <value>Generating vault name...</value>
+    <value>生成知识库名称...</value>
   </data>
   <data name="Task_Progress_SystemPrompt" xml:space="preserve">
-    <value>Generating system prompt...</value>
+    <value>生成系统提示词...</value>
   </data>
   <data name="Task_Progress_Outline" xml:space="preserve">
-    <value>Generating note outline...</value>
+    <value>生成笔记大纲...</value>
   </data>
   <data name="Task_Progress_CreatingVault" xml:space="preserve">
-    <value>Creating vault: {0}...</value>
+    <value>创建知识库: {0}...</value>
   </data>
   <data name="Task_Progress_GeneratingNote" xml:space="preserve">
-    <value>Generating note ({0}/{1}): {2}</value>
+    <value>生成笔记 ({0}/{1}): {2}</value>
   </data>
   <data name="Task_Progress_RebuildIndex" xml:space="preserve">
-    <value>Rebuilding search index...</value>
+    <value>重建搜索索引...</value>
   </data>
   <data name="Task_Progress_Done" xml:space="preserve">
-    <value>Task complete</value>
+    <value>任务完成</value>
   </data>
   <data name="Task_Progress_StartCardGen" xml:space="preserve">
-    <value>Starting AI memory card generation for "{0}"...</value>
+    <value>开始为「{0}」使用 AI 生成记忆卡片...</value>
   </data>
   <data name="Task_Progress_RetryPreparing" xml:space="preserve">
-    <value>Preparing AI call (retry)...</value>
+    <value>准备调用 AI（重试）...</value>
   </data>
   <data name="Task_Progress_RetryCallingModel" xml:space="preserve">
-    <value>Calling AI model: {0} (timeout {1} min)...</value>
+    <value>调用 AI 模型：{0}（超时 {1} 分钟）...</value>
   </data>
   <data name="Task_Progress_RetryCardGen" xml:space="preserve">
-    <value>Starting AI memory card generation (retry)...</value>
+    <value>开始使用 AI 生成记忆卡片（重试）...</value>
   </data>
   <data name="Task_Progress_Preparing" xml:space="preserve">
-    <value>Preparing AI call...</value>
+    <value>准备调用 AI...</value>
   </data>
   <data name="Task_Progress_CallingModel" xml:space="preserve">
-    <value>Calling AI model: {0}...</value>
+    <value>调用 AI 模型：{0}...</value>
   </data>
   <data name="Task_RetryTypeNotSupported" xml:space="preserve">
-    <value>Only AI query, vault generation, or card generation tasks can be retried</value>
+    <value>目前仅支持重试 AI 查询、知识库生成或记忆卡片生成任务</value>
   </data>
   <data name="Task_RetryQueryMissing" xml:space="preserve">
-    <value>Original task is missing query content</value>
+    <value>原任务缺少查询内容</value>
   </data>
   <data name="Task_RetryVaultMissing" xml:space="preserve">
-    <value>Original vault no longer exists, cannot retry save-to-vault. Please create a new task from AI generation page.</value>
+    <value>原任务对应的知识库已不存在，无法重试保存到知识库。请从AI生成页新建任务。</value>
   </data>
   <data name="Task_RetryCreated" xml:space="preserve">
-    <value>Retry task created</value>
+    <value>重试任务已创建</value>
   </data>
   <data name="Task_RetryAnkiVaultIdMissing" xml:space="preserve">
-    <value>Original task is missing vault ID</value>
+    <value>原任务缺少知识库 ID</value>
   </data>
   <data name="Task_RetryCardCreated" xml:space="preserve">
-    <value>AI card generation retry task created</value>
+    <value>AI 卡片生成重试任务已创建</value>
   </data>
   <data name="Task_RetryParamsMissing" xml:space="preserve">
-    <value>Original task is missing industry or keyword parameters</value>
+    <value>原任务缺少行业或关键词参数</value>
   </data>
   <data name="Task_RetryFailed" xml:space="preserve">
-    <value>Retry failed</value>
+    <value>重试失败</value>
   </data>
   <data name="Task_ContentReviewFailed" xml:space="preserve">
-    <value>AI content review failed: the input may contain sensitive information. Please modify and retry.</value>
+    <value>AI 内容审核未通过：输入内容可能包含敏感信息，请修改后重试。</value>
   </data>
   <data name="Task_QueryEmpty" xml:space="preserve">
-    <value>Query content cannot be empty</value>
+    <value>查询内容不能为空</value>
   </data>
   <data name="Task_VaultNotFoundForCreate" xml:space="preserve">
-    <value>Specified vault does not exist, please select another.</value>
+    <value>指定的知识库不存在，请重新选择。</value>
   </data>
   <data name="Task_CancelFailed" xml:space="preserve">
-    <value>Failed to cancel task</value>
+    <value>取消任务失败</value>
   </data>
   <data name="Task_HistoryError" xml:space="preserve">
-    <value>Failed to retrieve task history</value>
+    <value>获取任务历史失败</value>
   </data>
   <data name="Task_CleanupError" xml:space="preserve">
-    <value>Failed to clean up tasks</value>
+    <value>清理任务失败</value>
   </data>
   <data name="Task_AllDeleted" xml:space="preserve">
-    <value>All tasks cleared</value>
+    <value>所有任务已清空</value>
   </data>
   <data name="Task_DeleteAllError" xml:space="preserve">
-    <value>Failed to clear all tasks</value>
+    <value>清空任务失败</value>
   </data>
   <data name="Task_StatsError" xml:space="preserve">
-    <value>Failed to retrieve task statistics</value>
+    <value>获取任务统计失败</value>
   </data>
   <data name="Task_VaultGenTimeout" xml:space="preserve">
-    <value>AI vault generation timed out ({0} min) | Model: {1}</value>
+    <value>AI 知识库生成超时（{0} 分钟）| 模型: {1}</value>
   </data>
   <data name="Task_QueryTimeout" xml:space="preserve">
-    <value>AI call timed out ({0} min) | Model: {1} | Prompt: {2}</value>
+    <value>AI 调用超时（{0} 分钟）| 模型: {1} | 提示词: {2}</value>
   </data>
   <data name="Task_RetryTimeout" xml:space="preserve">
-    <value>AI call timed out ({0} min) | Model: {1}</value>
+    <value>AI 调用超时（{0} 分钟）| 模型: {1}</value>
   </data>
   <data name="Task_CategoryOther" xml:space="preserve">
-    <value>Other</value>
+    <value>其他</value>
   </data>
   <data name="Task_FallbackPrompt" xml:space="preserve">
-    <value>You are an expert in the {0} field, please answer questions professionally, rigorously, and in a structured manner.</value>
+    <value>你是{0}领域专家，请用专业、严谨、结构化的方式回答问题。</value>
   </data>
   <data name="AiMetrics_AiLatency" xml:space="preserve">
-    <value>AI request latency</value>
+    <value>AI 请求延迟</value>
   </data>
   <data name="AiMetrics_AiTps" xml:space="preserve">
-    <value>AI token generation rate</value>
+    <value>AI Token 生成速率</value>
   </data>
   <data name="AiMetrics_AiRequests" xml:space="preserve">
-    <value>Total AI requests</value>
+    <value>AI 请求总次数</value>
   </data>
   <data name="AiMetrics_AiTokens" xml:space="preserve">
-    <value>Total AI tokens processed</value>
+    <value>AI Token 处理总量</value>
   </data>
   <data name="AiMetrics_BenchLatency" xml:space="preserve">
-    <value>Benchmark single prompt latency</value>
+    <value>Benchmark 单条提示词延迟</value>
   </data>
   <data name="AiMetrics_BenchTps" xml:space="preserve">
-    <value>Benchmark token generation rate</value>
+    <value>Benchmark Token 生成速率</value>
   </data>
   <data name="AiMetrics_BenchQuality" xml:space="preserve">
-    <value>Benchmark quality score</value>
+    <value>Benchmark 质量评分</value>
   </data>
   <data name="AiMetrics_BenchTimeouts" xml:space="preserve">
-    <value>Benchmark timeout count</value>
+    <value>Benchmark 超时次数</value>
   </data>
   <data name="AiMetrics_BenchErrors" xml:space="preserve">
-    <value>Benchmark error count</value>
+    <value>Benchmark 错误次数</value>
   </data>
   <data name="AiMetrics_BenchRuns" xml:space="preserve">
-    <value>Benchmark prompt run count</value>
+    <value>Benchmark 提示词运行次数</value>
   </data>
   <data name="AiMetrics_HealthCheckDuration" xml:space="preserve">
-    <value>Single health check component duration</value>
+    <value>单个健康检查组件耗时</value>
   </data>
   <data name="AiMetrics_HealthWallClock" xml:space="preserve">
-    <value>Health check total duration</value>
+    <value>健康检查整体耗时</value>
   </data>
   <data name="AiMetrics_HealthScore" xml:space="preserve">
-    <value>Health check score</value>
+    <value>健康检查评分</value>
   </data>
   <data name="AiMetrics_HealthComponents" xml:space="preserve">
-    <value>Health check component status count</value>
+    <value>健康检查组件状态统计</value>
   </data>
 
   <!-- Master Prompt Builder -->
   <data name="Prompt_DefaultMasterName" xml:space="preserve">
-    <value>Master</value>
+    <value>先生</value>
   </data>
   <data name="Prompt_SafetyRefusal" xml:space="preserve">
-    <value>Sorry, I cannot provide real medical diagnoses, prescriptions, or legal advice. I am a learning assistant and can only help you study for exams. For real needs, please consult a licensed professional.</value>
+    <value>抱歉，我无法提供真实的医疗诊断、处方或法律建议。我是学习辅助师父，只能帮助您学习考证知识。如有真实需求，请咨询持证专业人士。</value>
   </data>
   <data name="Prompt_StageNameRuDao" xml:space="preserve">
-    <value>Initiation</value>
+    <value>入道</value>
   </data>
   <data name="Prompt_StageNameZhuJi" xml:space="preserve">
-    <value>Foundation</value>
+    <value>筑基</value>
   </data>
   <data name="Prompt_StageNameJingJin" xml:space="preserve">
-    <value>Refinement</value>
+    <value>精进</value>
   </data>
   <data name="Prompt_StageNameMoLi" xml:space="preserve">
-    <value>Honing</value>
+    <value>磨砺</value>
   </data>
   <data name="Prompt_StageNameChuShi" xml:space="preserve">
-    <value>Graduation</value>
+    <value>出师</value>
   </data>
   <data name="Prompt_StageDescRuDao" xml:space="preserve">
-    <value>Set goals, assess foundation, generate initial knowledge base and tasks</value>
+    <value>确定目标、评估基础、生成初始知识库和任务</value>
   </data>
   <data name="Prompt_StageDescZhuJi" xml:space="preserve">
-    <value>Build knowledge framework, daily tasks, develop study habits</value>
+    <value>建立知识框架、每日任务、养成学习习惯</value>
   </data>
   <data name="Prompt_StageDescJingJin" xml:space="preserve">
-    <value>Refine by subject, conquer details, eliminate weak areas</value>
+    <value>分科细化、攻克细节、消除薄弱环节</value>
   </data>
   <data name="Prompt_StageDescMoLi" xml:space="preserve">
-    <value>Mock exams, fill gaps, reinforce high-frequency topics</value>
+    <value>模拟考试、查漏补缺、强化高频考点</value>
   </data>
   <data name="Prompt_StageDescChuShi" xml:space="preserve">
-    <value>Skill certification, exam guidance, final sprint</value>
+    <value>能力认证、报考指导、考前冲刺</value>
   </data>
   <data name="Prompt_SectionMasterRole" xml:space="preserve">
-    <value># Master Role Setting</value>
+    <value># 师父角色设定</value>
   </data>
   <data name="Prompt_YouAreTemplate" xml:space="preserve">
-    <value>You are "{0}", a {2} in the {1} industry.</value>
+    <value>你是「{0}」，一位{1}行业的{2}。</value>
   </data>
   <data name="Prompt_StyleTemplate" xml:space="preserve">
-    <value>Your teaching style: {0}.</value>
+    <value>你的教学风格：{0}。</value>
   </data>
   <data name="Prompt_SectionApprenticeGoal" xml:space="preserve">
-    <value># Apprentice Goal</value>
+    <value># 学徒目标</value>
   </data>
   <data name="Prompt_GoalTemplate" xml:space="preserve">
-    <value>The apprentice's goal is: {0}</value>
+    <value>学徒的目标是：{0}</value>
   </data>
   <data name="Prompt_CurrentStageTemplate" xml:space="preserve">
-    <value>Current stage: {0}</value>
+    <value>当前阶段：{0}</value>
   </data>
   <data name="Prompt_SectionCoreProfile" xml:space="preserve">
-    <value># Apprentice Core Profile</value>
+    <value># 学徒核心画像</value>
   </data>
   <data name="Prompt_SectionStageSummary" xml:space="preserve">
-    <value># Current Stage Learning Summary</value>
+    <value># 当前阶段学习摘要</value>
   </data>
   <data name="Prompt_SectionTeachingPrinciples" xml:space="preserve">
-    <value># Teaching Principles</value>
+    <value># 教学原则</value>
   </data>
   <data name="Prompt_Principle1" xml:space="preserve">
-    <value>1. Teach according to ability: Adjust pace based on the apprentice's foundation</value>
+    <value>1. 因材施教：根据学徒基础调整教学节奏</value>
   </data>
   <data name="Prompt_Principle2" xml:space="preserve">
-    <value>2. Step by step: Don't skip fundamentals, don't rush for results</value>
+    <value>2. 循序渐进：不跳过基础，不急于求成</value>
   </data>
   <data name="Prompt_Principle3" xml:space="preserve">
-    <value>3. Practice-oriented: All knowledge should connect to real applications</value>
+    <value>3. 实战导向：所有知识都要联系实际应用</value>
   </data>
   <data name="Prompt_Principle4" xml:space="preserve">
-    <value>4. Timely feedback: Point out errors and provide improvement suggestions</value>
+    <value>4. 及时反馈：指出错误并给予改进建议</value>
   </data>
   <data name="Prompt_Principle5" xml:space="preserve">
-    <value>5. Encourage as priority: Acknowledge progress and motivate learning</value>
+    <value>5. 鼓励为主：肯定进步，激发学习动力</value>
   </data>
   <data name="Prompt_SectionSafety" xml:space="preserve">
-    <value># Safety Boundaries</value>
+    <value># 安全边界</value>
   </data>
   <data name="Prompt_SafetyBoundary" xml:space="preserve">
-    <value>You can only assist with exam preparation knowledge. You must not provide real medical diagnoses, prescriptions, or legal advice. When encountering such requests, you must clearly refuse and recommend consulting a licensed professional.</value>
+    <value>你只能辅助学习考证知识，不能提供真实的医疗诊断、处方、法律建议。遇到此类请求，必须明确拒绝并建议咨询持证专业人士。</value>
   </data>
   <!-- Master Controller -->
   <data name="Master_GoalRequired" xml:space="preserve">
-    <value>Goal cannot be empty</value>
+    <value>目标不能为空</value>
   </data>
   <data name="Master_IndustryRequired" xml:space="preserve">
-    <value>Industry cannot be empty</value>
+    <value>行业不能为空</value>
   </data>
   <data name="Master_CreateGreetingTemplate" xml:space="preserve">
-    <value>I want to {0}. Please be my master and first understand my situation.</value>
+    <value>我想{0}，请作为我的师父，先了解一下我的情况。</value>
   </data>
   <data name="Master_CreateFallbackGreeting" xml:space="preserve">
-    <value>Welcome, let us begin your learning journey.</value>
+    <value>欢迎，让我们开始你的学习之旅。</value>
   </data>
   <data name="Master_CreateFailed" xml:space="preserve">
-    <value>Failed to create master</value>
+    <value>创建师父失败</value>
   </data>
   <data name="Master_CreateFailedDetail" xml:space="preserve">
-    <value>Failed to create master: {0}</value>
+    <value>创建师父失败：{0}</value>
   </data>
   <data name="Master_IdRequired" xml:space="preserve">
-    <value>Master ID cannot be empty</value>
+    <value>师父ID不能为空</value>
   </data>
   <data name="Master_NotFound" xml:space="preserve">
-    <value>Master not found</value>
+    <value>师父不存在</value>
   </data>
   <data name="Master_ProfileFetchSuccess" xml:space="preserve">
-    <value>Profile retrieved successfully</value>
+    <value>获取画像成功</value>
   </data>
   <data name="Master_ProfileUpdateSuccess" xml:space="preserve">
-    <value>Profile updated successfully</value>
+    <value>画像更新成功</value>
   </data>
   <data name="Master_VaultFocusFetchSuccess" xml:space="preserve">
-    <value>Vault associations retrieved successfully</value>
+    <value>获取知识库关联成功</value>
   </data>
   <data name="Master_UnknownVault" xml:space="preserve">
-    <value>Unknown vault</value>
+    <value>未知知识库</value>
   </data>
   <data name="Master_VaultIdRequired" xml:space="preserve">
-    <value>Vault ID cannot be empty</value>
+    <value>知识库ID不能为空</value>
   </data>
   <data name="Master_VaultFocused" xml:space="preserve">
-    <value>Vault has been associated</value>
+    <value>知识库已关联</value>
   </data>
   <data name="Master_VaultUnfocused" xml:space="preserve">
-    <value>Vault association has been removed</value>
+    <value>知识库已取消关联</value>
   </data>
   <data name="Master_OperationFailed" xml:space="preserve">
-    <value>Operation failed: {0}</value>
+    <value>操作失败：{0}</value>
   </data>
   <data name="Master_ParamsRequired" xml:space="preserve">
-    <value>Parameters cannot be empty</value>
+    <value>参数不能为空</value>
   </data>
   <data name="Master_VaultFocusNotFound" xml:space="preserve">
-    <value>Association not found</value>
+    <value>关联不存在</value>
   </data>
   <data name="Master_VaultFocusRemoved" xml:space="preserve">
-    <value>Association has been removed</value>
+    <value>已取消关联</value>
   </data>
   <data name="Master_UpdateFailed" xml:space="preserve">
-    <value>Update failed: {0}</value>
+    <value>更新失败：{0}</value>
   </data>
   <data name="Master_AssessDaily" xml:space="preserve">
-    <value>Please give 1-2 daily quiz questions to assess today learning.</value>
+    <value>请出1-2道日常小测验题，评估学徒今日学习效果。</value>
   </data>
   <data name="Master_AssessWeekly" xml:space="preserve">
-    <value>Please give 10 comprehensive questions to assess this week learning.</value>
+    <value>请出10道综合题，评估学徒本周学习成果。</value>
   </data>
   <data name="Master_AssessStage" xml:space="preserve">
-    <value>Please provide a complete stage assessment exam to determine if the apprentice can advance.</value>
+    <value>请出一份完整的阶段考核试卷，评估学徒是否可以进入下一阶段。</value>
   </data>
   <data name="Master_AssessDefault" xml:space="preserve">
-    <value>Please conduct a comprehensive assessment, providing pass probability, weak points, and improvement suggestions.</value>
+    <value>请对学徒进行综合能力评估，给出通过概率、薄弱环节和改进建议。</value>
   </data>
   <data name="Master_AssessSystemPrompt" xml:space="preserve">
-    <value>You are a rigorous assessment expert. Please objectively evaluate the apprentice ability, providing specific pass probability, weak points, and improvement suggestions. Return in JSON format: {{"report": "...", "passProbability": 0.75, "weakPoints": [...], "advice": "..."}}</value>
+    <value>你是一位严谨的考试评估专家。请客观评估学徒能力，给出具体的通过概率、薄弱环节和改进建议。以JSON格式返回：{"report": "...", "passProbability": 0.75, "weakPoints": [...], "advice": "..."}</value>
   </data>
   <data name="Master_AssessComplete" xml:space="preserve">
-    <value>Assessment complete</value>
+    <value>评估完成</value>
   </data>
   <data name="Master_AssessFailed" xml:space="preserve">
-    <value>Assessment failed: {0}</value>
+    <value>能力评估失败：{0}</value>
   </data>
   <data name="Master_ChatMessageEmpty" xml:space="preserve">
-    <value>Message cannot be empty</value>
+    <value>消息不能为空</value>
   </data>
   <data name="Master_ChatProfileTemplate" xml:space="preserve">
-    <value>Foundation: {0}; Learning style: {1}; Strengths: {2}; Weaknesses: {3}</value>
+    <value>基础：{0}；学习风格：{1}；优势：{2}；薄弱：{3}</value>
   </data>
   <data name="Master_Unknown" xml:space="preserve">
-    <value>Unknown</value>
+    <value>未知</value>
   </data>
   <data name="Master_ChatTimeout" xml:space="preserve">
-    <value>AI call timed out or was cancelled</value>
+    <value>AI 调用超时或已被取消</value>
   </data>
   <data name="Master_ChatFailed" xml:space="preserve">
-    <value>Chat failed: {0}</value>
+    <value>对话失败：{0}</value>
   </data>
   <data name="Master_ConversationFetchSuccess" xml:space="preserve">
-    <value>Conversation history retrieved successfully</value>
+    <value>获取对话历史成功</value>
   </data>
   <data name="Master_ConversationFetchFailed" xml:space="preserve">
-    <value>Failed to retrieve conversation history: {0}</value>
+    <value>获取对话历史失败：{0}</value>
   </data>
   <data name="Master_ConversationSyncSuccess" xml:space="preserve">
-    <value>Sync successful, added {0} messages</value>
+    <value>同步成功，新增 {0} 条对话</value>
   </data>
   <data name="Master_ConversationSyncFailed" xml:space="preserve">
-    <value>Sync failed: {0}</value>
+    <value>同步失败：{0}</value>
   </data>
   <data name="Master_CompressSystemPrompt" xml:space="preserve">
-    <value>You are a learning record organization expert. Please summarize the conversation content concisely and objectively.</value>
+    <value>你是一位学习记录整理专家，请简洁客观地总结对话内容。</value>
   </data>
   <data name="Master_CompressUserPrompt" xml:space="preserve">
-    <value>Please generate a concise summary (within 200 characters) of the following conversation, extracting key knowledge points and learning highlights:</value>
+    <value>请为以下对话生成简洁摘要（200字以内），提取关键知识点和学习要点：</value>
   </data>
   <data name="Master_CompressFailed" xml:space="preserve">
-    <value>Compression failed: {0}</value>
+    <value>压缩失败：{0}</value>
   </data>
   <data name="Master_EvictSystemPrompt" xml:space="preserve">
-    <value>You are a learning assessment expert. Please objectively extract the apprentice ability profile.</value>
+    <value>你是一位学习评估专家，请客观提取学徒能力画像。</value>
   </data>
   <data name="Master_EvictProfilePrompt" xml:space="preserve">
-    <value>Based on the following stage learning summary, extract the apprentice core ability profile (foundation, learning style, strengths, weaknesses), return in JSON format: {{"foundation": "...", "learningStyle": "...", "strengths": "...", "weaknesses": "..."}}</value>
+    <value>根据以下阶段学习摘要，提取学徒的核心能力画像（基础、学习风格、优势、薄弱点），以JSON格式返回：{"foundation": "...", "learningStyle": "...", "strengths": "...", "weaknesses": "..."}</value>
   </data>
   <data name="Master_EvictFailed" xml:space="preserve">
-    <value>Eviction failed: {0}</value>
+    <value>淘汰失败：{0}</value>
   </data>
   <data name="Master_EvictAllComplete" xml:space="preserve">
-    <value>Data eviction complete: compressed {0} stages, evicted {1} stages</value>
+    <value>数据驱逐完成：压缩 {0} 个阶段，淘汰 {1} 个阶段</value>
   </data>
   <data name="Master_EvictAllFailed" xml:space="preserve">
-    <value>Eviction failed: {0}</value>
+    <value>驱逐失败：{0}</value>
   </data>
   <data name="Master_StageUnknown" xml:space="preserve">
-    <value>Unknown stage: {0}</value>
+    <value>未知的阶段：{0}</value>
   </data>
   <data name="Master_StageSummaryPrompt" xml:space="preserve">
-    <value>Please generate a concise summary (within 200 characters) of the apprentice learning in the "{0}" stage, including: knowledge points mastered, areas needing improvement, and suggestions for the next stage.</value>
+    <value>请为学徒在「{0}」阶段的学习生成一份简洁摘要（200字以内），包括：已掌握的知识点、仍需加强的方面、对下一阶段的建议。</value>
   </data>
   <data name="Master_StageSummarySystem" xml:space="preserve">
-    <value>You are a learning assessment expert. Please summarize learning outcomes concisely and objectively.</value>
+    <value>你是一位学习评估专家，请简洁客观地总结学习成果。</value>
   </data>
   <data name="Master_StageCorrectionsPrompt" xml:space="preserve">
-    <value>Please identify 2-3 key issues that need correction in the apprentice "{0}" stage learning (within 100 characters). If none, reply None.</value>
+    <value>请指出学徒在「{0}」阶段学习中需要重点纠正的2-3个关键问题（100字以内），若无则回复'无'。</value>
   </data>
   <data name="Master_StageCorrectionsSystem" xml:space="preserve">
-    <value>You are a strict learning supervisor. Only point out the most critical corrections.</value>
+    <value>你是一位严格的学习督导，只指出最关键的纠正点。</value>
   </data>
   <data name="Master_StageNoCorrections" xml:space="preserve">
-    <value>None</value>
+    <value>无</value>
   </data>
   <data name="Master_StageComplete" xml:space="preserve">
-    <value>Stage "{0}" completed</value>
+    <value>阶段「{0}」已完成</value>
   </data>
   <data name="Master_StageCompleteFailed" xml:space="preserve">
-    <value>Stage completion failed: {0}</value>
+    <value>阶段完成处理失败：{0}</value>
   </data>
+  <!-- AiFunctionService Keys -->
   <data name="AiFunction_VaultNotConfiguredSearch" xml:space="preserve">
-    <value>No vault is currently configured. Cannot search.</value>
+    <value>当前未配置知识库，无法搜索。</value>
   </data>
   <data name="AiFunction_SearchNoResults" xml:space="preserve">
-    <value>No relevant content found in the knowledge base.</value>
+    <value>未在知识库中找到相关内容。</value>
   </data>
   <data name="AiFunction_SearchResults" xml:space="preserve">
-    <value>Found {0} related notes in the knowledge base (showing first 5):
+    <value>在知识库中找到 {0} 条相关笔记（显示前 5 条）：
 
 </value>
   </data>
   <data name="AiFunction_SearchFailed" xml:space="preserve">
-    <value>Search failed: {0}</value>
+    <value>搜索失败：{0}</value>
   </data>
   <data name="AiFunction_CurrentTime" xml:space="preserve">
-    <value>Current time: {0}</value>
+    <value>当前时间：{0}</value>
   </data>
   <data name="AiFunction_NoVaultsConfigured" xml:space="preserve">
-    <value>No vaults are currently configured.</value>
+    <value>当前未配置任何知识库。</value>
   </data>
   <data name="AiFunction_VaultsList" xml:space="preserve">
-    <value>Configured vaults:
+    <value>已配置的知识库：
 </value>
   </data>
   <data name="AiFunction_VaultNotConfiguredSave" xml:space="preserve">
-    <value>No vault is currently configured. Cannot save note. Please configure a vault first.</value>
+    <value>当前未配置知识库，无法保存笔记。请先配置知识库。</value>
   </data>
   <data name="AiFunction_ContentEmpty" xml:space="preserve">
-    <value>Title and content cannot be empty.</value>
+    <value>标题和内容不能为空。</value>
   </data>
   <data name="AiFunction_NoteSourceInfo" xml:space="preserve">
-    <value>&gt; 📌 **Source**: AI Generated  
+    <value>&gt; 📌 **来源**: AI 生成  
 </value>
   </data>
   <data name="AiFunction_NoteTimeInfo" xml:space="preserve">
-    <value>&gt; ⏰ **Time**: {0}  
+    <value>&gt; ⏰ **时间**: {0}  
 
 </value>
   </data>
   <data name="AiFunction_NoteSaved" xml:space="preserve">
-    <value>Note "{0}" has been saved to vault [{1}].</value>
+    <value>笔记《{0}》已保存到知识库 [{1}]。</value>
   </data>
   <data name="AiFunction_SaveNoteFailed" xml:space="preserve">
-    <value>Failed to save note: {0}</value>
+    <value>保存笔记失败：{0}</value>
   </data>
   <data name="AiFunction_StatusHealthy" xml:space="preserve">
-    <value>System is running normally</value>
+    <value>系统运行正常</value>
   </data>
   <data name="AiFunction_StatusWarning" xml:space="preserve">
-    <value>System has warnings that need attention</value>
+    <value>系统有警告项需要关注</value>
   </data>
   <data name="AiFunction_StatusCritical" xml:space="preserve">
-    <value>System has critical issues that need attention</value>
+    <value>系统有严重问题需要处理</value>
   </data>
   <data name="AiFunction_StatusUnknown" xml:space="preserve">
-    <value>System status unknown</value>
+    <value>系统状态未知</value>
   </data>
   <data name="AiFunction_StatusWithScore" xml:space="preserve">
-    <value>{0} (Health Score: {1}/100)
+    <value>{0}（健康评分：{1}/100）
 
 </value>
   </data>
   <data name="AiFunction_GetStatusFailed" xml:space="preserve">
-    <value>Failed to retrieve system status: {0}</value>
+    <value>获取系统状态失败：{0}</value>
   </data>
   <data name="AiFunction_SearchVaultDesc" xml:space="preserve">
-    <value>Search the knowledge base for relevant notes. Use when the user asks about notes or knowledge base content.</value>
+    <value>搜索知识库中的相关笔记，返回笔记标题和内容预览。当用户询问笔记、知识库相关内容时使用。</value>
   </data>
   <data name="AiFunction_GetCurrentDateDesc" xml:space="preserve">
-    <value>Get the current date and time. Use when the user asks about time or date.</value>
+    <value>获取当前日期和时间，格式为 yyyy-MM-dd HH:mm:ss。当用户询问时间、日期、今天几号等问题时使用。</value>
   </data>
   <data name="AiFunction_ListVaultsDesc" xml:space="preserve">
-    <value>List all configured knowledge vaults. Use when the user asks about vault configuration.</value>
+    <value>列出当前已配置的所有知识库名称和路径。当用户询问有哪些知识库、知识库配置情况时使用。</value>
   </data>
   <data name="AiFunction_CreateNoteDesc" xml:space="preserve">
-    <value>Create a note and save it to the knowledge vault. Use when the user asks to save, record, or create notes.</value>
+    <value>创建一篇笔记并保存到知识库。当用户要求保存、记录、创建笔记时使用。</value>
   </data>
   <data name="AiFunction_GetSystemStatusDesc" xml:space="preserve">
-    <value>Get system health status including Git, Obsidian, Ollama, Python, Node, API Keys, vault paths. Use when the user asks about system status or issues.</value>
+    <value>获取系统各组件的健康状态，包括 Git、Obsidian、Ollama、Python、Node、API Key、知识库路径等。当用户询问系统状态、是否正常运行、有哪些问题时使用。</value>
   </data>
 
   <data name="Master_EvictStageLabel" xml:space="preserve">
-    <value>Stage:</value>
+    <value>阶段：</value>
   </data>
   <data name="Master_EvictSummaryLabel" xml:space="preserve">
-    <value>Summary:</value>
+    <value>摘要：</value>
   </data>
 
   <!-- System Health Service -->
   <data name="Health_PythonInstalled" xml:space="preserve">
-    <value>Python installed ({0})</value>
+    <value>Python 已安装 ({0})</value>
   </data>
   <data name="Health_PythonNotInstalled" xml:space="preserve">
-    <value>Python not installed (optional, for script extension)</value>
+    <value>Python 未安装（可选，用于脚本扩展）</value>
   </data>
   <data name="Health_NodeNotInstalled" xml:space="preserve">
-    <value>Node.js not installed</value>
+    <value>Node.js 未安装</value>
   </data>
   <data name="Health_NodeTimeout" xml:space="preserve">
-    <value>Node.js check timed out</value>
+    <value>Node.js 检测超时</value>
   </data>
   <data name="Health_NodeCheckFailed" xml:space="preserve">
-    <value>Node.js check failed</value>
+    <value>Node.js 检测失败</value>
   </data>
   <data name="Health_NodeInstalled" xml:space="preserve">
-    <value>Node.js is installed</value>
+    <value>Node.js 已安装</value>
   </data>
   <data name="Health_NodeCheckError" xml:space="preserve">
-    <value>Node.js check error</value>
+    <value>Node.js 检测异常</value>
   </data>
   <data name="Health_PipInstalled" xml:space="preserve">
-    <value>PIP installed ({0})</value>
+    <value>PIP 已安装 ({0})</value>
   </data>
   <data name="Health_PipNotInstalled" xml:space="preserve">
-    <value>PIP not installed (optional, for Python package management)</value>
+    <value>PIP 未安装（可选，用于 Python 包管理）</value>
   </data>
   <data name="Health_NoAiProvider" xml:space="preserve">
-    <value>No AI provider configured</value>
+    <value>未配置任何 AI 提供商</value>
   </data>
   <data name="Health_LocalProviderNoKey" xml:space="preserve">
-    <value>Main provider {0} is a local service, no API Key required</value>
+    <value>主提供商 {0} 为本地服务，无需 API Key</value>
   </data>
   <data name="Health_MainProviderNoKey" xml:space="preserve">
-    <value>Main provider {0} has no API Key configured</value>
+    <value>主提供商 {0} 未配置 API Key</value>
   </data>
   <data name="Health_AesEncrypted" xml:space="preserve">
-    <value>AES encrypted</value>
+    <value>AES加密</value>
   </data>
   <data name="Health_Encrypted" xml:space="preserve">
-    <value>Encrypted</value>
+    <value>已加密</value>
   </data>
   <data name="Health_ApiKeyConfigured" xml:space="preserve">
-    <value>{0} API Key configured ({1})</value>
+    <value>{0} API Key 已配置（{1}）</value>
   </data>
   <data name="Health_ProviderNoKey" xml:space="preserve">
-    <value>{0} has no API Key configured</value>
+    <value>{0} 未配置 API Key</value>
   </data>
   <data name="Health_ApiKeyCheckError" xml:space="preserve">
-    <value>API Key check error</value>
+    <value>API Key 检测异常</value>
   </data>
   <data name="Health_VaultPathNotConfigured" xml:space="preserve">
-    <value>Vault path not configured. Please go to settings to configure the Obsidian vault path.</value>
+    <value>未配置知识库路径。请前往设置页面配置 Obsidian 知识库路径</value>
   </data>
   <data name="Health_VaultPathNotExists" xml:space="preserve">
-    <value>Vault path does not exist: {0}. The directory may have been deleted or moved, please reconfigure.</value>
+    <value>知识库路径不存在: {0}。该目录可能被删除或移动，请重新配置</value>
   </data>
   <data name="Health_VaultConfigured" xml:space="preserve">
-    <value>Vault configured: {0} ({1} documents)</value>
+    <value>知识库已配置: {0} ({1} 个文档)</value>
   </data>
   <data name="Health_VaultPathConfigured" xml:space="preserve">
-    <value>Vault path configured: {0}. Click the [Open in Obsidian] button to initialize.</value>
+    <value>知识库路径已配置: {0}。点击[在 Obsidian 中打开]按钮初始化</value>
   </data>
   <data name="Health_VaultCheckError" xml:space="preserve">
-    <value>Vault path check error</value>
+    <value>知识库路径检测异常</value>
   </data>
   <data name="Health_GitNotInstalled" xml:space="preserve">
-    <value>Git not installed</value>
+    <value>Git 未安装</value>
   </data>
   <data name="Health_GitTimeout" xml:space="preserve">
-    <value>Git check timed out</value>
+    <value>Git 检测超时</value>
   </data>
   <data name="Health_GitCheckFailed" xml:space="preserve">
-    <value>Git check failed</value>
+    <value>Git 检测失败</value>
   </data>
   <data name="Health_GitInstalled" xml:space="preserve">
-    <value>Git is installed</value>
+    <value>Git 已安装</value>
   </data>
   <data name="Health_GitCheckError" xml:space="preserve">
-    <value>Git check error</value>
+    <value>Git 检测异常</value>
   </data>
   <data name="Health_ObsidianRunning" xml:space="preserve">
-    <value>Obsidian desktop client is running</value>
+    <value>Obsidian 桌面客户端运行中</value>
   </data>
   <data name="Health_ObsidianNotRunningLinux" xml:space="preserve">
-    <value>Obsidian desktop client not running (FTS5 search replaces CLI functionality on Linux)</value>
+    <value>Obsidian 桌面客户端未运行（Linux 上 FTS5 搜索已替代 CLI 功能）</value>
   </data>
   <data name="Health_ObsidianNotRunningWindows" xml:space="preserve">
-    <value>Obsidian desktop client not running (CLI functionality requires desktop client)</value>
+    <value>Obsidian 桌面客户端未运行（CLI 功能需要桌面客户端）</value>
   </data>
   <data name="Health_ObsidianCheckError" xml:space="preserve">
-    <value>Obsidian check error</value>
+    <value>Obsidian 检测异常</value>
   </data>
 
   <!-- Local Model Deployment -->
   <data name="LocalModel_GetRunningFailed" xml:space="preserve">
-    <value>Failed to get running models</value>
+    <value>获取运行中模型失败</value>
   </data>
   <data name="LocalModel_ToolIdRequired" xml:space="preserve">
-    <value>toolId cannot be empty</value>
+    <value>toolId 不能为空</value>
   </data>
   <data name="LocalModel_GetAvailableFailed" xml:space="preserve">
-    <value>Failed to get available models</value>
+    <value>获取可用模型列表失败</value>
   </data>
   <data name="LocalModel_ToolIdModelNameRequired" xml:space="preserve">
-    <value>ToolId and ModelName cannot be empty</value>
+    <value>ToolId 和 ModelName 不能为空</value>
   </data>
   <data name="LocalModel_ModelLoaded" xml:space="preserve">
-    <value>Model {0} loaded</value>
+    <value>模型 {0} 已加载</value>
   </data>
   <data name="LocalModel_CheckToolRunning" xml:space="preserve">
-    <value>Please check if the tool is running</value>
+    <value>请检查工具是否运行</value>
   </data>
   <data name="LocalModel_LoadFailed" xml:space="preserve">
-    <value>Load failed</value>
+    <value>加载失败</value>
   </data>
   <data name="LocalModel_ModelUnloaded" xml:space="preserve">
-    <value>Model {0} unloaded</value>
+    <value>模型 {0} 已卸载</value>
   </data>
   <data name="LocalModel_UnloadFailed" xml:space="preserve">
-    <value>Unload failed</value>
+    <value>卸载失败</value>
   </data>
   <data name="LocalModel_StartLlamaCppFailed" xml:space="preserve">
-    <value>Failed to start llama.cpp</value>
+    <value>启动 llama.cpp 失败</value>
   </data>
   <data name="LocalModel_LlamaCppStopped" xml:space="preserve">
-    <value>llama.cpp stopped</value>
+    <value>llama.cpp 已停止</value>
   </data>
   <data name="LocalModel_StopFailed" xml:space="preserve">
-    <value>Stop failed</value>
+    <value>停止失败</value>
   </data>
   <data name="LocalModel_CheckProcessAlive" xml:space="preserve">
-    <value>Please check if the process is alive</value>
+    <value>请检查进程是否存活</value>
   </data>
   <data name="LocalModel_StopLlamaCppFailed" xml:space="preserve">
-    <value>Failed to stop llama.cpp</value>
+    <value>停止 llama.cpp 失败</value>
   </data>
   <data name="LocalModel_GetDownloadedFailed" xml:space="preserve">
-    <value>Failed to get downloaded models</value>
+    <value>获取已下载模型列表失败</value>
   </data>
   <data name="LocalModel_ModelDeleted" xml:space="preserve">
-    <value>Model {0} deleted</value>
+    <value>模型 {0} 已删除</value>
   </data>
   <data name="LocalModel_DeleteFailed" xml:space="preserve">
-    <value>Delete failed</value>
+    <value>删除失败</value>
   </data>
   <data name="LocalModel_CheckToolOrModel" xml:space="preserve">
-    <value>Please check if the tool is running or the model exists</value>
+    <value>请检查工具是否运行或模型是否存在</value>
   </data>
   <data name="LocalModel_DetailsNotFound" xml:space="preserve">
-    <value>Model details not found</value>
+    <value>模型详情未找到</value>
   </data>
   <data name="LocalModel_DetailsNotSupported" xml:space="preserve">
-    <value>This tool does not support viewing model details</value>
+    <value>该工具暂不支持查看模型详情</value>
   </data>
   <data name="LocalModel_GetDetailsFailed" xml:space="preserve">
-    <value>Failed to get model details</value>
+    <value>获取模型详情失败</value>
   </data>
   <data name="LocalModel_ModelNotFound" xml:space="preserve">
-    <value>Model not found: {0}</value>
+    <value>未找到模型: {0}</value>
   </data>
   <data name="LocalModel_PreparingDeploy" xml:space="preserve">
-    <value>Preparing deployment</value>
+    <value>准备部署</value>
   </data>
   <data name="LocalModel_DeployStarted" xml:space="preserve">
-    <value>Starting deployment: {0} ({1})</value>
+    <value>开始部署: {0} ({1})</value>
   </data>
   <data name="LocalModel_UnsupportedTool" xml:space="preserve">
-    <value>Unsupported deployment tool: {0}</value>
+    <value>不支持的部署工具: {0}</value>
   </data>
   <data name="LocalModel_DeployCancelled" xml:space="preserve">
-    <value>Deployment cancelled</value>
+    <value>部署已取消</value>
   </data>
   <data name="LocalModel_Error" xml:space="preserve">
-    <value>Error: {0}</value>
+    <value>错误: {0}</value>
   </data>
   <data name="LocalModel_DeployTaskStarted" xml:space="preserve">
-    <value>Deployment task started</value>
+    <value>部署任务已启动</value>
   </data>
   <data name="LocalModel_CheckOllama" xml:space="preserve">
-    <value>Checking Ollama installation</value>
+    <value>检查 Ollama 安装</value>
   </data>
   <data name="LocalModel_CheckOllamaEllipsis" xml:space="preserve">
-    <value>Checking Ollama installation...</value>
+    <value>检查 Ollama 安装...</value>
   </data>
   <data name="LocalModel_OllamaNotInstalled" xml:space="preserve">
-    <value>Ollama is not installed. Please visit https://ollama.com to download and install.</value>
+    <value>Ollama 未安装。请访问 https://ollama.com 下载安装。</value>
   </data>
   <data name="LocalModel_OllamaVersion" xml:space="preserve">
-    <value>Ollama version: {0}</value>
+    <value>Ollama 版本: {0}</value>
   </data>
   <data name="LocalModel_StartOllama" xml:space="preserve">
-    <value>Starting Ollama service</value>
+    <value>启动 Ollama 服务</value>
   </data>
   <data name="LocalModel_CheckOllamaStatus" xml:space="preserve">
-    <value>Checking Ollama service status...</value>
+    <value>检查 Ollama 服务状态...</value>
   </data>
   <data name="LocalModel_OllamaStartFailed" xml:space="preserve">
-    <value>Ollama service failed to start, please start manually and retry.</value>
+    <value>Ollama 服务启动失败，请手动启动后重试。</value>
   </data>
   <data name="LocalModel_OllamaReady" xml:space="preserve">
-    <value>Ollama service ready</value>
+    <value>Ollama 服务已就绪</value>
   </data>
   <data name="LocalModel_DiskSpaceInsufficient" xml:space="preserve">
-    <value>Insufficient disk space. Model requires approximately {0} GB, only {1} GB available.</value>
+    <value>磁盘空间不足。模型需要约 {0} GB，可用空间仅 {1} GB。</value>
   </data>
   <data name="LocalModel_DownloadModel" xml:space="preserve">
-    <value>Downloading model</value>
+    <value>下载模型</value>
   </data>
   <data name="LocalModel_OllamaPullStarting" xml:space="preserve">
-    <value>Starting download: ollama pull {0}</value>
+    <value>开始下载: ollama pull {0}</value>
   </data>
   <data name="LocalModel_VerifyDeploy" xml:space="preserve">
-    <value>Verifying deployment</value>
+    <value>验证部署</value>
   </data>
   <data name="LocalModel_VerifyingModel" xml:space="preserve">
-    <value>Verifying model...</value>
+    <value>验证模型...</value>
   </data>
   <data name="LocalModel_OllamaVerifyFailed" xml:space="preserve">
-    <value>Model download completed but verification failed, please check Ollama logs.</value>
+    <value>模型下载完成但验证失败，请检查 Ollama 日志。</value>
   </data>
   <data name="LocalModel_ModelVerified" xml:space="preserve">
-    <value>Model verified successfully</value>
+    <value>模型验证通过</value>
   </data>
   <data name="LocalModel_ConfigureAiProvider" xml:space="preserve">
-    <value>Configuring AI Provider</value>
+    <value>配置 AI Provider</value>
   </data>
   <data name="LocalModel_AddingProvider" xml:space="preserve">
-    <value>Adding to AI provider configuration...</value>
+    <value>添加到 AI 服务商配置...</value>
   </data>
   <data name="LocalModel_ProviderConfigured" xml:space="preserve">
-    <value>AI Provider configuration complete</value>
+    <value>AI Provider 配置完成</value>
   </data>
   <data name="LocalModel_DeployComplete" xml:space="preserve">
-    <value>Deployment complete</value>
+    <value>部署完成</value>
   </data>
   <data name="LocalModel_DeploySuccess" xml:space="preserve">
-    <value>Deployment successful! Model is ready.</value>
+    <value>✅ 部署成功！模型已可用。</value>
   </data>
   <data name="LocalModel_CheckLmStudio" xml:space="preserve">
-    <value>Checking LM Studio installation</value>
+    <value>检查 LM Studio</value>
   </data>
   <data name="LocalModel_CheckLmStudioEllipsis" xml:space="preserve">
-    <value>Checking LM Studio installation...</value>
+    <value>检查 LM Studio 安装...</value>
   </data>
   <data name="LocalModel_LmStudioNotInstalled" xml:space="preserve">
-    <value>LM Studio CLI (lms) is not installed. Please visit https://lmstudio.ai to download and install, and ensure lms is in PATH.</value>
+    <value>LM Studio CLI (lms) 未安装。请访问 https://lmstudio.ai 下载安装，并确保 lms 命令在 PATH 中。</value>
   </data>
   <data name="LocalModel_LmStudioVersion" xml:space="preserve">
     <value>LM Studio CLI: {0}</value>
   </data>
   <data name="LocalModel_StartLmStudio" xml:space="preserve">
-    <value>Starting LM Studio service</value>
+    <value>启动 LM Studio 服务</value>
   </data>
   <data name="LocalModel_CheckLmStudioStatus" xml:space="preserve">
-    <value>Checking LM Studio service status...</value>
+    <value>检查 LM Studio 服务状态...</value>
   </data>
   <data name="LocalModel_LmStudioStartFailed" xml:space="preserve">
-    <value>LM Studio service failed to start, please start manually and retry.</value>
+    <value>LM Studio 服务启动失败，请手动启动后重试。</value>
   </data>
   <data name="LocalModel_LmStudioReady" xml:space="preserve">
-    <value>LM Studio service ready</value>
+    <value>LM Studio 服务已就绪</value>
   </data>
   <data name="LocalModel_SearchNameSource" xml:space="preserve">
-    <value>Search name: {0}, download source preference: {1}</value>
+    <value>搜索名称: {0}, 下载源偏好: {1}</value>
   </data>
   <data name="LocalModel_LmStudioVerifyWarning" xml:space="preserve">
-    <value>Unable to automatically verify model download, please check LM Studio interface.</value>
+    <value>⚠️ 无法自动验证模型是否下载成功，请检查 LM Studio 界面。</value>
   </data>
   <data name="LocalModel_ModelIdRequired" xml:space="preserve">
-    <value>ModelId cannot be empty</value>
+    <value>ModelId 不能为空</value>
   </data>
   <data name="LocalModel_StartDeployFailed" xml:space="preserve">
-    <value>Failed to start deployment</value>
+    <value>启动部署失败</value>
   </data>
   <data name="LocalModel_TaskNotFound" xml:space="preserve">
-    <value>Task not found</value>
+    <value>任务不存在</value>
   </data>
   <data name="LocalModel_TaskNotFoundOrDone" xml:space="preserve">
-    <value>Task not found or already completed</value>
+    <value>任务不存在或已完成</value>
   </data>
   <data name="LocalModel_TaskCancelled" xml:space="preserve">
-    <value>Task cancelled</value>
+    <value>任务已取消</value>
   </data>
   <data name="LocalModel_GetToolsFailed" xml:space="preserve">
-    <value>Failed to get local tool information</value>
+    <value>获取本地工具信息失败</value>
   </data>
   <data name="LocalModel_SaveConfigFailed" xml:space="preserve">
-    <value>Failed to save configuration</value>
+    <value>保存下载目录配置失败</value>
   </data>
   <data name="LocalModel_SaveFailed" xml:space="preserve">
-    <value>Save failed</value>
+    <value>保存失败</value>
   </data>
   <data name="LocalModel_ConfigSaved" xml:space="preserve">
-    <value>Configuration saved</value>
+    <value>配置已保存</value>
   </data>
   <data name="LocalModel_OllamaLibraryDisabled" xml:space="preserve">
-    <value>Ollama Library client is not enabled</value>
+    <value>Ollama Library 客户端未启用</value>
   </data>
   <data name="LocalModel_RefreshFailed" xml:space="preserve">
-    <value>Refresh failed</value>
+    <value>刷新失败</value>
   </data>
   <data name="LocalModel_GetHardwareFailed" xml:space="preserve">
-    <value>Failed to get hardware information</value>
+    <value>获取硬件信息失败</value>
   </data>
   <data name="LocalModel_LibraryRefreshed" xml:space="preserve">
-    <value>Model library refreshed</value>
+    <value>模型库已刷新</value>
   </data>
   <data name="LocalModel_GetRecommendationsFailed" xml:space="preserve">
-    <value>Failed to get model recommendations</value>
+    <value>获取模型推荐失败</value>
   </data>
 
   <!-- OpenClaw Controller -->
   <data name="OpenClaw_TaskNotFound" xml:space="preserve">
-    <value>Task not found</value>
+    <value>任务不存在</value>
   </data>
   <data name="OpenClaw_ReportNotExists" xml:space="preserve">
-    <value>Report does not exist or has not been generated yet</value>
+    <value>报告不存在或尚未生成</value>
   </data>
   <data name="OpenClaw_TaskNotFoundOrDone" xml:space="preserve">
-    <value>Task not found or already completed</value>
+    <value>任务不存在或已结束</value>
   </data>
   <data name="OpenClaw_TaskCancelled" xml:space="preserve">
-    <value>Task cancelled</value>
+    <value>任务已取消</value>
   </data>
   <data name="OpenClaw_SaveConfigFailed" xml:space="preserve">
-    <value>Failed to save configuration</value>
+    <value>保存配置失败</value>
   </data>
   <data name="OpenClaw_SetDefaultModelFailed" xml:space="preserve">
-    <value>Failed to set default model</value>
+    <value>设置默认模型失败</value>
   </data>
   <data name="OpenClaw_SyncFailed" xml:space="preserve">
-    <value>Failed to sync {0} models to OpenClaw</value>
+    <value>同步 {0} 模型到 OpenClaw 失败</value>
   </data>
   <data name="OpenClaw_SyncSuccess" xml:space="preserve">
-    <value>{0} models synced to OpenClaw</value>
+    <value>{0} 模型已同步到 OpenClaw</value>
   </data>
   <data name="OpenClaw_SetProfileFailed" xml:space="preserve">
-    <value>Failed to set model profile {0}</value>
+    <value>设置模型配置 {0} 失败</value>
   </data>
   <data name="OpenClaw_ProfileSwitched" xml:space="preserve">
-    <value>Switched to profile {0}</value>
+    <value>已切换到 {0} 配置</value>
   </data>
   <data name="OpenClaw_PromptRequired" xml:space="preserve">
-    <value>Prompt cannot be empty</value>
+    <value>Prompt 不能为空</value>
   </data>
   <data name="OpenClaw_ProviderParamRequired" xml:space="preserve">
-    <value>provider parameter cannot be empty</value>
+    <value>provider 参数不能为空</value>
   </data>
   <data name="OpenClaw_ProviderRequired" xml:space="preserve">
-    <value>provider cannot be empty</value>
+    <value>provider 不能为空</value>
   </data>
   <data name="OpenClaw_ProfileRequired" xml:space="preserve">
-    <value>profile cannot be empty</value>
+    <value>profile 不能为空</value>
   </data>
 
   <!-- Backup Controller -->
   <data name="Backup_FullBackupCreated" xml:space="preserve">
-    <value>Full backup created successfully</value>
+    <value>全量备份创建成功</value>
   </data>
   <data name="Backup_Failed" xml:space="preserve">
-    <value>Backup failed: {0}</value>
+    <value>备份失败：{0}</value>
   </data>
   <data name="Backup_RestoreSuccess" xml:space="preserve">
-    <value>Backup restored successfully</value>
+    <value>备份恢复成功</value>
   </data>
   <data name="Backup_RestoreFailed" xml:space="preserve">
-    <value>Restore failed: {0}</value>
+    <value>恢复失败：{0}</value>
   </data>
   <data name="Backup_FileValid" xml:space="preserve">
-    <value>Backup file is valid</value>
+    <value>备份文件有效</value>
   </data>
   <data name="Backup_Invalid" xml:space="preserve">
-    <value>Invalid: {0}</value>
+    <value>无效：{0}</value>
   </data>
   <data name="Backup_ValidateFailed" xml:space="preserve">
-    <value>Validation failed: {0}</value>
+    <value>验证失败：{0}</value>
   </data>
   <data name="Backup_ListFailed" xml:space="preserve">
-    <value>Failed to get backup list</value>
+    <value>获取备份列表失败</value>
   </data>
   <data name="Backup_ListFailedDetail" xml:space="preserve">
-    <value>Failed to get backup list: {0}</value>
+    <value>获取备份列表失败：{0}</value>
   </data>
 
   <!-- Anki Card Generator -->
   <data name="Anki_DeckPrefixJingFang" xml:space="preserve">
-    <value>Classical Formulas::{0}</value>
+    <value>经方::{0}</value>
   </data>
   <data name="Anki_TagJingFang" xml:space="preserve">
-    <value>Classical Formulas</value>
+    <value>经方</value>
   </data>
   <data name="Anki_NotesDirNotConfigured" xml:space="preserve">
-    <value>Notes directory not configured</value>
+    <value>笔记目录未配置</value>
   </data>
   <data name="Anki_NoteNotFound" xml:space="preserve">
-    <value>Note not found: {0}</value>
+    <value>笔记不存在：{0}</value>
   </data>
   <data name="Anki_AiNoCards" xml:space="preserve">
-    <value>AI did not generate cards from note: {0}</value>
+    <value>AI 未从笔记生成卡片: {0}</value>
   </data>
   <data name="Anki_AiSuccess" xml:space="preserve">
-    <value>AI successfully generated {0} cards: {1}</value>
+    <value>AI 成功生成 {0} 张卡片: {1}</value>
   </data>
   <data name="Anki_AiFailed" xml:space="preserve">
-    <value>AI generation failed: {0}</value>
+    <value>AI 生成失败: {0}</value>
   </data>
   <data name="Anki_DirNotFound" xml:space="preserve">
-    <value>Directory not found: {0}</value>
+    <value>目录不存在：{0}</value>
   </data>
   <data name="Anki_PreparingNotes" xml:space="preserve">
-    <value>Preparing to process {0} notes...</value>
+    <value>准备处理 {0} 篇笔记...</value>
   </data>
   <data name="Anki_BatchComplete" xml:space="preserve">
-    <value>AI batch generation complete: {0} cards from {1} notes</value>
+    <value>AI 批量生成完成: {0} 张卡片，来自 {1} 篇笔记</value>
   </data>
   <!-- === Phase 4 Batch 7: AI Controllers + Health === -->
   <data name="Ai_MissingNote_LinkPathEmpty" xml:space="preserve">
-    <value>Link path cannot be empty</value>
+    <value>链接路径不能为空</value>
   </data>
   <data name="Ai_MissingNote_VaultNotFound" xml:space="preserve">
-    <value>No valid vault found</value>
+    <value>未找到有效的知识库</value>
   </data>
   <data name="Ai_MissingNote_GeneratePrompt" xml:space="preserve">
-    <value>Please generate a note about「{0}」, requirements:
-- Use Markdown format
-- Content should be accurate, professional, and in-depth
-- If relevant, cite classic original texts
-- Use [[wikilink]] to link to related concepts
-- Start with a level-1 heading indicating the note name</value>
+    <value>请生成一篇关于「{0}」的笔记，要求：
+- 使用 Markdown 格式
+- 内容准确、专业、有深度
+- 如果是相关内容，请引用经典原文
+- 使用 [[wikilink]] 链接到相关概念
+- 在开头用一级标题标注笔记名称</value>
   </data>
   <data name="Ai_MissingNote_SourceInfo" xml:space="preserve">
-    <value>&gt; 📌 **Source**: AI generated (supplement missing link)  
-&gt; 🤖 **Model**: {0}  
-&gt; ⏰ **Time**: {1}</value>
+    <value>&gt; 📌 **来源**: AI 生成（补充缺失链接）  
+&gt; 🤖 **模型**: {0}  
+&gt; ⏰ **时间**: {1}</value>
   </data>
   <data name="Ai_MissingNote_Saved" xml:space="preserve">
-    <value>Note generated and saved to {0}</value>
+    <value>笔记已生成并保存到 {0}</value>
   </data>
   <data name="Ai_MissingNote_Failed" xml:space="preserve">
-    <value>Generation failed: {0}</value>
+    <value>生成失败：{0}</value>
   </data>
   <data name="Ai_MissingNote_NoDirectory" xml:space="preserve">
-    <value>Cannot get directory: {0}</value>
+    <value>无法获取目录：{0}</value>
   </data>
   <data name="Ai_Core_FuncExecuteFailed" xml:space="preserve">
-    <value>Execution failed: {0}</value>
+    <value>执行失败：{0}</value>
   </data>
   <data name="Ai_Core_FuncNotFound" xml:space="preserve">
-    <value>Function not found: {0}</value>
+    <value>未找到函数：{0}</value>
   </data>
   <data name="Ai_Core_EmptyResponse" xml:space="preserve">
-    <value>AI returned empty content</value>
+    <value>AI 返回内容为空</value>
   </data>
   <data name="Ai_Core_ModelDisabled" xml:space="preserve">
-    <value>Model is disabled. Please go to [Settings] → [AI Configuration] to switch to another model</value>
+    <value>模型不可用。请前往【设置】→【AI 配置】更换其他模型</value>
   </data>
   <data name="Ai_Core_ApiKeyInvalid" xml:space="preserve">
-    <value>API Key is invalid or expired. Please check the API Key in [Settings] → [AI Configuration]</value>
+    <value>API Key 无效或已过期。请检查【设置】→【AI 配置】中的 API Key 设置</value>
   </data>
   <data name="Ai_Core_BalanceInsufficient" xml:space="preserve">
-    <value>Account balance insufficient or quota exhausted</value>
+    <value>账户余额不足或配额已用完</value>
   </data>
   <data name="Ai_Core_RequestFailed" xml:space="preserve">
-    <value>AI API request failed: {0}</value>
+    <value>AI API 请求失败：{0}</value>
   </data>
   <data name="Ai_Core_ProviderNotFound" xml:space="preserve">
-    <value>Specified AI provider not found</value>
+    <value>未找到指定的AI提供商</value>
   </data>
   <data name="Ai_Ask_QueryEmpty" xml:space="preserve">
-    <value>Query cannot be empty</value>
+    <value>问题不能为空</value>
   </data>
   <data name="Ai_Ask_Success" xml:space="preserve">
-    <value>Generation successful</value>
+    <value>生成成功</value>
   </data>
   <data name="Ai_Ask_Failed" xml:space="preserve">
-    <value>Generation failed: {0}</value>
+    <value>生成失败：{0}</value>
   </data>
   <data name="Ai_Ask_SourceInfo" xml:space="preserve">
-    <value>&gt; 📌 **Source**: AI Generated  
-&gt; 🤖 **Model**: {0}  
-&gt; 🏢 **Provider**: {1}  
-&gt; ⏰ **Time**: {2}  
-&gt; ⏱️ **Duration**: {3}ms</value>
+    <value>&gt; 📌 **来源**: AI 生成  
+&gt; 🤖 **模型**: {0}  
+&gt; 🏢 **提供商**: {1}  
+&gt; ⏰ **时间**: {2}  
+&gt; ⏱️ **耗时**: {3}ms</value>
   </data>
   <data name="Ai_Chat_ReplySuccess" xml:space="preserve">
-    <value>Reply successful</value>
+    <value>回复成功</value>
   </data>
   <data name="Ai_Chat_Failed" xml:space="preserve">
-    <value>Chat failed: {0}</value>
+    <value>聊天失败：{0}</value>
   </data>
   <data name="Ai_Chat_SourceInfo" xml:space="preserve">
-    <value>&gt; 📌 **Source**: AI Chat  
-&gt; 🤖 **Model**: {0}  
-&gt; 🏢 **Provider**: {1}  
-&gt; ⏰ **Time**: {2}  
-&gt; ⏱️ **Duration**: {3}ms</value>
+    <value>&gt; 📌 **来源**: AI 对话  
+&gt; 🤖 **模型**: {0}  
+&gt; 🏢 **提供商**: {1}  
+&gt; ⏰ **时间**: {2}  
+&gt; ⏱️ **耗时**: {3}ms</value>
   </data>
   <data name="Health_CheckTimeout" xml:space="preserve">
-    <value>Health check timeout</value>
+    <value>健康检查超时</value>
   </data>
   <data name="Health_CheckTimeoutMessage" xml:space="preserve">
-    <value>Full self-check did not complete within 25 seconds. Please retry later, or use GET /api/health/simple, GET /health.</value>
+    <value>完整自检超过 25 秒未完成。请稍后重试，或使用 GET /api/health/simple、GET /health。</value>
   </data>
   <data name="Health_CheckFailed" xml:space="preserve">
-    <value>Health check failed</value>
+    <value>健康检查失败</value>
   </data>
   <data name="Health_ComponentNotFound" xml:space="preserve">
-    <value>Component not found: {0}</value>
+    <value>组件不存在: {0}</value>
   </data>
   <data name="Health_ComponentCheckFailed" xml:space="preserve">
-    <value>Component check failed</value>
+    <value>组件检查失败</value>
   </data>
   <data name="Health_GetComponentsFailed" xml:space="preserve">
-    <value>Failed to get component list</value>
+    <value>获取组件列表失败</value>
   </data>
   <data name="Health_Fix_StatusNormal" xml:space="preserve">
-    <value>Status normal, no fix needed</value>
+    <value>状态正常，无需修复</value>
   </data>
   <data name="Health_Fix_OllamaStarted" xml:space="preserve">
-    <value>Ollama service started</value>
+    <value>Ollama 服务已启动</value>
   </data>
   <data name="Health_Fix_OllamaFailed" xml:space="preserve">
-    <value>Ollama startup failed, please install and start manually</value>
+    <value>Ollama 启动失败，请手动安装并启动</value>
   </data>
   <data name="Health_Fix_StartFailed" xml:space="preserve">
-    <value>Start failed: {0}</value>
+    <value>启动失败: {0}</value>
   </data>
   <data name="Health_Fix_Git" xml:space="preserve">
-    <value>Please install Git: sudo apt-get install git (Linux) or visit git-scm.com (Windows/macOS)</value>
+    <value>请安装 Git: sudo apt-get install git (Linux) 或访问 git-scm.com (Windows/macOS)</value>
   </data>
   <data name="Health_Fix_Python" xml:space="preserve">
-    <value>Please install Python: sudo apt-get install python3 (Linux) or visit python.org</value>
+    <value>请安装 Python: sudo apt-get install python3 (Linux) 或访问 python.org</value>
   </data>
   <data name="Health_Fix_NodeJs" xml:space="preserve">
-    <value>Please install Node.js: visit nodejs.org to download the installer</value>
+    <value>请安装 Node.js: 访问 nodejs.org 下载安装包</value>
   </data>
   <data name="Health_Fix_Pip" xml:space="preserve">
-    <value>PIP is usually installed with Python. If missing, run: python3 -m ensurepip</value>
+    <value>PIP 通常随 Python 一起安装。如缺失请运行: python3 -m ensurepip</value>
   </data>
   <data name="Health_Fix_ApiKey" xml:space="preserve">
-    <value>Please go to WebUI → AI Settings to configure API Key</value>
+    <value>请前往 WebUI → AI设置 页面配置 API Key</value>
   </data>
   <data name="Health_Fix_Vault" xml:space="preserve">
-    <value>Please go to WebUI → Vault to configure Obsidian vault path</value>
+    <value>请前往 WebUI → 知识库 页面配置 Obsidian 知识库路径</value>
   </data>
   <data name="Health_Fix_Obsidian" xml:space="preserve">
-    <value>Please start the Obsidian desktop client</value>
+    <value>请启动 Obsidian 桌面客户端</value>
   </data>
   <data name="Health_Fix_NotSupported" xml:space="preserve">
-    <value>Auto-fix not supported yet</value>
+    <value>暂不支持自动修复</value>
   </data>
   <data name="Health_Fix_Completed" xml:space="preserve">
-    <value>Fix completed. Health score: {0}%. Manual actions needed: {1} item(s)</value>
+    <value>修复完成。健康度: {0}%。需手动处理: {1} 项</value>
   </data>
   <data name="Health_Fix_Failed" xml:space="preserve">
-    <value>Fix failed: {0}</value>
+    <value>修复失败: {0}</value>
   </data>
   <data name="Health_Setup_OpenClawNotInstalled" xml:space="preserve">
-    <value>OpenClaw is not installed. Please run: npm install -g openclaw</value>
+    <value>OpenClaw 未安装。请运行: npm install -g openclaw</value>
   </data>
   <data name="Health_Setup_OpenClawBroken" xml:space="preserve">
-    <value>OpenClaw installation is abnormal, cannot execute configuration</value>
+    <value>OpenClaw 安装异常，无法执行配置</value>
   </data>
   <data name="Health_Setup_DoctorStartFailed" xml:space="preserve">
-    <value>Cannot start openclaw doctor</value>
+    <value>无法启动 openclaw doctor</value>
   </data>
   <data name="Health_Setup_FixCompleted" xml:space="preserve">
-    <value>OpenClaw configuration fix completed</value>
+    <value>OpenClaw 配置修复完成</value>
   </data>
   <data name="Health_Setup_DoctorNonZeroExit" xml:space="preserve">
-    <value>OpenClaw doctor returned non-zero exit code</value>
+    <value>OpenClaw doctor 返回非零退出码</value>
   </data>
   <data name="Health_Setup_DoctorBackground" xml:space="preserve">
-    <value>OpenClaw configuration fix has been started in the background (may take 30-60 seconds to complete)</value>
+    <value>OpenClaw 配置修复已在后台启动（可能需要 30-60 秒完成）</value>
   </data>
   <data name="Health_Setup_Timeout" xml:space="preserve">
-    <value>OpenClaw configuration timed out (exceeded 60 seconds)</value>
+    <value>OpenClaw 配置超时（超过 60 秒）</value>
   </data>
   <data name="Health_Setup_Failed" xml:space="preserve">
-    <value>Configuration failed: {0}</value>
+    <value>配置失败: {0}</value>
   </data>
   <data name="AtomNote_PrepareAiConfig" xml:space="preserve">
-    <value>Preparing AI configuration...</value>
+    <value>准备 AI 配置...</value>
   </data>
   <data name="AtomNote_NoProviderConfigured" xml:space="preserve">
-    <value>No available AI provider configured (please check the Ai array in appsettings.json)</value>
+    <value>未配置可用的 AI 提供方（请检查 appsettings.json 中 Ai 数组）</value>
   </data>
   <data name="AtomNote_SplitPhase" xml:space="preserve">
-    <value>Split notes</value>
+    <value>拆分笔记</value>
   </data>
   <data name="AtomNote_SupplementPhase" xml:space="preserve">
-    <value>Supplement and improve</value>
+    <value>补充完善</value>
   </data>
   <data name="AtomNote_StepProgress" xml:space="preserve">
-    <value>Step {0}/{1}: {2} ({3} / {4})...</value>
+    <value>步骤 {0}/{1}：{2}（{3} / {4}）...</value>
   </data>
   <data name="AtomNote_Split" xml:space="preserve">
-    <value>Split</value>
+    <value>拆分</value>
   </data>
   <data name="AtomNote_Supplement" xml:space="preserve">
-    <value>Supplement</value>
+    <value>补充</value>
   </data>
   <data name="AtomNote_AllModelsFailed" xml:space="preserve">
-    <value>All models failed: {0}</value>
+    <value>所有模型均失败：{0}</value>
   </data>
   <data name="AtomNote_NoNotesProduced" xml:space="preserve">
-    <value>No notes were produced by any model</value>
+    <value>所有模型均未产出可用笔记</value>
   </data>
   <data name="AtomNote_ParsingResults" xml:space="preserve">
-    <value>Parsing results...</value>
+    <value>解析结果...</value>
   </data>
   <data name="AtomNote_SavingNotes" xml:space="preserve">
-    <value>Saving {0} notes...</value>
+    <value>保存 {0} 条笔记...</value>
   </data>
   <data name="AtomNote_SupplementRoundLabel" xml:space="preserve">
-    <value>Cycle supplement (Round {0})</value>
+    <value>循环补充(轮{0})</value>
   </data>
   <data name="AtomNote_SupplementRound" xml:space="preserve">
-    <value>Round {0} supplement: {1} missing targets...</value>
+    <value>第 {0} 轮补充：{1} 个缺失目标...</value>
   </data>
   <data name="AtomNote_StepFailed" xml:space="preserve">
-    <value>{0} / {1} ({2}) failed: {3}</value>
+    <value>{0} / {1} ({2}) 失败：{3}</value>
   </data>
   <data name="AtomNote_SupplementRoundFailed" xml:space="preserve">
-    <value>Supplement round failed (Round {0})</value>
+    <value>补充轮次失败（第 {0} 轮）</value>
   </data>
   <data name="AtomNote_SupplementRoundDone" xml:space="preserve">
-    <value>Round {0} supplement complete, {1} new note(s) added</value>
+    <value>第 {0} 轮补充完成，新增 {1} 条笔记</value>
   </data>
   <data name="AtomNote_NoSavedNotes" xml:space="preserve">
-    <value>No notes were successfully saved. Please check the vault path configuration.</value>
+    <value>没有成功保存任何笔记，请检查知识库路径配置</value>
   </data>
   <!-- AchievementEngine Keys -->
   <data name="Achievement_Accuracy80_Desc" xml:space="preserve">
-    <value>Achieve 80% daily accuracy</value>
+    <value>单日正确率达到 80%</value>
   </data>
   <data name="Achievement_Accuracy80_Title" xml:space="preserve">
-    <value>Deadshot</value>
+    <value>百发百中</value>
   </data>
   <data name="Achievement_Cards10_Desc" xml:space="preserve">
-    <value>Complete 10 card reviews</value>
+    <value>累计学习 10 张卡片</value>
   </data>
   <data name="Achievement_Cards10_Title" xml:space="preserve">
-    <value>Ten-card Trial</value>
+    <value>十题小试</value>
   </data>
   <data name="Achievement_Cards50_Desc" xml:space="preserve">
-    <value>Complete 50 card reviews</value>
+    <value>累计学习 50 张卡片</value>
   </data>
   <data name="Achievement_Cards50_Title" xml:space="preserve">
-    <value>Fifty-card Progress</value>
+    <value>半百精进</value>
   </data>
   <data name="Achievement_Cards100_Desc" xml:space="preserve">
-    <value>Complete 100 card reviews</value>
+    <value>累计学习 100 张卡片</value>
   </data>
   <data name="Achievement_Cards100_Title" xml:space="preserve">
-    <value>Hundred-card Milestone</value>
+    <value>百题大关</value>
   </data>
   <data name="Achievement_Cards500_Desc" xml:space="preserve">
-    <value>Complete 500 card reviews</value>
+    <value>累计学习 500 张卡片</value>
   </data>
   <data name="Achievement_Cards500_Title" xml:space="preserve">
-    <value>Learned and Wise</value>
+    <value>学富五车</value>
   </data>
   <data name="Achievement_Creator1_Desc" xml:space="preserve">
-    <value>First parent-created quiz</value>
+    <value>首次家长出题</value>
   </data>
   <data name="Achievement_Creator1_Title" xml:space="preserve">
-    <value>Beginner</value>
+    <value>初出茅庐</value>
   </data>
   <data name="Achievement_Creator10_Desc" xml:space="preserve">
-    <value>Created 10 quizzes in total</value>
+    <value>累计出题 10 道</value>
   </data>
   <data name="Achievement_Creator10_Title" xml:space="preserve">
-    <value>Quiz Maker</value>
+    <value>出题能手</value>
   </data>
   <data name="Achievement_EarlyBird_Desc" xml:space="preserve">
-    <value>Complete study before 6 AM</value>
+    <value>早上 6 点前完成学习</value>
   </data>
   <data name="Achievement_EarlyBird_Title" xml:space="preserve">
-    <value>Early Bird</value>
+    <value>闻鸡起舞</value>
   </data>
   <data name="Achievement_Explorer1_Desc" xml:space="preserve">
-    <value>First AI conversation</value>
+    <value>首次使用 AI 对话</value>
   </data>
   <data name="Achievement_Explorer1_Title" xml:space="preserve">
-    <value>First Encounter with AI</value>
+    <value>初识岐黄</value>
   </data>
   <data name="Achievement_Explorer10_Desc" xml:space="preserve">
-    <value>10 AI conversations in total</value>
+    <value>累计使用 AI 对话 10 次</value>
   </data>
   <data name="Achievement_Explorer10_Title" xml:space="preserve">
-    <value>Ten Queries Asked</value>
+    <value>问道十次</value>
   </data>
   <data name="Achievement_FirstStep_Desc" xml:space="preserve">
-    <value>Complete your first card review</value>
+    <value>完成首次卡片学习</value>
   </data>
   <data name="Achievement_FirstStep_Title" xml:space="preserve">
-    <value>First Step</value>
+    <value>第一步</value>
   </data>
   <data name="Achievement_Streak3_Desc" xml:space="preserve">
-    <value>Study 3 consecutive days</value>
+    <value>连续学习 3 天</value>
   </data>
   <data name="Achievement_Streak3_Title" xml:space="preserve">
-    <value>Three-day Streak</value>
+    <value>三日不断</value>
   </data>
   <data name="Achievement_Streak7_Desc" xml:space="preserve">
-    <value>Study 7 consecutive days</value>
+    <value>连续学习 7 天</value>
   </data>
   <data name="Achievement_Streak7_Title" xml:space="preserve">
-    <value>Weekly Persistence</value>
+    <value>周周坚持</value>
   </data>
   <data name="Achievement_Streak30_Desc" xml:space="preserve">
-    <value>Study 30 consecutive days</value>
+    <value>连续学习 30 天</value>
   </data>
   <data name="Achievement_Streak30_Title" xml:space="preserve">
-    <value>Monthly Dedication</value>
+    <value>月月不辍</value>
   </data>
   <!-- AiConfig Keys -->
   <data name="AiConfig_ApiKeyUpdated" xml:space="preserve">
-    <value>API Key updated</value>
+    <value>API Key 已更新</value>
   </data>
   <data name="AiConfig_Deleted" xml:space="preserve">
-    <value>Configuration deleted</value>
+    <value>配置已删除</value>
   </data>
   <data name="AiConfig_DeleteFailedDetail" xml:space="preserve">
-    <value>Delete failed: {0}</value>
+    <value>删除失败: {0}</value>
   </data>
   <data name="AiConfig_GetFailedDetail" xml:space="preserve">
-    <value>Get failed: {0}</value>
+    <value>获取失败: {0}</value>
   </data>
   <data name="AiConfig_InvalidApiKeyFormat" xml:space="preserve">
-    <value>Invalid API key format</value>
+    <value>API Key 格式无效</value>
   </data>
   <data name="AiConfig_MainProviderNoApiKey" xml:space="preserve">
-    <value>Main AI provider does not have an API key set</value>
+    <value>主 AI 提供商未设置 API Key</value>
   </data>
   <data name="AiConfig_NoMainProvider" xml:space="preserve">
-    <value>No main AI provider configured</value>
+    <value>未配置主 AI 提供商</value>
   </data>
   <data name="AiConfig_SaveFailedDetail" xml:space="preserve">
-    <value>Save failed: {0}</value>
+    <value>保存失败: {0}</value>
   </data>
   <data name="AiConfig_Saved" xml:space="preserve">
-    <value>Configuration saved</value>
+    <value>配置已保存</value>
   </data>
   <data name="AiConfig_UpdateFailedDetail" xml:space="preserve">
-    <value>Update failed: {0}</value>
+    <value>更新失败: {0}</value>
   </data>
   <!-- AiConfig Preset Keys -->
   <data name="AiConfig_PresetCustom" xml:space="preserve">
-    <value>Custom (OpenAI-compatible, e.g. local Ollama / LM Studio)</value>
+    <value>自定义 (OpenAI 兼容，如本地 Ollama / LM Studio)</value>
   </data>
   <data name="AiConfig_PresetAliyun" xml:space="preserve">
-    <value>Alibaba Cloud Bailian</value>
+    <value>阿里云百炼 (Aliyun Bailian)</value>
   </data>
   <data name="AiConfig_PresetDeepSeek" xml:space="preserve">
-    <value>DeepSeek (Official)</value>
+    <value>DeepSeek (官方)</value>
   </data>
   <data name="AiConfig_PresetKimi" xml:space="preserve">
-    <value>Kimi (Moonshot AI)</value>
+    <value>Kimi (月之暗面)</value>
   </data>
   <data name="AiConfig_PresetLocalLmStudio" xml:space="preserve">
-    <value>Local LM Studio</value>
+    <value>本地 LM Studio</value>
   </data>
   <data name="AiConfig_PresetLocalOllama" xml:space="preserve">
-    <value>Local Ollama</value>
+    <value>本地 Ollama</value>
   </data>
   <data name="AiConfig_PresetVolcano" xml:space="preserve">
-    <value>Volcano Engine Ark</value>
+    <value>火山引擎方舟 (Volcano Ark)</value>
   </data>
   <data name="AiConfig_PresetZhipu" xml:space="preserve">
-    <value>Zhipu AI (GLM)</value>
+    <value>智谱 AI (GLM)</value>
   </data>
   <!-- Devices Keys -->
   <data name="Devices_DeviceAuthorized" xml:space="preserve">
-    <value>Device authorized</value>
+    <value>设备已授权</value>
   </data>
   <data name="Devices_DeviceIdRequired" xml:space="preserve">
-    <value>Device ID cannot be empty</value>
+    <value>设备 ID 不能为空</value>
   </data>
   <data name="Devices_DeviceNotFound" xml:space="preserve">
-    <value>Device not found</value>
+    <value>设备不存在</value>
   </data>
   <data name="Devices_DeviceRevoked" xml:space="preserve">
-    <value>Device authorization revoked</value>
+    <value>已撤销设备授权</value>
   </data>
   <data name="Devices_RequestIdRequired" xml:space="preserve">
-    <value>Request ID cannot be empty</value>
+    <value>请求 ID 不能为空</value>
   </data>
   <data name="Devices_RequestNotFound" xml:space="preserve">
-    <value>Request not found or already processed</value>
+    <value>请求不存在或已处理</value>
   </data>
   <data name="Devices_RequestRejected" xml:space="preserve">
-    <value>Device pairing rejected</value>
+    <value>已拒绝设备配对</value>
   </data>
   <!-- Git Keys -->
   <data name="Git_CommitFailed" xml:space="preserve">
-    <value>Commit failed: {0}</value>
+    <value>提交失败: {0}</value>
   </data>
   <data name="Git_CommitMessageRequired" xml:space="preserve">
-    <value>Commit message cannot be empty</value>
+    <value>提交信息不能为空</value>
   </data>
   <data name="Git_CommitSuccess" xml:space="preserve">
-    <value>Commit successful</value>
+    <value>提交成功</value>
   </data>
   <data name="Git_NoChanges" xml:space="preserve">
-    <value>No changes to commit</value>
+    <value>没有需要提交的变更</value>
   </data>
   <data name="Git_NoRemote" xml:space="preserve">
-    <value>No remote repository configured</value>
+    <value>未配置远程仓库</value>
   </data>
   <data name="Git_PullFailed" xml:space="preserve">
-    <value>Pull failed: {0}</value>
+    <value>拉取失败: {0}</value>
   </data>
   <data name="Git_PullSuccess" xml:space="preserve">
-    <value>Pull successful</value>
+    <value>拉取成功</value>
   </data>
   <data name="Git_PushFailed" xml:space="preserve">
-    <value>Push failed: {0}</value>
+    <value>推送失败: {0}</value>
   </data>
   <data name="Git_PushSuccess" xml:space="preserve">
-    <value>Push successful</value>
+    <value>推送成功</value>
   </data>
   <!-- LocalAi Keys -->
   <data name="LocalAi_BinaryPathInvalid" xml:space="preserve">
-    <value>llama-server path is invalid: {0}</value>
+    <value>llama-server 路径无效: {0}</value>
   </data>
   <data name="LocalAi_LlamaCppNotEnabled" xml:space="preserve">
-    <value>llama.cpp is not enabled</value>
+    <value>llama.cpp 未启用</value>
   </data>
   <data name="LocalAi_LlamaCppRunning" xml:space="preserve">
-    <value>llama.cpp service is running</value>
+    <value>llama.cpp 服务正在运行</value>
   </data>
   <data name="LocalAi_LlamaCppStartSuccessGpu" xml:space="preserve">
-    <value>llama.cpp started successfully (GPU acceleration enabled)</value>
+    <value>llama.cpp 启动成功（GPU 加速已启用）</value>
   </data>
   <data name="LocalAi_LlamaCppStartTimeout" xml:space="preserve">
-    <value>llama.cpp start attempted, but service not ready within expected time. Please check the logs.</value>
+    <value>llama.cpp 已尝试启动，但服务未在预期时间内就绪，请检查日志</value>
   </data>
   <data name="LocalAi_ModelFileNotFound" xml:space="preserve">
-    <value>Model file not found: {0}</value>
+    <value>模型文件不存在: {0}</value>
   </data>
   <data name="LocalAi_ServiceRunning" xml:space="preserve">
-    <value>{0} service is running</value>
+    <value>{0} 服务正在运行</value>
   </data>
   <data name="LocalAi_StartFailedCannotCreateProcess" xml:space="preserve">
-    <value>Failed to start {0}: cannot create process</value>
+    <value>启动 {0} 失败：无法创建进程</value>
   </data>
   <data name="LocalAi_StartFailedDetail" xml:space="preserve">
-    <value>Failed to start {0}: {1}</value>
+    <value>启动 {0} 失败: {1}</value>
   </data>
   <data name="LocalAi_StartLlamaCppFailedDetail" xml:space="preserve">
-    <value>Failed to start llama.cpp: {0}</value>
+    <value>启动 llama.cpp 失败: {0}</value>
   </data>
   <data name="LocalAi_StartLlamaCppProcessFailed" xml:space="preserve">
-    <value>Failed to start llama.cpp: cannot create process</value>
+    <value>启动 llama.cpp 失败：无法创建进程</value>
   </data>
   <data name="LocalAi_StartSuccess" xml:space="preserve">
-    <value>{0} started successfully</value>
+    <value>{0} 启动成功</value>
   </data>
   <data name="LocalAi_StartTimeout" xml:space="preserve">
-    <value>{0} failed to start, service not ready within expected time. Please check the logs.</value>
+    <value>{0} 已尝试启动，但服务未在预期时间内就绪，请检查日志</value>
   </data>
   <data name="LocalAi_UnsupportedProvider" xml:space="preserve">
-    <value>Unsupported provider: {0}</value>
+    <value>不支持的 provider: {0}</value>
   </data>
   <!-- ModelRec Keys -->
   <data name="ModelRec_CpuOnlyAcceptable" xml:space="preserve">
-    <value>CPU-only mode (acceptable)</value>
+    <value>纯 CPU 运行（可接受）</value>
   </data>
   <data name="ModelRec_CpuOnlySlow" xml:space="preserve">
-    <value>CPU-only mode (slow)</value>
+    <value>纯 CPU 运行（较慢）</value>
   </data>
   <data name="ModelRec_CpuOnlyVerySlow" xml:space="preserve">
-    <value>CPU-only mode (very slow, emergency only)</value>
+    <value>纯 CPU 运行（很慢，仅应急）</value>
   </data>
   <data name="ModelRec_DirectRun" xml:space="preserve">
-    <value>Ready to run</value>
+    <value>可直接运行</value>
   </data>
   <data name="ModelRec_GpuAccelerated" xml:space="preserve">
-    <value>GPU accelerated</value>
+    <value>GPU 加速运行</value>
   </data>
   <data name="ModelRec_InsufficientMemory" xml:space="preserve">
-    <value>Insufficient memory</value>
+    <value>内存不足</value>
   </data>
   <data name="ModelRec_InsufficientVramCpu" xml:space="preserve">
-    <value>Insufficient VRAM, using CPU (slow)</value>
+    <value>显存不足，主要使用 CPU（慢）</value>
   </data>
   <data name="ModelRec_InsufficientVramHybrid" xml:space="preserve">
-    <value>Insufficient VRAM, hybrid mode (slower)</value>
+    <value>显存不足，混合运行（较慢）</value>
   </data>
   <data name="ModelRec_MemoryTight" xml:space="preserve">
-    <value>, memory tight</value>
+    <value>，内存紧张</value>
   </data>
   <!-- Onboarding Keys -->
   <data name="Onboarding_DescAddFamilyMember" xml:space="preserve">
-    <value>Family members can scan QR with their phones. Approve on the device management page.</value>
+    <value>让家庭成员用手机扫码连接，您在设备管理页面批准即可</value>
   </data>
   <data name="Onboarding_DescCreateComputerVault" xml:space="preserve">
-    <value>Create a "Computer" knowledge base with AI technology beginner notes.</value>
+    <value>建立「计算机」知识库，包含 AI 技术入门笔记</value>
   </data>
   <data name="Onboarding_DescCreateTcmVault" xml:space="preserve">
-    <value>Create a "TCM" knowledge base with spleen-stomach disease notes.</value>
+    <value>建立「中医」知识库，包含脾胃病知识笔记</value>
   </data>
   <data name="Onboarding_TaskNotFound" xml:space="preserve">
-    <value>Task not found</value>
+    <value>任务不存在</value>
   </data>
   <data name="Onboarding_TitleAddFamilyMember" xml:space="preserve">
-    <value>Add Family Member</value>
+    <value>添加家庭成员</value>
   </data>
   <data name="Onboarding_TitleCreateComputerVault" xml:space="preserve">
-    <value>Create Computer Vault</value>
+    <value>创建计算机知识库</value>
   </data>
   <data name="Onboarding_TitleCreateTcmVault" xml:space="preserve">
-    <value>Create TCM Vault</value>
+    <value>创建中医知识库</value>
   </data>
   <!-- Vault Keys (new) -->
   <data name="Vault_DefaultIndustry" xml:space="preserve">
-    <value>Notes</value>
+    <value>笔记</value>
   </data>
   <data name="Vault_IdCannotBeEmpty" xml:space="preserve">
-    <value>Vault ID cannot be empty</value>
+    <value>知识库 ID 不能为空</value>
   </data>
   <data name="Vault_NameCannotBeEmpty" xml:space="preserve">
-    <value>Vault name cannot be empty</value>
+    <value>知识库名称不能为空</value>
   </data>
   <data name="Vault_PathCannotBeEmpty" xml:space="preserve">
-    <value>Vault path cannot be empty</value>
+    <value>知识库路径不能为空</value>
   </data>
   <data name="Vault_RequestCannotBeEmpty" xml:space="preserve">
-    <value>Request cannot be empty</value>
+    <value>请求不能为空</value>
   </data>
   <data name="Vault_RestoreFailed" xml:space="preserve">
-    <value>Restore failed, vault not found or original path is occupied</value>
+    <value>恢复失败，知识库不存在或原始路径已被占用</value>
   </data>
   <!-- === Phase 4 Batch 9: Vault + AI remaining strings === -->
   <data name="Vault_NameNotesRequired" xml:space="preserve">
-    <value>Vault name and notes list cannot be empty</value>
+    <value>知识库名称和笔记列表不能为空</value>
   </data>
   <data name="Vault_DataInconsistencyContactAdmin" xml:space="preserve">
-    <value>Vault data inconsistency: database record exists but physical directory is missing. Please contact administrator.</value>
+    <value>知识库数据不一致：数据库记录存在但物理目录已丢失，请联系管理员</value>
   </data>
   <data name="Vault_IllegalFilePath" xml:space="preserve">
-    <value>Illegal file path: {0}</value>
+    <value>非法文件路径: {0}</value>
   </data>
   <data name="Vault_PushSuccessMigrated" xml:space="preserve">
-    <value>Vault pushed successfully (path structure migrated)</value>
+    <value>知识库推送成功（已迁移路径结构）</value>
   </data>
   <data name="Vault_PushSuccess" xml:space="preserve">
-    <value>Vault pushed successfully</value>
+    <value>知识库推送成功</value>
   </data>
   <data name="Vault_PushFailed" xml:space="preserve">
-    <value>Push failed: {0}</value>
+    <value>推送失败: {0}</value>
   </data>
   <data name="Vault_UnpushInvalidRequest" xml:space="preserve">
-    <value>VaultId and DeviceId are required</value>
+    <value>缺少知识库ID或设备ID</value>
   </data>
   <data name="Vault_UnpushFailed" xml:space="preserve">
-    <value>Failed to clear push marker: {0}</value>
+    <value>清除推送标记失败: {0}</value>
   </data>
   <data name="Vault_PathRequired" xml:space="preserve">
-    <value>Path cannot be empty</value>
+    <value>路径不能为空</value>
   </data>
   <data name="Vault_NoteNotFound" xml:space="preserve">
-    <value>Note not found: {0}</value>
+    <value>笔记不存在：{0}</value>
   </data>
   <data name="Vault_ContentRequired" xml:space="preserve">
-    <value>Content cannot be empty</value>
+    <value>内容不能为空</value>
   </data>
   
   <data name="Vault_TokenRequired" xml:space="preserve">
-    <value>Token cannot be empty</value>
+    <value>Token 不能为空</value>
   </data>
   <data name="Vault_TokenInvalidOrExpired" xml:space="preserve">
-    <value>Token invalid or expired</value>
+    <value>Token 无效或已过期</value>
   </data>
   <data name="Vault_NotFoundOrDeleted" xml:space="preserve">
-    <value>Vault not found or has been deleted</value>
+    <value>知识库不存在或已被删除</value>
   </data>
   <data name="Vault_DataInconsistencyDirMissing" xml:space="preserve">
-    <value>Vault data inconsistency: physical directory is missing</value>
+    <value>知识库数据不一致：物理目录已丢失</value>
   </data>
   <data name="Vault_RootPathNotSet" xml:space="preserve">
-    <value>Vault root path not set</value>
+    <value>知识库根路径未设置</value>
   </data>
   <data name="Vault_RootPathNotExists" xml:space="preserve">
-    <value>Vault root path does not exist: {0}</value>
+    <value>根路径不存在: {0}</value>
   </data>
   <data name="Vault_Fts5Reindexed" xml:space="preserve">
-    <value>FTS5 index for vault {0} has been rebuilt</value>
+    <value>知识库 {0} 的 FTS5 索引已重建</value>
   </data>
   <data name="Vault_NoMatchFound" xml:space="preserve">
-    <value>No matching content found in the vault</value>
+    <value>未在知识库中找到匹配内容</value>
   </data>
   <data name="Vault_MobileGenerated" xml:space="preserve">
-    <value>Mobile generated</value>
+    <value>移动端生成</value>
   </data>
   <data name="Vault_MobileDeviceName" xml:space="preserve">
-    <value>Mobile ({0})</value>
+    <value>移动端({0})</value>
   </data>
   <data name="Vault_SpecifiedVault" xml:space="preserve">
-    <value>Specified vault</value>
+    <value>指定知识库</value>
   </data>
   <data name="Search_VaultPathNotExists" xml:space="preserve">
-    <value>Vault path does not exist: {0}</value>
+    <value>知识库路径不存在：{0}</value>
   </data>
   <data name="AiChat_Timeout" xml:space="preserve">
-    <value>AI call timed out or was cancelled</value>
+    <value>AI 调用超时或已被取消</value>
   </data>
   <data name="AiChat_LocalAiNotRunning" xml:space="preserve">
-    <value>Local AI service {0} is not running and auto-start failed. Please start manually and retry.</value>
+    <value>本地 AI 服务 {0} 未运行且自动启动失败，请手动启动后重试。</value>
   </data>
   <data name="AiChat_ProviderNotFound" xml:space="preserve">
-    <value>Specified AI provider not found</value>
+    <value>未找到指定的 AI 提供商</value>
   </data>
   <data name="LocalAi_ModelPathRequired" xml:space="preserve">
-    <value>Model path cannot be empty</value>
+    <value>模型路径不能为空</value>
   </data>
   <data name="LocalAi_UnsupportedModelType" xml:space="preserve">
-    <value>Unsupported local model type: {0}</value>
+    <value>不支持的本地模型类型: {0}</value>
   </data>
   <data name="LocalAi_ModelUnavailable" xml:space="preserve">
-    <value>Model is unavailable: {0}</value>
+    <value>模型不可用: {0}</value>
   </data>
   <data name="Devices_AuthorizeFailed" xml:space="preserve">
-    <value>Authorization failed: {0}</value>
+    <value>授权失败: {0}</value>
   </data>
   <data name="Devices_RejectFailed" xml:space="preserve">
-    <value>Reject failed: {0}</value>
+    <value>拒绝失败: {0}</value>
   </data>
   <data name="Devices_RevokeFailed" xml:space="preserve">
-    <value>Revoke failed: {0}</value>
+    <value>撤销失败: {0}</value>
   </data>
   <!-- === Phase 4 Batch 10: Remaining Family Controllers === -->
   <data name="ChatCompletions_MessagesEmpty" xml:space="preserve">
-    <value>Messages cannot be empty</value>
+    <value>消息不能为空</value>
   </data>
   <data name="ChatCompletions_ProviderNotConfigured" xml:space="preserve">
-    <value>AI provider not configured</value>
+    <value>未配置 AI 提供商</value>
   </data>
   <data name="ChatCompletions_ToolResultEmpty" xml:space="preserve">
-    <value>Tool execution completed, no content returned</value>
+    <value>工具执行完成，无返回内容</value>
   </data>
   <data name="VaultFocus_MasterIdEmpty" xml:space="preserve">
-    <value>Master ID cannot be empty</value>
+    <value>师父ID不能为空</value>
   </data>
   <data name="VaultFocus_VaultIdEmpty" xml:space="preserve">
-    <value>Vault ID cannot be empty</value>
+    <value>知识库ID不能为空</value>
   </data>
   <data name="Anki_NotePathEmpty" xml:space="preserve">
-    <value>Note path cannot be empty</value>
+    <value>笔记路径不能为空</value>
   </data>
   <data name="Anki_VaultIdEmpty" xml:space="preserve">
-    <value>Vault ID cannot be empty</value>
+    <value>知识库 ID 不能为空</value>
   </data>
   <data name="Anki_VaultNotFound" xml:space="preserve">
-    <value>Vault not found</value>
+    <value>知识库不存在</value>
   </data>
   <data name="Anki_NotesDirNotExist" xml:space="preserve">
-    <value>Notes directory does not exist</value>
+    <value>笔记目录不存在</value>
   </data>
   <data name="Anki_GeneratingCardsFor" xml:space="preserve">
-    <value>Starting AI card generation for {0}...</value>
+    <value>开始为 {0} 使用 AI 生成记忆卡片...</value>
   </data>
   <data name="Anki_AiCardTaskCreated" xml:space="preserve">
-    <value>AI card generation task created</value>
+    <value>AI 卡片生成任务已创建</value>
   </data>
   <data name="Anki_VaultRequired" xml:space="preserve">
-    <value>A vault must be specified</value>
+    <value>必须指定知识库</value>
   </data>
   <data name="Anki_RecordFailed" xml:space="preserve">
-    <value>Failed to record answer</value>
+    <value>记录失败</value>
   </data>
   <data name="Anki_SaveFailed" xml:space="preserve">
-    <value>Failed to save card</value>
+    <value>保存失败</value>
   </data>
   <data name="Anki_CardSaved" xml:space="preserve">
-    <value>Card saved</value>
+    <value>卡片已保存</value>
   </data>
   <data name="Git_VaultNotConfigured" xml:space="preserve">
-    <value>Vault has no Git configured</value>
+    <value>知识库未配置 Git</value>
   </data>
   <data name="Git_WorkingDirClean" xml:space="preserve">
-    <value>Working directory clean</value>
+    <value>工作区干净</value>
   </data>
   <data name="Git_ChangesCount" xml:space="preserve">
-    <value>{0} file(s) changed</value>
+    <value>有 {0} 个文件变更</value>
   </data>
   <data name="Git_StatusFailed" xml:space="preserve">
-    <value>Get status failed: {0}</value>
+    <value>获取状态失败: {0}</value>
   </data>
   <data name="Git_NoChangesToDiscard" xml:space="preserve">
-    <value>No changes to discard</value>
+    <value>没有需要撤销的更改</value>
   </data>
   <data name="Git_DiscardSuccess" xml:space="preserve">
-    <value>All workspace changes discarded</value>
+    <value>已撤销所有工作区更改</value>
   </data>
   <data name="Git_DiscardFailed" xml:space="preserve">
-    <value>Discard failed: {0}</value>
+    <value>撤销失败: {0}</value>
   </data>
   <data name="Obsidian_NoVaultConfigured" xml:space="preserve">
-    <value>No vault configured</value>
+    <value>没有配置知识库</value>
   </data>
   <data name="Obsidian_PathEmpty" xml:space="preserve">
-    <value>Path cannot be empty</value>
+    <value>路径不能为空</value>
   </data>
   <data name="Obsidian_CreateDirFailed" xml:space="preserve">
-    <value>Failed to create directory: {0}</value>
+    <value>无法创建目录: {0}</value>
   </data>
   <data name="Obsidian_LaunchFailed" xml:space="preserve">
-    <value>Launch failed: {0}</value>
+    <value>启动失败: {0}</value>
   </data>
   <data name="Onboarding_VaultCreated" xml:space="preserve">
-    <value>Vault '{0}' created successfully</value>
+    <value>知识库 '{0}' 创建成功</value>
   </data>
   <data name="Onboarding_CreateFailed" xml:space="preserve">
-    <value>Creation failed: {0}</value>
+    <value>创建失败: {0}</value>
   </data>
   <data name="Register_DeviceIdRequired" xml:space="preserve">
     <value>DeviceId is required</value>
   </data>
   <data name="Register_DefaultDeviceName" xml:space="preserve">
-    <value>Mobile device</value>
+    <value>移动端设备</value>
   </data>
   <data name="Register_DeviceAuthorized" xml:space="preserve">
-    <value>Device authorized</value>
+    <value>设备已授权</value>
   </data>
   <data name="Register_DeviceAuthorizedUpdated" xml:space="preserve">
-    <value>Device authorized (device ID updated)</value>
+    <value>设备已授权（已更新设备标识）</value>
   </data>
   <data name="Register_DeviceIdChangedReauthorize" xml:space="preserve">
-    <value>Device ID changed, please reauthorize in WebUI</value>
+    <value>设备标识已变更，请在 WebUI 中重新授权</value>
   </data>
   <data name="Register_DeviceRegistered" xml:space="preserve">
-    <value>Device registered, please authorize in WebUI</value>
+    <value>设备已注册，请在 WebUI 中授权</value>
   </data>
 
   <!-- === Phase 4 Batch 11: MasterPromptBuilder === -->
   <data name="MasterPrompt_RuDao_Role" xml:space="preserve">
-    <value>Guide</value>
+    <value>引路人</value>
   </data>
   <data name="MasterPrompt_RuDao_Style" xml:space="preserve">
-    <value>Gentle, curious, good at asking questions</value>
+    <value>温和、好奇、善问</value>
   </data>
   <data name="MasterPrompt_RuDao_Prompt" xml:space="preserve">
-    <value>You are a gentle guide. Your task is to understand the apprentice's foundation, goals, and motivation. Guide the apprentice to self-awareness through questions rather than direct teaching. Explore the apprentice's background with curiosity and help them clarify their learning direction.</value>
+    <value>你是一位温和的引路人。你的任务是了解学徒的基础、目标和动机。通过提问引导学徒自我认知，而非直接灌输。用好奇的语气探索学徒的背景，帮助他们明确学习方向。</value>
   </data>
   <data name="MasterPrompt_ZhuJi_Role" xml:space="preserve">
-    <value>Strict Teacher</value>
+    <value>严师</value>
   </data>
   <data name="MasterPrompt_ZhuJi_Style" xml:space="preserve">
-    <value>Patient but strict</value>
+    <value>有耐心但要求严格</value>
   </data>
   <data name="MasterPrompt_ZhuJi_Prompt" xml:space="preserve">
-    <value>You are a strict teacher. You require the apprentice to thoroughly grasp foundational knowledge, no sloppiness allowed. Assign daily homework and check completion. Correct mistakes patiently but insist on correct answers. Emphasize: "A weak foundation leads to shaky progress."</value>
+    <value>你是一位严格的师父。你要求学徒扎实掌握基础知识，不容许敷衍了事。每日布置功课并检查完成情况。对错误耐心纠正，但要求必须改对。强调'基础不牢，地动山摇'。</value>
   </data>
   <data name="MasterPrompt_JingJin_Role" xml:space="preserve">
-    <value>Master Craftsman</value>
+    <value>匠人</value>
   </data>
   <data name="MasterPrompt_JingJin_Style" xml:space="preserve">
-    <value>Extremely patient, never lets mistakes slide</value>
+    <value>极其耐心、绝不放过细节错误</value>
   </data>
   <data name="MasterPrompt_JingJin_Prompt" xml:space="preserve">
-    <value>You are a master craftsman who strives for perfection. You have an almost obsessive attention to detail — any tiny mistake must be pointed out and corrected. You will repeatedly question until the apprentice fully understands. Emphasize: "A minor error can lead to a huge discrepancy."</value>
+    <value>你是一位精益求精的匠人师父。你对细节有近乎偏执的追求，任何微小错误都要指出并纠正。你会反复追问直到学徒完全理解。强调'差之毫厘，谬以千里'。</value>
   </data>
   <data name="MasterPrompt_MoLi_Role" xml:space="preserve">
-    <value>Examiner</value>
+    <value>考官</value>
   </data>
   <data name="MasterPrompt_MoLi_Style" xml:space="preserve">
-    <value>Simulates real exam environment</value>
+    <value>模拟真实考试环境</value>
   </data>
   <data name="MasterPrompt_MoLi_Prompt" xml:space="preserve">
-    <value>You are a strict examiner. You simulate real exam conditions, setting questions to test the apprentice's comprehensive abilities. Time limits are strict, scoring standards are clear. After the exam, analyze wrong answers in detail and identify knowledge gaps. Emphasize: "True knowledge comes from practice."</value>
+    <value>你是一位严肃的考官。你模拟真实考试环境，出题考察学徒的综合能力。时间限制严格，评分标准明确。考后详细分析错题，指出知识盲区。强调'实战出真知'。</value>
   </data>
   <data name="MasterPrompt_ChuShi_Role" xml:space="preserve">
-    <value>Senior</value>
+    <value>前辈</value>
   </data>
   <data name="MasterPrompt_ChuShi_Style" xml:space="preserve">
-    <value>Practical advice, exam experience</value>
+    <value>实战建议、考试经验</value>
   </data>
   <data name="MasterPrompt_ChuShi_Prompt" xml:space="preserve">
-    <value>You are an experienced senior. Share practical experience and exam techniques to help the apprentice make final preparations. Provide application guidance, pre-exam mental preparation, and test-taking strategies. Emphasize: "A quick polish before the exam still helps."</value>
+    <value>你是一位经验丰富的前辈。你分享实战经验和考试技巧，帮助学徒做好最后的冲刺准备。提供报考指导、考前心理建设、应试策略。强调'临阵磨枪，不快也光'。</value>
   </data>
   <data name="MasterPrompt_MasterQiBo" xml:space="preserve">
-    <value>Qi Bo</value>
+    <value>岐伯</value>
   </data>
   <data name="MasterPrompt_MasterTuLing" xml:space="preserve">
-    <value>Turing</value>
+    <value>图灵</value>
   </data>
   <data name="MasterPrompt_MasterSuanSheng" xml:space="preserve">
-    <value>Suan Sheng</value>
+    <value>算圣</value>
   </data>
   <data name="MasterPrompt_MasterFuZi" xml:space="preserve">
-    <value>Fu Zi</value>
+    <value>夫子</value>
   </data>
   <data name="MasterPrompt_MasterTingWei" xml:space="preserve">
-    <value>Ting Wei</value>
+    <value>廷尉</value>
   </data>
   <data name="MasterPrompt_MasterLuBan" xml:space="preserve">
-    <value>Lu Ban</value>
+    <value>鲁班</value>
   </data>
   <data name="MasterPrompt_OutlineHeader" xml:space="preserve">
-    <value>Exam Outline: {0}</value>
+    <value># 考试大纲：{0}</value>
   </data>
   <data name="MasterPrompt_StageKeyPoints" xml:space="preserve">
-    <value>## Current Stage Key Points</value>
+    <value>## 当前阶段考点</value>
   </data>
   <data name="MasterPrompt_TransitionCriteria" xml:space="preserve">
-    <value>## Stage Transition Criteria: {0}</value>
+    <value>## 阶段转换标准：{0}</value>
   </data>
   <data name="MasterPrompt_Milestones" xml:space="preserve">
-    <value>## Milestones</value>
+    <value>## 里程碑</value>
   </data>
 
   <!-- === Phase 4 Batch 11: OpenClawTaskService === -->
   <data name="OpenClawTask_CannotStartProcess" xml:space="preserve">
-    <value>Cannot start openclaw process</value>
+    <value>无法启动 openclaw 进程</value>
   </data>
   <data name="OpenClawTask_Timeout" xml:space="preserve">
-    <value>Task execution timed out (over {0} minutes)</value>
+    <value>任务执行超时（超过 {0} 分钟）</value>
   </data>
   <data name="OpenClawTask_UserCancelled" xml:space="preserve">
-    <value>Cancelled by user</value>
+    <value>用户已取消</value>
   </data>
   <data name="OpenClawTask_ReportHeader" xml:space="preserve">
-    <value># OpenClaw Execution Report</value>
+    <value># OpenClaw 执行报告</value>
   </data>
   <data name="OpenClawTask_Duration" xml:space="preserve">
-    <value>- **Duration**: {0:F0} ms</value>
+    <value>- **执行耗时**: {0:F0} ms</value>
   </data>
   <data name="OpenClawTask_Model" xml:space="preserve">
-    <value>- **Model**: {0}</value>
+    <value>- **模型**: {0}</value>
   </data>
   <data name="OpenClawTask_FallbackOutput" xml:space="preserve">
-    <value># OpenClaw Output
+    <value># OpenClaw 输出
 
 ```
 {0}
@@ -1916,72 +1918,72 @@
 
   <!-- === Phase 4 Batch 11: RestoreService === -->
   <data name="Restore_FileNotFound" xml:space="preserve">
-    <value>Backup file not found</value>
+    <value>备份文件不存在</value>
   </data>
   <data name="Restore_InvalidManifest" xml:space="preserve">
-    <value>Invalid backup file: missing manifest.json</value>
+    <value>无效的备份文件：缺少 manifest.json</value>
   </data>
   <data name="Restore_UnsupportedVersion" xml:space="preserve">
-    <value>Unsupported backup format version</value>
+    <value>不支持的备份格式版本</value>
   </data>
   <data name="Restore_PasswordRequired" xml:space="preserve">
-    <value>This backup is password protected, please enter the password</value>
+    <value>此备份有密码保护，请输入密码</value>
   </data>
   <data name="Restore_DatabaseFailed" xml:space="preserve">
-    <value>Failed to restore database</value>
+    <value>恢复数据库失败</value>
   </data>
   <data name="Restore_Cancelled" xml:space="preserve">
-    <value>Restore cancelled</value>
+    <value>恢复已取消</value>
   </data>
 
   <!-- === Phase 4 Batch 11: ChatMemoryService === -->
   <data name="ChatMemory_HistorySummary" xml:space="preserve">
-    <value>[Conversation History Summary]</value>
+    <value>【对话历史摘要】</value>
   </data>
   <data name="ChatMemory_RelevantMemories" xml:space="preserve">
-    <value>[Relevant Historical Memories]</value>
+    <value>【相关历史记忆】</value>
   </data>
 
   <!-- === Phase 4 Batch 11: NoteParser === -->
   <data name="NoteParser_JsonParseFailed" xml:space="preserve">
-    <value>JSON parse failed: {0}</value>
+    <value>JSON 解析失败：{0}</value>
   </data>
   <data name="NoteParser_EmptyResponse" xml:space="preserve">
-    <value>AI response is empty</value>
+    <value>AI 返回内容为空</value>
   </data>
   <data name="NoteParser_NoArrayStart" xml:space="preserve">
-    <value>JSON array start '[' not found</value>
+    <value>未找到 JSON 数组起始符 '['</value>
   </data>
   <data name="NoteParser_NoArrayEnd" xml:space="preserve">
-    <value>JSON array end ']' incomplete</value>
+    <value>JSON 数组结束符 ']' 不完整</value>
   </data>
 
   <!-- === Phase 4 Batch 11: BackupService === -->
   <data name="Backup_Cancelled" xml:space="preserve">
-    <value>Backup cancelled</value>
+    <value>备份已取消</value>
   </data>
   <data name="Backup_FileNotFound" xml:space="preserve">
-    <value>File not found</value>
+    <value>文件不存在</value>
   </data>
   <data name="Backup_MissingManifest" xml:space="preserve">
-    <value>Missing manifest.json</value>
+    <value>缺少 manifest.json</value>
   </data>
   <data name="Backup_InvalidManifestFormat" xml:space="preserve">
-    <value>Invalid manifest.json format</value>
+    <value>manifest.json 格式错误</value>
   </data>
 
   <!-- === Phase 4 Batch 11: StartupMonitor === -->
   <data name="Startup_Uptime" xml:space="preserve">
-    <value>Uptime: {0}</value>
+    <value>服务运行时间: {0}</value>
   </data>
   <data name="Startup_StartTime" xml:space="preserve">
-    <value>Start time: {0}</value>
+    <value>启动时间: {0}</value>
   </data>
   <data name="Startup_RestartCount" xml:space="preserve">
-    <value>Restarts: {0}</value>
+    <value>重启次数: {0}</value>
   </data>
   <data name="Startup_RecentRestarts" xml:space="preserve">
-    <value>Restarts in last 10 min: {0}</value>
+    <value>最近10分钟启动次数: {0}</value>
   </data>
   <data name="Startup_Pid" xml:space="preserve">
     <value>PID: {0}</value>
@@ -1989,483 +1991,480 @@
 
   <!-- === Phase 4 Batch 11: NotesMdCliController === -->
   <data name="NotesMdCli_PathEmpty" xml:space="preserve">
-    <value>Path cannot be empty</value>
+    <value>路径不能为空</value>
   </data>
   <data name="NotesMdCli_DirNotFound" xml:space="preserve">
-    <value>Directory not found</value>
+    <value>目录不存在</value>
   </data>
   <data name="NotesMdCli_AddFailed" xml:space="preserve">
-    <value>Add failed, please check if notesmd-cli is working properly</value>
+    <value>添加失败，请检查 notesmd-cli 是否正常工作</value>
   </data>
   <data name="NotesMdCli_PathsEmpty" xml:space="preserve">
-    <value>Path list cannot be empty</value>
+    <value>路径列表不能为空</value>
   </data>
   <data name="NotesMdCli_NoValidPaths" xml:space="preserve">
-    <value>No valid directory paths</value>
+    <value>没有有效的目录路径</value>
   </data>
 
   <!-- === Phase 4 Batch 11: LocalModelDeploymentService.Lifecycle === -->
   <data name="LocalModel_Lifecycle_OllamaNotRunning" xml:space="preserve">
-    <value>Ollama service not running and auto-start failed, please start manually and retry.</value>
+    <value>Ollama 服务未运行且自动启动失败，请手动启动后重试。</value>
   </data>
   <data name="LocalModel_Lifecycle_LmStudioNotRunning" xml:space="preserve">
-    <value>LM Studio service not running and auto-start failed, please start manually and retry.</value>
+    <value>LM Studio 服务未运行且自动启动失败，请手动启动后重试。</value>
   </data>
 
   <!-- === Phase 4 Batch 12: AI Controllers remaining strings === -->
   <data name="AiChat_LocalServiceNotRunning" xml:space="preserve">
-    <value>Local AI service {0} is not running and auto-start failed. Please start manually and retry.</value>
+    <value>本地 AI 服务 {0} 未运行且自动启动失败，请手动启动后重试。</value>
   </data>
   <data name="AiChat_TimeoutOrCancelled" xml:space="preserve">
-    <value>AI call timed out or was cancelled</value>
+    <value>AI 调用超时或已被取消</value>
   </data>
   <data name="AiChat_Failed" xml:space="preserve">
-    <value>Chat failed: {0}</value>
+    <value>聊天失败：{0}</value>
   </data>
   <data name="AiChat_PromptNameEmpty" xml:space="preserve">
-    <value>Name cannot be empty</value>
+    <value>名称不能为空</value>
   </data>
   <data name="AiChat_DefaultTemplateProtected" xml:space="preserve">
-    <value>Cannot delete the default template</value>
+    <value>不能删除通用模板</value>
   </data>
   <data name="AiChat_TemplateNotFound" xml:space="preserve">
-    <value>Template not found</value>
+    <value>模板不存在</value>
   </data>
   <data name="Benchmark_Started" xml:space="preserve">
-    <value>Benchmark started</value>
+    <value>测试已启动</value>
   </data>
   <data name="Benchmark_Stopped" xml:space="preserve">
-    <value>Benchmark stopped</value>
+    <value>测试已停止</value>
   </data>
   <data name="AiStage_Blessing_Chushi_1" xml:space="preserve">
-    <value>{name} bows deeply: My disciple has matured, treasure the road ahead.</value>
+    <value>{name}长揖道：吾徒已成，前路珍重。</value>
   </data>
   <data name="AiStage_Blessing_Chushi_2" xml:space="preserve">
-    <value>{name} says tearfully: The student surpasses the master, exceeding all expectations.</value>
+    <value>{name}含泪道：青出于蓝，不负所望。</value>
   </data>
   <data name="AiStage_Blessing_Chushi_3" xml:space="preserve">
-    <value>{name} smiles: The mountains are high and the road is long; may your future be bright.</value>
+    <value>{name}微笑道：山高路远，愿你前程似锦。</value>
   </data>
   <data name="AiStage_Blessing_Jingjin_1" xml:space="preserve">
-    <value>{name} says with a smile: Skill refined, the artisan spirit is taking shape.</value>
+    <value>{name}含笑道：技艺渐精，已得匠心。</value>
   </data>
   <data name="AiStage_Blessing_Jingjin_2" xml:space="preserve">
-    <value>{name} nods: Details reveal true skill; you have entered the path.</value>
+    <value>{name}颔首道：细节之处见真功，你已入门径。</value>
   </data>
   <data name="AiStage_Blessing_Jingjin_3" xml:space="preserve">
-    <value>{name} says with relief: Excellence is the hallmark of a true craftsman.</value>
+    <value>{name}欣慰道：精益求精，方显匠人本色。</value>
   </data>
   <data name="AiStage_Blessing_Moli_1" xml:space="preserve">
-    <value>{name} says seriously: Steel tempered through a hundred fires, you are ready for battle.</value>
+    <value>{name}严肃道：百炼成钢，你已堪一战。</value>
   </data>
   <data name="AiStage_Blessing_Moli_2" xml:space="preserve">
-    <value>{name} nods: Practice may be hard, but the real test will find you composed.</value>
+    <value>{name}点头道：模拟虽苦，实战方从容。</value>
   </data>
   <data name="AiStage_Blessing_Moli_3" xml:space="preserve">
-    <value>{name} says solemnly: The exam is like a battlefield, and you are armored.</value>
+    <value>{name}正色道：考场如战场，你已备甲胄。</value>
   </data>
   <data name="AiStage_Blessing_Rudao_1" xml:space="preserve">
-    <value>{name} smiles: You have taken the first step. The road is long, but those who walk shall reach.</value>
+    <value>{name}微微一笑：你已迈出第一步，路虽远，行则将至。</value>
   </data>
   <data name="AiStage_Blessing_Rudao_2" xml:space="preserve">
-    <value>{name} nods: Foundation laid, the path ahead is promising.</value>
+    <value>{name}点头道：基础已定，前路可期。</value>
   </data>
   <data name="AiStage_Blessing_Rudao_3" xml:space="preserve">
-    <value>{name} whispers softly: Entering the path is easy, keeping it is hard. Persevere.</value>
+    <value>{name}轻声道：入门虽易，守道方难，望你持之。</value>
   </data>
   <data name="AiStage_Blessing_Zhuji_1" xml:space="preserve">
-    <value>{name} says with relief: Foundation fortified, unshaken by wind and rain.</value>
+    <value>{name}欣慰道：根基已固，风雨不惧。</value>
   </data>
   <data name="AiStage_Blessing_Zhuji_2" xml:space="preserve">
-    <value>{name} says seriously: With a solid foundation, you can journey far.</value>
+    <value>{name}正色道：基础扎实，方可远行。</value>
   </data>
   <data name="AiStage_Blessing_Zhuji_3" xml:space="preserve">
-    <value>{name} praises: Lessons unceasing, foundation deepens daily.</value>
+    <value>{name}赞许道：功课不辍，根基日深。</value>
   </data>
 
   <data name="Encryption_InvalidLength" xml:space="preserve">
-    <value>Invalid ciphertext format: insufficient length</value>
+    <value>密文格式错误：长度不足</value>
   </data>
   <data name="Encryption_UnsupportedVersion" xml:space="preserve">
-    <value>Unsupported encryption version: {0}</value>
+    <value>不支持的加密版本：{0}</value>
   </data>
   <!-- === Phase 4 Batch 13: SyncController + VaultController + Misc === -->
   <data name="Sync_FileModifiedByOther" xml:space="preserve">
-    <value>File has been modified by another device</value>
+    <value>文件已被其他设备修改</value>
   </data>
   <data name="Sync_NoteUpdateSuccess" xml:space="preserve">
-    <value>Note updated successfully</value>
+    <value>笔记更新成功</value>
   </data>
   <data name="Sync_UpdateFailed" xml:space="preserve">
-    <value>Update failed: {0}</value>
+    <value>更新失败：{0}</value>
   </data>
   <data name="Vault_IllegalPath" xml:space="preserve">
-    <value>Illegal path</value>
+    <value>非法路径</value>
   </data>
   <data name="Vault_PathEmpty" xml:space="preserve">
-    <value>Vault path is empty</value>
+    <value>知识库路径为空</value>
   </data>
   <data name="ObsidianStatus_Unknown" xml:space="preserve">
-    <value>Obsidian status unknown</value>
+    <value>Obsidian 状态未知</value>
   </data>
   <data name="ObsidianStatus_Timeout" xml:space="preserve">
-    <value>Check timed out, Obsidian may not be running</value>
+    <value>检测超时，Obsidian 可能未运行</value>
   </data>
   <data name="ObsidianStatus_CheckFailed" xml:space="preserve">
-    <value>Failed to check Obsidian status</value>
+    <value>检测 Obsidian 状态失败</value>
   </data>
   <data name="AiClient_LocalServiceStartFailed" xml:space="preserve">
-    <value>Local AI service {0} is not running and auto-start failed. Please start manually and retry.</value>
+    <value>本地 AI 服务 {0} 未运行且自动启动失败，请手动启动后重试。</value>
   </data>
   <data name="AiClient_ProviderNotFound" xml:space="preserve">
-    <value>AI provider not found: {0}</value>
+    <value>未找到 AI 提供商：{0}</value>
   </data>
   <data name="AiClient_EmbeddingNotConfigured" xml:space="preserve">
-    <value>Embedding URL or model not configured</value>
+    <value>未配置 Embedding URL 或模型</value>
   </data>
   <data name="Anthropic_ApiError" xml:space="preserve">
-    <value>Anthropic API error: {0}</value>
+    <value>Anthropic API 错误：{0}</value>
   </data>
   <data name="Anthropic_ParseFailed" xml:space="preserve">
-    <value>Anthropic response parse failed</value>
+    <value>Anthropic 响应解析失败</value>
   </data>
   <data name="Task_Progress_FailedNote" xml:space="preserve">
-    <value> (failed)</value>
+    <value> (失败)</value>
   </data>
   <data name="Task_CancelledByUser" xml:space="preserve">
-    <value>Cancelled by user</value>
+    <value>用户已取消</value>
   </data>
   <data name="ModelBench_NoPrompts" xml:space="preserve">
-    <value>No runnable test prompts</value>
+    <value>没有可运行的测试提示词</value>
   </data>
   <data name="ModelBench_TestCancelled" xml:space="preserve">
-    <value>Test cancelled</value>
+    <value>测试已取消</value>
   </data>
   <data name="Health_OllamaNotRunning" xml:space="preserve">
-    <value>Ollama service is not running (optional, for local AI models)</value>
+    <value>Ollama 服务未运行（可选，用于本地 AI 模型）</value>
   </data>
   <data name="Health_OllamaRunning" xml:space="preserve">
-    <value>Ollama service is running</value>
+    <value>Ollama 服务正在运行</value>
   </data>
   <data name="Health_OllamaCheckError" xml:space="preserve">
-    <value>Ollama check error</value>
+    <value>Ollama 检测异常</value>
   </data>
   <data name="OpenClawModel_UnknownProfile" xml:space="preserve">
-    <value>Unknown model profile: {0}</value>
+    <value>未知模型配置：{0}</value>
   </data>
   <data name="OpenClawModel_GetDefaultFailed" xml:space="preserve">
-    <value>Failed to get OpenClaw default model</value>
+    <value>获取 OpenClaw 默认模型失败</value>
   </data>
   <data name="OpenClawModel_CollectFailed" xml:space="preserve">
-    <value>Failed to collect available models</value>
+    <value>收集可用模型失败</value>
   </data>
   <data name="OpenClawModel_SetDefaultFailed" xml:space="preserve">
-    <value>Failed to set default model</value>
+    <value>设置默认模型失败</value>
   </data>
   <data name="Anki_NoCardsToExport" xml:space="preserve">
-    <value>No cards to export</value>
+    <value>没有可导出的卡片</value>
   </data>
   <data name="Tasks_AiEmptyResponse" xml:space="preserve">
-    <value>AI returned empty content. The current AI model may not support this question. Try switching to another AI provider or model.</value>
+    <value>AI 返回内容为空。有可能是当前所用的 AI 模型不支持该问题，建议换一个 AI 提供商或模型再试试。</value>
   </data>
   <data name="Vault_UnsupportedFileType" xml:space="preserve">
-    <value>Unsupported file type: {0}</value>
+    <value>不支持的文件类型：{0}</value>
   </data>
   <data name="Vault_DirNotFound" xml:space="preserve">
-    <value>Directory not found</value>
+    <value>目录不存在</value>
   </data>
   <data name="Vault_InvalidPath" xml:space="preserve">
-    <value>Invalid path</value>
+    <value>非法路径</value>
   </data>
   <data name="Health_StartupInfoFailed" xml:space="preserve">
-    <value>Failed to get startup information</value>
+    <value>获取启动信息失败</value>
   </data>
   <data name="Health_OsInfoFailed" xml:space="preserve">
-    <value>Failed to get OS information</value>
+    <value>获取操作系统信息失败</value>
   </data>
   <data name="Git_VaultPathNotConfigured" xml:space="preserve">
-    <value>Vault path is not configured</value>
+    <value>知识库路径未配置</value>
   </data>
   <data name="Git_CommandTimeout" xml:space="preserve">
-    <value>Git command timed out</value>
+    <value>Git 命令超时</value>
   </data>
   <data name="LogSink_ConfigEmpty" xml:space="preserve">
-    <value>Configuration cannot be empty</value>
+    <value>配置不能为空</value>
   </data>
   <data name="LogSink_ConfigUpdated" xml:space="preserve">
-    <value>Configuration updated</value>
+    <value>配置已更新</value>
   </data>
   <data name="Achievement_NameRequired" xml:space="preserve">
-    <value>Name cannot be empty</value>
+    <value>名称不能为空</value>
   </data>
   <data name="Error_InternalServerError" xml:space="preserve">
-    <value>Internal server error</value>
+    <value>服务器内部错误</value>
   </data>
   <data name="Pair_RequestSubmitted" xml:space="preserve">
-    <value>Pairing request submitted, waiting for authorization</value>
+    <value>配对请求已提交，等待授权</value>
   </data>
   <data name="Pair_WaitingAuth" xml:space="preserve">
-    <value>Waiting for authorization</value>
+    <value>等待授权</value>
   </data>
   <data name="Pair_AuthSuccess" xml:space="preserve">
-    <value>Authorization successful</value>
+    <value>授权成功</value>
   </data>
   <data name="Pair_AuthRejected" xml:space="preserve">
-    <value>Authorization rejected</value>
+    <value>授权被拒绝</value>
   </data>
   <data name="Pair_CodeRequired" xml:space="preserve">
-    <value>Pairing code cannot be empty</value>
+    <value>配对码不能为空</value>
   </data>
   <data name="Pair_RequestSentToWebUI" xml:space="preserve">
-    <value>Pairing request submitted, please authorize in WebUI</value>
+    <value>配对请求已提交，请在 WebUI 中授权</value>
   </data>
   <data name="DailyCard_None" xml:space="preserve">
-    <value>No cards yet, please generate cards first</value>
+    <value>暂无卡片，请先生成卡片</value>
   </data>
   <data name="Embedding_ConfigSaved" xml:space="preserve">
-    <value>Embedding configuration saved</value>
+    <value>Embedding 配置已保存</value>
   </data>
   <data name="Embedding_SaveFailed" xml:space="preserve">
-    <value>Save failed: {0}</value>
+    <value>保存失败：{0}</value>
   </data>
   <data name="Search_ReindexFailed" xml:space="preserve">
-    <value>Failed to rebuild index</value>
+    <value>重建索引失败</value>
   </data>
   <data name="Search_StatusFailed" xml:space="preserve">
-    <value>Failed to get status</value>
+    <value>获取状态失败</value>
   </data>
   <data name="Program_Description_Family" xml:space="preserve">
-    <value>Baihua Family Service - Health check and runtime status API</value>
+    <value>百花后台服务 - 健康检查与运行状态 API</value>
   </data>
   <data name="Program_Description_AI" xml:space="preserve">
-    <value>Baihua AI Service - Models, Chat, Search, Metrics</value>
+    <value>百花 AI 服务 - 模型、聊天、搜索、指标</value>
   </data>
   <data name="Program_Description_Vault" xml:space="preserve">
-    <value>Baihua Vault Service - Vault, Sync, Search</value>
+    <value>百花知识库服务 - Vault、同步、搜索</value>
   </data>
   <data name="Program_AiAccessDenied" xml:space="preserve">
-    <value>AI Management API only allows local access</value>
+    <value>AI 管理 API 仅允许本机访问</value>
   </data>
   <data name="Program_VaultAccessDenied" xml:space="preserve">
-    <value>Vault API only allows local access</value>
+    <value>Vault API 仅允许本机访问</value>
   </data>
   <data name="Program_FamilyAccessDenied" xml:space="preserve">
-    <value>Management API only allows local access. Please operate through WebUI.</value>
+    <value>管理 API 仅允许本机访问。请通过 WebUI 界面操作。</value>
   </data>
   <data name="Program_InvalidSignature" xml:space="preserve">
-    <value>Invalid request signature</value>
+    <value>无效的请求签名</value>
   </data>
   <data name="Program_BearerTokenRequired" xml:space="preserve">
-    <value>Bearer Token authentication required</value>
+    <value>需要 Bearer Token 认证</value>
   </data>
   <data name="Program_InvalidAccessToken" xml:space="preserve">
-    <value>Invalid access token</value>
+    <value>无效的访问令牌</value>
   </data>
   <data name="Program_VaultUnavailable" xml:space="preserve">
-    <value>Vault service unavailable</value>
+    <value>Vault 服务不可用</value>
   </data>
   <data name="LocalModel_DownloadComplete" xml:space="preserve">
-    <value>Download complete</value>
+    <value>下载完成</value>
   </data>
   <data name="LocalModel_SearchModel" xml:space="preserve">
-    <value>Searching model</value>
+    <value>搜索模型</value>
   </data>
   <data name="LocalModel_PullManifest" xml:space="preserve">
-    <value>Downloading manifest</value>
+    <value>下载清单</value>
   </data>
   <data name="LocalModel_VerifyFile" xml:space="preserve">
-    <value>Verifying file</value>
+    <value>验证文件</value>
   </data>
   <data name="LocalModel_WriteModel" xml:space="preserve">
-    <value>Writing model</value>
+    <value>写入模型</value>
   </data>
   <data name="Task_OutlineParsedEmpty" xml:space="preserve">
-    <value>Parsed outline is empty</value>
+    <value>解析为空</value>
   </data>
-  
-  
-  
   <data name="Common_ReadFailed" xml:space="preserve">
-    <value>Failed to read</value>
+    <value>读取失败</value>
   </data>
   <data name="Common_WriteFailed" xml:space="preserve">
-    <value>Failed to write</value>
+    <value>写入失败</value>
   </data>
   <data name="Common_SearchFailed" xml:space="preserve">
-    <value>Search failed</value>
+    <value>搜索失败</value>
   </data>
   <data name="Common_LoadFailed" xml:space="preserve">
-    <value>Load failed</value>
+    <value>加载失败</value>
   </data>
   <data name="Common_UserCancelled" xml:space="preserve">
-    <value>User cancelled</value>
+    <value>用户取消</value>
   </data>
   <data name="AiChat_RetrievingVault" xml:space="preserve">
-    <value>🔍 Retrieving from knowledge base...</value>
+    <value>🔍 正在检索知识库...</value>
   </data>
 
   <data name="AiTask_SourceInfo" xml:space="preserve">
-    <value>&gt; 📌 **Source**: AI Generated  
-&gt; 🤖 **Model**: {0}  
-&gt; 🏢 **Provider**: {1}  
-&gt; ⏰ **Time**: {2}  
-&gt; ⏱️ **Duration**: {3}ms  
+    <value>&gt; 📌 **来源**: AI 生成  
+&gt; 🤖 **模型**: {0}  
+&gt; 🏢 **提供商**: {1}  
+&gt; ⏰ **时间**: {2}  
+&gt; ⏱️ **耗时**: {3}ms  
 
 </value>
   </data>
   <data name="AiTask_RetrySourceInfo" xml:space="preserve">
-    <value>&gt; 📌 **Source**: AI Generated (Retry)  
-&gt; 🤖 **Model**: {0}  
-&gt; 🏢 **Provider**: {1}  
-&gt; ⏰ **Time**: {2}  
-&gt; ⏱️ **Duration**: {3}ms  
+    <value>&gt; 📌 **来源**: AI 生成（重试）  
+&gt; 🤖 **模型**: {0}  
+&gt; 🏢 **提供商**: {1}  
+&gt; ⏰ **时间**: {2}  
+&gt; ⏱️ **耗时**: {3}ms  
 
 </value>
   </data>
   <data name="AiGeneratedDir" xml:space="preserve">
-    <value>AI Generated</value>
+    <value>AI 生成</value>
   </data>
   <data name="Device_RequestNotFound" xml:space="preserve">
-    <value>Request not found or already processed</value>
+    <value>请求不存在或已处理</value>
   </data>
   <data name="Exception_CannotEncryptKey" xml:space="preserve">
-    <value>Unable to encrypt API Key</value>
+    <value>无法加密 API Key</value>
   </data>
   <data name="Exception_GgufModelNotFound" xml:space="preserve">
-    <value>GGUF model file not found</value>
+    <value>GGUF 模型文件不存在</value>
   </data>
   <data name="Exception_OnnxDirNotFound" xml:space="preserve">
-    <value>ONNX model directory not found: {0}</value>
+    <value>ONNX 模型目录不存在: {0}</value>
   </data>
   <data name="Exception_NotesMdCliStart" xml:space="preserve">
-    <value>Unable to start notesmd-cli process</value>
+    <value>无法启动 notesmd-cli 进程</value>
   </data>
   <data name="Default_Learner" xml:space="preserve">
-    <value>Default Learner</value>
+    <value>默认学习者</value>
   </data>
   <data name="Default_VaultCategory" xml:space="preserve">
-    <value>Other</value>
+    <value>其他</value>
   </data>
   <data name="Default_Unnamed" xml:space="preserve">
-    <value>Unnamed</value>
+    <value>未命名</value>
   </data>
   <data name="OpenClaw_Profile_Quick_Name" xml:space="preserve">
-    <value>Fast</value>
+    <value>快速</value>
   </data>
   <data name="OpenClaw_Profile_Quick_Desc" xml:space="preserve">
-    <value>671MB ultra-lightweight model, extremely fast response, suitable for simple Q&amp;A and daily queries</value>
+    <value>671MB 超轻量模型，响应极快，适合简单问答和日常查询</value>
   </data>
   <data name="OpenClaw_Profile_Quick_Speed" xml:space="preserve">
-    <value>⚡ Extremely Fast</value>
+    <value>⚡ 极快</value>
   </data>
   <data name="OpenClaw_Profile_Balanced_Name" xml:space="preserve">
-    <value>Balanced</value>
+    <value>平衡</value>
   </data>
   <data name="OpenClaw_Profile_Balanced_Desc" xml:space="preserve">
-    <value>4.7GB quantized model, well-balanced performance on knowledge base content, recommended for daily use</value>
+    <value>4.7GB 量化模型，在知识库内容上表现均衡，推荐日常使用</value>
   </data>
   <data name="OpenClaw_Profile_Powerful_Name" xml:space="preserve">
-    <value>Powerful</value>
+    <value>强力</value>
   </data>
   <data name="OpenClaw_Profile_Powerful_Desc" xml:space="preserve">
-    <value>27B large parameter model, strong reasoning capability, suitable for complex dialectical analysis and deep Q&amp;A</value>
+    <value>27B 大参数模型，推理能力强，适合复杂辨证分析和深度问答</value>
   </data>
   <data name="OpenClaw_Profile_Powerful_Speed" xml:space="preserve">
-    <value>🐢 Slower</value>
+    <value>🐢 较慢</value>
   </data>
   <data name="LocalModel_Mirror_HuggingFace" xml:space="preserve">
-    <value>Hugging Face Mirror (hf-mirror.com)</value>
+    <value>Hugging Face 镜像 (hf-mirror.com)</value>
   </data>
   <data name="LocalModel_Mirror_ModelScope" xml:space="preserve">
-    <value>ModelScope Community</value>
+    <value>魔搭社区 (ModelScope)</value>
   </data>
   <data name="LocalModel_DefaultOllamaProvider" xml:space="preserve">
-    <value>Local Ollama</value>
+    <value>本地 Ollama</value>
   </data>
   <data name="LocalModel_DefaultLmStudioProvider" xml:space="preserve">
-    <value>Local LM Studio</value>
+    <value>本地 LM Studio</value>
   </data>
   <data name="LocalModel_NeedsStart" xml:space="preserve">
-    <value>{0} (needs service startup)</value>
+    <value>{0} (需启动服务)</value>
   </data>
   <data name="OllamaLibrary_DefaultDesc" xml:space="preserve">
-    <value>Ollama Library official model: {0}</value>
+    <value>Ollama Library 官方模型: {0}</value>
   </data>
   <data name="Embedding_EmptyResult" xml:space="preserve">
-    <value>Returned empty result</value>
+    <value>返回空结果</value>
   </data>
   <data name="Ai_KnowledgeBasePrompt" xml:space="preserve">
-    <value>Knowledge Base: {0}. Please answer combined with knowledge base content.</value>
+    <value>知识库：{0}。回答问题时请结合知识库内容。</value>
   </data>
   <data name="Ai_Tools_AvailablePrompt" xml:space="preserve">
-    <value>You have the following tools available:
+    <value>你有以下工具可用：
 {toolDescriptions}
 
-If you need to call a tool, use the following format (strict JSON) at the beginning of your response:
-TOOL_CALL: {{&quot;tool&quot;:&quot;tool_name&quot;,&quot;arguments&quot;:{{argument_object}}}}
-Then on a new line, give your normal response.</value>
+如果需要调用工具，请在回复开头使用以下格式（严格 JSON）：
+TOOL_CALL: {{&quot;tool&quot;:&quot;工具名&quot;,&quot;arguments&quot;:{{{arguments: 参数对象}}}}
+然后在新的一行给出你的正常回复。</value>
   </data>
   <data name="Ai_Tools_CallingTool" xml:space="preserve">
-    <value>I will call the tool {0} to help you.</value>
+    <value>我将调用工具 {0} 来帮助你。</value>
   </data>
   <data name="Ai_RagContextPrompt" xml:space="preserve">
-    <value>The following are relevant contents from the knowledge base. Please answer in conjunction with these contents:
+    <value>以下是关联知识库中的相关内容，请结合这些内容回答：
 
 {0}</value>
   </data>
   <data name="Vault_MigrationTagMigrated" xml:space="preserve">
-    <value> (path migrated)</value>
+    <value>（已迁移路径）</value>
   </data>
   <data name="AiService_Description" xml:space="preserve">
-    <value>Baihua AI Service - Models, Chat, Search, Metrics</value>
+    <value>百花 AI 服务 - 模型、聊天、搜索、指标</value>
   </data>
   <data name="Performance_NetworkRenderMs" xml:space="preserve">
-    <value>(Network: {0}ms, Render: {1}ms)</value>
+    <value>(网络: {0}ms, 渲染: {1}ms)</value>
   </data>
   <data name="Onboarding_DefaultTcmIndustry" xml:space="preserve">
-    <value>Traditional Chinese Medicine</value>
+    <value>中医</value>
   </data>
   <data name="Onboarding_DefaultComputerIndustry" xml:space="preserve">
-    <value>Computer</value>
+    <value>计算机</value>
   </data>
   <data name="Ai_NoteAboutQuery" xml:space="preserve">
-    <value>About: {0}</value>
+    <value>关于：{0}</value>
   </data>
   <data name="StartupMonitor_RestartDetected" xml:space="preserve">
-    <value>[{0}] ⚠️ Fast restart detected! Time since last start: {1:F1}s, restart count: {2}
+    <value>[{0}] ⚠️ 检测到快速重启！距离上次启动: {1:F1} 秒，重启次数: {2}
 </value>
   </data>
   <data name="StartupMonitor_ServiceStarted" xml:space="preserve">
-    <value>Service started</value>
+    <value>服务启动</value>
   </data>
   <data name="DailyCard_DefaultDeck" xml:space="preserve">
-    <value>Parent Questions</value>
+    <value>家长出题</value>
   </data>
   <data name="Health_FixCategory_Vault" xml:space="preserve">
-    <value>Knowledge Base</value>
+    <value>知识库</value>
   </data>
   <data name="Ai_RagSearchPrompt" xml:space="preserve">
-    <value>The following are knowledge base contents related to the question. Please answer in conjunction with these contents:
+    <value>以下是与问题相关的知识库内容，请结合这些内容回答：
 
 {context}
 
 ---
 
-User question: {query}</value>
+用户问题：{query}</value>
   </data>
   <data name="OpenClaw_Profile_Balanced_Speed" xml:space="preserve">
-    <value>🚀 Fast</value>
+    <value>🚀 快</value>
   </data>
   <data name="AuthConfig_DeviceIdRequired" xml:space="preserve">
-    <value>deviceId is required</value>
+    <value>deviceId 不能为空</value>
   </data>
   <data name="AuthConfig_DeviceNotAuthorized" xml:space="preserve">
-    <value>Device not authorized</value>
+    <value>设备未授权</value>
   </data>
   <data name="AuthConfig_Success" xml:space="preserve">
     <value>ok</value>
   </data>
   <data name="AuthConfig_DeviceNotAuthorizedMessage" xml:space="preserve">
-    <value>Please authorize the device in the management console.</value>
+    <value>请先在管理后台的「设备管理」中授权该设备。</value>
   </data>
 </root>

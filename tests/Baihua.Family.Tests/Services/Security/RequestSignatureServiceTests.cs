@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Baihua.Core.Security;
 using Baihua.Data;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Xunit;
 
 namespace Baihua.Family.Tests.Services.Security;

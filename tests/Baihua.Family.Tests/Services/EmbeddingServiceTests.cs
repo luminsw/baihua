@@ -2,7 +2,7 @@ using Baihua.Core.Models;
 using Baihua.Core.Services;
 using Baihua.Core.Security;
 using Baihua.Data;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Baihua.Family.Tests.Learning;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -98,16 +98,20 @@ public class EmbeddingServiceTests : IDisposable
     {
         var aiClient = new Mock<AiClientService>(null!, null!, null!, null!, null!, null!, null!, null!);
         var vaultSettings = new VaultSettingsService(vaultFactory ?? _vaultFactory, NullLogger<VaultSettingsService>.Instance);
-        // 一服务一数据库：EmbeddingService 不再依赖 ai.db；HTTP 工厂返回 null 使
-        // GetEmbeddingConfig 快速失败并回退到 AiSettingsService 配置（EmbeddingUrl/Model）
-        var httpClientFactory = new Mock<IHttpClientFactory>();
+        // 合并后 EmbeddingService 经 IEmbeddingConfigProvider 进程内读配置；
+        // 这里让 provider 抛错，等价于旧测试的"AI 服务不可达"，从而回退到
+        // AiSettingsService 的 EmbeddingUrl/Model 配置
+        var embeddingConfigProvider = new Mock<Baihua.Core.Modules.IEmbeddingConfigProvider>();
+        embeddingConfigProvider
+            .Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("test: embedding provider unavailable"));
 
         return new CountingEmbeddingService(
             aiClient.Object,
             CreateAiSettings(),
             vaultSettings,
             vaultFactory ?? _vaultFactory,
-            httpClientFactory.Object,
+            embeddingConfigProvider.Object,
             NullLogger<EmbeddingService>.Instance,
             delay ?? TimeSpan.Zero);
     }
@@ -284,10 +288,10 @@ public class EmbeddingServiceTests : IDisposable
             AiSettingsService aiSettings,
             VaultSettingsService vaultSettings,
             IDbContextFactory<VaultDbContext> vaultDbFactory,
-            IHttpClientFactory httpClientFactory,
+            Baihua.Core.Modules.IEmbeddingConfigProvider embeddingConfigProvider,
             ILogger<EmbeddingService> logger,
             TimeSpan delay)
-            : base(aiClientService, aiSettings, vaultSettings, vaultDbFactory, httpClientFactory, logger)
+            : base(aiClientService, aiSettings, vaultSettings, vaultDbFactory, embeddingConfigProvider, logger)
         {
             _delay = delay;
         }

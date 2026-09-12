@@ -3,10 +3,11 @@
   <Project Path="Baihua.Data/Baihua.Data.csproj" />
   <Project Path="../libs/MobileContract/MobileContract.csproj" />
   <Project Path="Baihua.Core/Baihua.Core.csproj" />
-  <Project Path="Baihua.Family/Baihua.Family.csproj" />
   <Project Path="Baihua.AI.Provider/Baihua.AI.Provider.csproj" />
   <Project Path="Baihua.AI.Provider.OpenVino/Baihua.AI.Provider.OpenVino.csproj" />
-  <Project Path="Baihua.AI/Baihua.AI.csproj" />
-  <Project Path="Baihua.Vault/Baihua.Vault.csproj" />
+  <Project Path="Baihua.Modules.Family/Baihua.Modules.Family.csproj" />
+  <Project Path="Baihua.Modules.Ai/Baihua.Modules.Ai.csproj" />
+  <Project Path="Baihua.Modules.Vault/Baihua.Modules.Vault.csproj" />
+  <Project Path="Baihua.Server/Baihua.Server.csproj" />
   <Project Path="Baihua.Web/Baihua.Web.csproj" />
 </Solution>

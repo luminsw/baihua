@@ -1,7 +1,7 @@
 using Baihua.Core.Models;
 using Baihua.Core.Services;
 using Baihua.Data;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Baihua.Family.Tests.Learning;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;

@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    家庭模块（业务域：亲子/学习/任务/记账/病历/拜师/算力池/设备配对）。
+    宿主只通过 Baihua.Core.Modules 下的接口与本模块交互，模块内部不反向依赖其他模块。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Baihua.Modules.Family</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- 补齐 Web SDK 才有的隐式 using（模块是类库，Microsoft.NET.Sdk 默认不带） -->
+  <ItemGroup>
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Hosting" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.AspNetCore.Routing" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Hosting" />
+    <Using Include="Microsoft.Extensions.Logging" />
+    <Using Include="System.Net.Http.Json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AnkiGen.Core" Version="1.0.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.7.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Baihua.Data\Baihua.Data.csproj" />
+    <ProjectReference Include="..\Baihua.Core\Baihua.Core.csproj" />
+    <ProjectReference Include="..\Baihua.Contracts\Baihua.Contracts.csproj" />
+    <ProjectReference Include="..\Baihua.AI.Provider\Baihua.AI.Provider.csproj" />
+    <ProjectReference Include="..\Baihua.AI.Provider.OpenVino\Baihua.AI.Provider.OpenVino.csproj" />
+    <ProjectReference Include="..\..\libs\MobileContract\MobileContract.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Baihua.Family.Tests" />
+  </ItemGroup>
+</Project>

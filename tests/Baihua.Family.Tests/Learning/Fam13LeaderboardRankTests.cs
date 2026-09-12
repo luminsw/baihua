@@ -1,7 +1,7 @@
 using System.Reflection;
 using Baihua.Contracts.Achievements;
-using Baihua.Family.Controllers;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Controllers;
+using Baihua.Modules.Family.Services;
 using Xunit;
 
 namespace Baihua.Family.Tests.Learning;

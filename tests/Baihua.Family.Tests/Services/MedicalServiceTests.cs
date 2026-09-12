@@ -1,6 +1,6 @@
 using Baihua.Contracts.Medical;
 using Baihua.Data;
-using Baihua.Family.Services.Medical;
+using Baihua.Modules.Family.Services.Medical;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;

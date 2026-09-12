@@ -1,9 +1,9 @@
 using Baihua.Core.Models;
 using Baihua.Core.Services;
 using AnkiGen.Core;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Baihua.Data;
-using Baihua.Family.Models;
+using Baihua.Modules.Family.Models;
 using Baihua.Contracts.Anki;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;

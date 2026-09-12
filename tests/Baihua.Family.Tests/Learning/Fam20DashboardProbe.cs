@@ -1,7 +1,7 @@
 using System.Reflection;
 using Baihua.Core.Localization;
 using Baihua.Data;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
@@ -57,8 +57,8 @@ public static class Fam20DashboardProbe
     public static Type FindDashboardServiceType()
     {
         var asm = typeof(LeaderboardService).Assembly;
-        return asm.GetType("Baihua.Family.Services.DashboardService")
-            ?? asm.GetType("Baihua.Family.Services.Learning.DashboardService")
+        return asm.GetType("Baihua.Modules.Family.Services.DashboardService")
+            ?? asm.GetType("Baihua.Modules.Family.Services.Learning.DashboardService")
             ?? typeof(LeaderboardService);
     }
 

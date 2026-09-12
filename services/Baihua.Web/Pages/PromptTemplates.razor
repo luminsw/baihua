@@ -203,7 +203,7 @@ else
         try
         {
             var client = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://127.0.0.1:8788") };
-            var resp = await client.GetFromJsonAsync<List<PromptTemplateDto>>("api/ai/prompt-templates");
+            var resp = await client.GetFromJsonAsync<List<PromptTemplateDto>>("api/assistant/prompt-templates");
             templates = resp ?? new();
         }
         catch (Exception ex)
@@ -261,9 +261,9 @@ else
 
             HttpResponseMessage resp;
             if (isNewTemplate)
-                resp = await client.PostAsync("api/ai/prompt-templates", content);
+                resp = await client.PostAsync("api/assistant/prompt-templates", content);
             else
-                resp = await client.PutAsync($"api/ai/prompt-templates/{Uri.EscapeDataString(editingTemplate.DisplayName)}", content);
+                resp = await client.PutAsync($"api/assistant/prompt-templates/{Uri.EscapeDataString(editingTemplate.DisplayName)}", content);
 
             if (resp.IsSuccessStatusCode)
             {
@@ -302,7 +302,7 @@ else
         try
         {
             var client = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://127.0.0.1:8788") };
-            var resp = await client.DeleteAsync($"api/ai/prompt-templates/{Uri.EscapeDataString(displayName)}");
+            var resp = await client.DeleteAsync($"api/assistant/prompt-templates/{Uri.EscapeDataString(displayName)}");
             if (resp.IsSuccessStatusCode)
             {
                 await LoadTemplates();

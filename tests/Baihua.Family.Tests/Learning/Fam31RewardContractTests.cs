@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Baihua.Data;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Xunit;
 
 namespace Baihua.Family.Tests.Learning;

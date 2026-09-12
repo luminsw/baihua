@@ -383,7 +383,7 @@ namespace Baihua.Web.Services
             try
             {
                 using var quick = new CancellationTokenSource(QuickCallTimeout);
-                var response = await GetWithMetricsAsync("/api/ai/providers", quick.Token);
+                var response = await GetWithMetricsAsync("/api/assistant/providers", quick.Token);
                 response.EnsureSuccessStatusCode();
                 var result = await response.Content.ReadFromJsonAsync<List<AiProviderInfo>>(quick.Token);
                 if (result != null)
@@ -491,7 +491,7 @@ namespace Baihua.Web.Services
                 };
                 var json = JsonSerializer.Serialize(body);
                 var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await PostWithMetricsAsync("/api/ai/ask", httpContent);
+                var response = await PostWithMetricsAsync("/api/assistant/ask", httpContent);
                 response.EnsureSuccessStatusCode();
                 return await response.Content.ReadFromJsonAsync<AiNoteResponse>() ?? new AiNoteResponse { Success = false, Message = "AI 查询失败" };
             }
@@ -615,7 +615,7 @@ namespace Baihua.Web.Services
                 var request = new { message = message };
                 var json = JsonSerializer.Serialize(request);
                 var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await PostWithMetricsAsync("/api/ai/chat", httpContent, cancellationToken);
+                var response = await PostWithMetricsAsync("/api/assistant/chat", httpContent, cancellationToken);
                 response.EnsureSuccessStatusCode();
                 return await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken: cancellationToken) ?? new ChatResponse();
             }
@@ -648,7 +648,7 @@ namespace Baihua.Web.Services
             var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
 
             using var response = await _httpClient.SendAsync(
-                new HttpRequestMessage(HttpMethod.Post, "/api/ai/chat/stream") { Content = httpContent },
+                new HttpRequestMessage(HttpMethod.Post, "/api/assistant/chat/stream") { Content = httpContent },
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
 
@@ -948,7 +948,7 @@ namespace Baihua.Web.Services
                 var body = new { linkPath, vaultId };
                 var json = JsonSerializer.Serialize(body);
                 var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await PostWithMetricsAsync("/api/ai/generate-missing-note", httpContent, cts.Token);
+                var response = await PostWithMetricsAsync("/api/assistant/generate-missing-note", httpContent, cts.Token);
                 response.EnsureSuccessStatusCode();
                 return await response.Content.ReadFromJsonAsync<GenerateMissingNoteResponse>(cts.Token);
             }

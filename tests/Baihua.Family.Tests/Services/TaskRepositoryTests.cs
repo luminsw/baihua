@@ -3,7 +3,7 @@ using Baihua.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Xunit;
 
 namespace Baihua.Family.Tests.Services;

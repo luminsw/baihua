@@ -1,7 +1,7 @@
 using Microsoft.Extensions.AI;
 using Baihua.Contracts.Ai;
 using Baihua.Contracts.Master;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Microsoft.Extensions.Localization;
 using Baihua.Core.Localization;
 using Moq;

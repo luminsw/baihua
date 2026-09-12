@@ -2,7 +2,7 @@ using System.Reflection;
 using Baihua.Core.Localization;
 using Baihua.Data;
 using Baihua.Data.Entities;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
@@ -33,7 +33,7 @@ public static class Fam22LeaderboardProbe
     public static Type FindLeaderboardServiceType()
     {
         var asm = typeof(LeaderboardService).Assembly;
-        return asm.GetType("Baihua.Family.Services.LeaderboardService")
+        return asm.GetType("Baihua.Modules.Family.Services.LeaderboardService")
             ?? asm.GetTypes().FirstOrDefault(t => t.IsClass && !t.IsAbstract && t.IsPublic
                 && t.Name.Contains("Leaderboard", StringComparison.OrdinalIgnoreCase)
                 && t.Name.EndsWith("Service", StringComparison.OrdinalIgnoreCase))

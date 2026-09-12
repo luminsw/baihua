@@ -8,7 +8,7 @@ public class AiModelInfo
     public bool IsMain { get; set; }
 }
 
-/// <summary>后端 GET /api/ai/providers 返回项（与 Baihua DTO 字段对齐）。</summary>
+/// <summary>后端 GET /api/assistant/providers 返回项（与 Baihua DTO 字段对齐）。</summary>
 public class AiProviderInfo
 {
     public string Id { get; set; } = "";

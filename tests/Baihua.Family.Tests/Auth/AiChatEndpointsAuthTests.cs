@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Baihua.Core.Security;
 using Baihua.Data;
 using Baihua.Data.Entities;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Baihua.Family.Tests.TestDoubles;
 using Xunit;
 
@@ -96,9 +96,12 @@ public class AiChatEndpointsAuthTests : IClassFixture<AiChatEndpointsAuthFixture
         req.Headers.Add("X-Mobile-Signature", sig);
         req.Headers.Add("X-Device-Id", PairedDeviceId);
         var resp = await _fx.Client.SendAsync(req);
+
+        // 合并后 /api/ai/chat 由本进程的 AI 模块直服（不再转发到 8791）：
+        // 鉴权通过即 200；模型回复取决于本机是否配置了 AI 提供方，测试环境无提供方 → success=false
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var json = await resp.Content.ReadAsStringAsync();
-        Assert.Contains("stub-ai-reply", json);
+        Assert.Contains("success", json, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -121,14 +124,16 @@ public class AiChatEndpointsAuthTests : IClassFixture<AiChatEndpointsAuthFixture
     [Fact]
     public async Task Regression_MgManifest_NoSignature_Still401()
     {
-        var resp = await _fx.Client.GetAsync("/mg/manifest?vaultId=v1&since=0");
+        var resp = await _fx.Client.GetAsync($"/mg/manifest?vaultId={_fx.VaultId}&since=0");
         Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
     }
 
     [Fact]
     public async Task Regression_MgManifest_ValidSignature_PairedDevice_Still200()
     {
-        var path = "/mg/manifest?vaultId=v1&since=0";
+        // 知识库同步路径的授权由知识库模块的 ISyncAuthorizationStrategy 判定；
+        // 合并前靠 family 转发时附加 Bearer，现由宿主中间件进程内注入 —— 行为必须等价（200）
+        var path = $"/mg/manifest?vaultId={_fx.VaultId}&since=0";
         var sig = _fx.Sign("GET", path, null);
         using var req = new HttpRequestMessage(HttpMethod.Get, path);
         req.Headers.Add("X-Mobile-Signature", sig);
@@ -139,80 +144,61 @@ public class AiChatEndpointsAuthTests : IClassFixture<AiChatEndpointsAuthFixture
 }
 
 /// <summary>
-/// 测试夹具：进程环境变量隔离（BAIHUA_HOME → 临时目录）+ 真实 Family Host（TestServer）
-/// + stub AI/Vault 服务 + 一台已配对设备（写入 SQLite）。
+/// 测试夹具：进程环境变量隔离（BAIHUA_HOME → 临时目录）+ 真实百花宿主（TestServer）
+/// + 一个真实知识库 + 一台已配对设备（写入 SQLite）。
+///
+/// 合并为单进程后不再需要 AI/Vault 的 HTTP stub：/api/ai/chat/* 与 /mg/* 都由同一进程直服，
+/// 本夹具要验证的正是"合并后鉴权语义不变"。
 /// </summary>
 public sealed class AiChatEndpointsAuthFixture : IDisposable
 {
     public const string TestSecret = "ai-01-test-shared-secret";
 
     private readonly string _oldBaihuaHome;
-    private readonly string _oldVaultUrl;
-    private readonly string _oldAiUrl;
-    private readonly string _oldAiApiUrl;
     private readonly string _tempHome;
-    private readonly StubHttpServer _aiStub;
-    private readonly StubHttpServer _vaultStub;
     private readonly WebApplicationFactory<Program> _factory;
 
     public HttpClient Client { get; }
     public RequestSignatureService Signer { get; }
 
+    /// <summary>夹具创建的真实知识库 id（/mg/manifest 用）</summary>
+    public string VaultId { get; }
+
+    /// <summary>该知识库的磁盘目录（存在且为空 → 清单为空但 200）</summary>
+    public string VaultPath { get; }
+
     public AiChatEndpointsAuthFixture()
     {
         // ---- 环境变量隔离：不污染真实数据目录 ----
         _oldBaihuaHome = Environment.GetEnvironmentVariable("BAIHUA_HOME") ?? "";
-        _oldVaultUrl = Environment.GetEnvironmentVariable("BAIHUA_VAULT_URL") ?? "";
-        _oldAiUrl = Environment.GetEnvironmentVariable("BAIHUA_AI_URL") ?? "";
-        _oldAiApiUrl = Environment.GetEnvironmentVariable("TASK_RUNNER_AI_API_URL") ?? "";
 
         _tempHome = Path.Combine(Path.GetTempPath(), "baihua-ai01-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempHome);
         Environment.SetEnvironmentVariable("BAIHUA_HOME", _tempHome);
         Baihua.Contracts.BaihuaPaths.Reset();
 
-        // ---- stub 服务：AI(8791 角色) + Vault(8790 角色)，随机端口 ----
-        _aiStub = new StubHttpServer(new Dictionary<string, (int, string, string)>
-        {
-            ["/api/ai/chat/completion"] = (200, "application/json",
-                "{\"success\":true,\"message\":\"ok\",\"reply\":\"stub-ai-reply\"}"),
-            ["/api/ai/chat/stream"] = (200, "text/event-stream",
-                "event: delta\ndata: {\"content\":\"hi\"}\n\nevent: done\ndata: \n\n"),
-        });
-        _vaultStub = new StubHttpServer(new Dictionary<string, (int, string, string)>
-        {
-            ["/mg/manifest"] = (200, "application/json", "{\"cursor\":0,\"minSeq\":1,\"files\":[]}"),
-        });
+        VaultPath = Path.Combine(_tempHome, "vaults", "测试知识库");
+        Directory.CreateDirectory(Path.Combine(VaultPath, "notes"));
 
-        Environment.SetEnvironmentVariable("BAIHUA_VAULT_URL", _vaultStub.BaseUrl);
-        Environment.SetEnvironmentVariable("BAIHUA_AI_URL", _aiStub.BaseUrl);
-        Environment.SetEnvironmentVariable("TASK_RUNNER_AI_API_URL", _aiStub.BaseUrl);
-
-        // ---- 预建库表 ----
-        // 本仓库启动链路：StartupOrchestrator 先 Migrate（干净库成功）→ 失败后 EnsureCreated 兜底。
-        // 但 ServerAddressService 在 host 启动早期会抢先建出部分表，导致 Migrate 撞"table already exists"
-        // 且 EnsureCreated 因库已有表而跳过 → 留下残缺库。测试环境在 host 创建前先 EnsureCreated 建全表。
-        // 产品已迁移 PostgreSQL，测试 host 统一覆盖为 SQLite（见 TestSqliteDb.ConfigureSqlite）。
-        var familyDbPath = Path.Combine(_tempHome, "family.db");
-        var vaultDbPath = Path.Combine(_tempHome, "vault.db");
+        // ---- 预建库表（family / vault 同库，AI 表由 host 的 DatabaseInitializer 建） ----
+        var familyDbPath = Path.Combine(_tempHome, "baihua.db");
         using (var preCtx = new FamilyDbContext(TestSqliteDb.FamilyOptions(familyDbPath)))
         {
             preCtx.Database.EnsureCreated();
         }
-        using (var preVault = new VaultDbContext(TestSqliteDb.VaultOptions(vaultDbPath)))
+        using (var preVault = new VaultDbContext(TestSqliteDb.VaultOptions(familyDbPath)))
         {
             preVault.Database.EnsureCreated();
         }
 
-        // ---- 真实 Family Host（TestServer，loopback）----
+        // ---- 真实百花宿主（TestServer，loopback；单库 SQLite）----
         _factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("MobileAuth:SharedSecret", TestSecret);
                 builder.UseSetting("BAIHUA_SKIP_MUTEX", "true");
-                builder.UseSetting("AiApi:BaseUrl", _aiStub.BaseUrl + "/");
                 builder.ConfigureServices(services =>
-                    TestSqliteDb.ConfigureSqlite(services, familyDbPath, vaultDbPath));
+                    TestSqliteDb.ConfigureSqlite(services, familyDbPath, familyDbPath));
             });
         Client = _factory.CreateClient();
 
@@ -229,19 +215,28 @@ public sealed class AiChatEndpointsAuthFixture : IDisposable
             config);
         Signer = new RequestSignatureService(sasMock.Object, config, NullLogger<RequestSignatureService>.Instance);
 
-        // ---- 写入一台已配对设备（表已在 host 创建前预建，无需轮询）----
-        using var ctx = _factory.Services.GetRequiredService<IDbContextFactory<FamilyDbContext>>().CreateDbContext();
-        ctx.AuthorizedDevices.Add(new AuthorizedDevice
+        // ---- 写入一台已配对设备 ----
+        using (var ctx = _factory.Services.GetRequiredService<IDbContextFactory<FamilyDbContext>>().CreateDbContext())
         {
-            DeviceId = "paired-device-001",
-            DeviceName = "AI-01 测试机",
-            AccessToken = "test-access-token",
-            Status = "Authorized",
-            AuthorizedTime = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        });
-        ctx.SaveChanges();
+            ctx.AuthorizedDevices.Add(new AuthorizedDevice
+            {
+                DeviceId = "paired-device-001",
+                DeviceName = "AI-01 测试机",
+                AccessToken = "test-access-token",
+                Status = "Authorized",
+                AuthorizedTime = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+            ctx.SaveChanges();
+        }
+
+        // ---- 登记一个真实知识库（/mg/manifest 走真实磁盘扫描）----
+        // 宿主启动时会按 vaults 根目录自动登记含 notes/ 的目录，这里直接取回；
+        // 若未自动登记（不同启动路径）则显式创建。
+        var vaultSettings = _factory.Services.GetRequiredService<VaultSettingsService>();
+        var existing = vaultSettings.GetVaults().FirstOrDefault(v => v.Path == VaultPath);
+        VaultId = existing?.Id ?? vaultSettings.AddVault("测试知识库", VaultPath, "笔记").Id;
     }
 
     public string Sign(string method, string path, string? body)
@@ -254,12 +249,7 @@ public sealed class AiChatEndpointsAuthFixture : IDisposable
     {
         Client.Dispose();
         _factory.Dispose();
-        _aiStub.Dispose();
-        _vaultStub.Dispose();
         Environment.SetEnvironmentVariable("BAIHUA_HOME", _oldBaihuaHome);
-        Environment.SetEnvironmentVariable("BAIHUA_VAULT_URL", _oldVaultUrl);
-        Environment.SetEnvironmentVariable("BAIHUA_AI_URL", _oldAiUrl);
-        Environment.SetEnvironmentVariable("TASK_RUNNER_AI_API_URL", _oldAiApiUrl);
         Baihua.Contracts.BaihuaPaths.Reset();
         try { Directory.Delete(_tempHome, recursive: true); } catch { }
     }

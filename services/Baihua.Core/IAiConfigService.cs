@@ -1,3 +1,4 @@
+using Baihua.Contracts.Ai;
 using Baihua.Core.Models;
 using Baihua.Core.Security;
 using Baihua.Data.Entities;
@@ -5,10 +6,11 @@ using Baihua.Data.Entities;
 namespace Baihua.Core.Services;
 
 /// <summary>
-/// AI 提供方配置数据源（一服务一数据库的读/写抽象）：
-/// - AI 服务进程：<see cref="AiConfigService"/> 直读/写自己的 ai.db（唯一持有 API Key 的进程）
-/// - Family 进程：经 AI 服务 HTTP API 的 HTTP 实现（Family 不接触 ai.db、不持有 API Key；
-///   推理统一经 /mg/ai/v1 shim 转发）
+/// AI 提供方配置数据源（AI 模块对外暴露的配置能力接口）。
+///
+/// 合并为单进程后只有进程内实现 <see cref="AiConfigService"/>：
+/// 其他模块（家庭模块的备份/算力池等）只依赖本接口，不直接读写 AI 模块的 DbContext，
+/// API Key 的加解密始终只发生在 AI 模块内部。
 /// </summary>
 public interface IAiConfigService
 {
@@ -26,7 +28,7 @@ public interface IAiConfigService
 
     /// <summary>
     /// 获取指定 Provider 的有效 API Key。
-    /// 注意：Family 进程不应调用此方法（不持有 key）——HTTP 实现返回空串并告警。
+    /// 仅 AI 模块内部（推理/密钥二维码）使用，其他模块不应调用。
     /// </summary>
     string GetApiKey(string providerId);
 
@@ -35,4 +37,10 @@ public interface IAiConfigService
 
     /// <summary>删除 Provider 配置</summary>
     bool DeleteProvider(string providerId);
+
+    /// <summary>导出全部 Provider（含禁用项）用于全量备份；password 非空时密钥再加密</summary>
+    List<AiProviderBackupItem> ExportForBackup(string? password);
+
+    /// <summary>从备份导入 Provider（replaceAll=true 时先清空现有配置）</summary>
+    void ImportFromBackup(List<AiProviderBackupItem> items, string? password, bool replaceAll = false);
 }
