@@ -428,8 +428,10 @@ deploy_all() {
         echo "         移动端/外部入口需要 :80 —— k3s 默认自带 Traefik（若被 --disable traefik 关掉，需重新启用或自建入口）"
         echo "         临时入口可用: kubectl -n $NAMESPACE port-forward svc/bh-server 8788:8788 / svc/bh-webui 5177:5177"
     fi
-    # 给应用 deployment 打上 git commit 标注（postgres 不属应用镜像，跳过）
-    for svc in bh-server bh-webui bh-openvino; do
+    # 给 deployment 打上 git commit 标注（供 bh status --json 判断运行代码是否最新）。
+    # 标注语义是「这个工作负载最后一次是在哪个 commit 部署的」，不是「镜像由本仓库构建」，
+    # 所以 postgres 这类上游镜像也一起打 —— 否则它永远是 upToDate:false，看着像待处理问题。
+    for svc in bh-server bh-webui bh-openvino bh-postgres; do
         k -n "$NAMESPACE" annotate deploy "$svc" "baihua.git-commit=$git_commit" --overwrite >/dev/null 2>&1 || true
     done
     echo "[deploy] 记录源码 commit: $git_commit"
@@ -579,7 +581,11 @@ status_json() {
     if command -v git >/dev/null 2>&1 && [ -d "$ROOT/.git" ]; then
         git_head="$(cd "$ROOT" && git rev-parse --short HEAD 2>/dev/null || echo unknown)"
         git_branch="$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
-        if [ -n "$(cd "$ROOT" && git status --porcelain 2>/dev/null)" ]; then
+        # 只看已跟踪文件的改动：未跟踪文件（本地实验产物、node_modules 之类）不影响
+        # 「部署的镜像是不是 HEAD 构建的」，判成 dirty 只会误导。
+        # 另外 root 下跑 git 需要 safe.directory（见 k8s/README「root 权限」节），
+        # 且 root 的 core.autocrlf 要与 Windows 侧一致，否则 CRLF 工作区会被整片判成已修改。
+        if [ -n "$(cd "$ROOT" && git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
             git_dirty="true"
         fi
     fi
@@ -773,7 +779,7 @@ update_all() {
 #       仅供"镜像重建并已滚动重启成功"后调用（见 DSH 插件 build-restart 流程）。
 annotate_commit() {
     local svc="${1:-}"
-    [ -z "$svc" ] && { echo "[annotate] 用法: bh annotate <svc>（server/webui/openvino）" >&2; return 1; }
+    [ -z "$svc" ] && { echo "[annotate] 用法: bh annotate <svc>（server/webui/openvino/postgres）" >&2; return 1; }
     case "$svc" in bh-*) ;; *) svc="bh-$svc" ;; esac
     if [ "$(id -u)" != "0" ]; then
         echo "[annotate] 需要 root 权限（k3s.yaml 仅 root 可读），自动提权..." >&2
