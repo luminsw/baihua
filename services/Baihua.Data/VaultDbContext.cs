@@ -5,64 +5,23 @@ namespace Baihua.Data;
 
 public class VaultDbContext : DbContext
 {
-    private string? _dbPath;
-
     public VaultDbContext(DbContextOptions<VaultDbContext> options) : base(options)
     {
     }
 
     public VaultDbContext()
     {
-        _dbPath = GetDefaultDbPath();
     }
 
     public DbSet<Vault> Vaults => Set<Vault>();
     public DbSet<NoteEmbedding> NoteEmbeddings => Set<NoteEmbedding>();
 
-    public string DatabasePath
-    {
-        get
-        {
-            if (_dbPath != null)
-                return _dbPath;
-            try
-            {
-                _dbPath = Database.GetDbConnection().ConnectionString;
-                return _dbPath;
-            }
-            catch (InvalidOperationException)
-            {
-                return "InMemory";
-            }
-        }
-    }
-
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
         {
-            var dbPath = GetDefaultDbPath();
             optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.Baihua);
         }
-    }
-
-    private static string GetDefaultDbPath()
-    {
-        var dataDir = ResolveDataDir();
-        Directory.CreateDirectory(dataDir);
-        return Path.Combine(dataDir, "vault.db");
-    }
-
-    internal static string ResolveDataDir()
-    {
-        var dbDir = Baihua.Contracts.BaihuaPaths.Db;
-        Directory.CreateDirectory(dbDir);
-        return dbDir;
-    }
-
-    public static string GetDbPath()
-    {
-        return GetDefaultDbPath();
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

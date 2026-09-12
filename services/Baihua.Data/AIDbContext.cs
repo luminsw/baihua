@@ -3,20 +3,16 @@ using Baihua.Data.Entities;
 
 namespace Baihua.Data;
 /// <summary>
-/// AI 研究域数据库上下文
+/// AI 研究域数据库上下文（PostgreSQL 单库，连接串见 <see cref="DbConnections.Baihua"/>）
 /// </summary>
 public class AIDbContext : DbContext
 {
-    private readonly string _dbPath;
-
     public AIDbContext(DbContextOptions<AIDbContext> options) : base(options)
     {
-        _dbPath = Database.GetDbConnection().ConnectionString;
     }
 
     public AIDbContext()
     {
-        _dbPath = GetDefaultDbPath();
     }
 
     public DbSet<AiProviderSetting> AiProviderSettings => Set<AiProviderSetting>();
@@ -24,36 +20,12 @@ public class AIDbContext : DbContext
     public DbSet<EmbeddingConfig> EmbeddingConfigs => Set<EmbeddingConfig>();
     public DbSet<ComfyArtworkEntity> ComfyArtworks => Set<ComfyArtworkEntity>();
 
-
-
-    public string DatabasePath => _dbPath;
-
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
         {
-            var dbPath = GetDefaultDbPath();
             optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.Baihua);
         }
-    }
-
-    private static string GetDefaultDbPath()
-    {
-        var dataDir = ResolveDataDir();
-        Directory.CreateDirectory(dataDir);
-        return Path.Combine(dataDir, "ai.db");
-    }
-
-    internal static string ResolveDataDir()
-    {
-        var dbDir = Baihua.Contracts.BaihuaPaths.Db;
-        Directory.CreateDirectory(dbDir);
-        return dbDir;
-    }
-
-    public static string GetDbPath()
-    {
-        return GetDefaultDbPath();
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
