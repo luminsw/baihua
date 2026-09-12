@@ -1,4 +1,4 @@
-<#
+﻿<#
   migrate-to-single-db.ps1 —— 把旧的 family / vault / ai 三库合并为单一 baihua 库。
 
   背景：合并前每个服务独占一个 PostgreSQL 库；合并后整个百花只有一个库（public schema），

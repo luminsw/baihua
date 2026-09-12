@@ -701,12 +701,29 @@ k3s kubectl -n kube-system get jobs
    ```
    模型目录里若有指向 modelscope 缓存的软链，还要把缓存目录挂进 Pod（本机已在部署里加了
    `modelscope-cache` 卷：hostPath `/mnt/c/Users/lumin/.cache/modelscope` → 容器内同路径）。
-3. **配置驱动**：`22a-openvino.yaml` 用 `--config_path=/models/config.json`（`model_config_list`），
-   `base_path` 必须是容器内路径（`/models/<模型目录>`）。**不要把模型名硬编码进清单** ——
-   本机就因为清单里硬编码了不存在的 `Qwen2.5-VL-7B-Instruct-int4-ov` 而一直 CrashLoopBackOff。
+3. **配置驱动**：`22a-openvino.yaml` 用 `--config_path=/ovms-config/config.json`（`model_config_list`，
+   来自 ConfigMap `baihua-ovms-config`），`base_path` 必须是容器内路径（`/models/<模型目录>`）。
+   **不要把模型名硬编码进清单** —— 本机就因为清单里硬编码了不存在的 `Qwen2.5-VL-7B-Instruct-int4-ov`
+   而一直 CrashLoopBackOff。另外 `limits.memory` 必须 ≤ 节点可分配内存（原先写 16Gi、节点只有 15.4Gi，
+   调度器直接判不可调度 → Pod 永远 Pending；已改 12Gi）。
 
    本机可用的两个模型（GPU）：`qwen3-4b`（Qwen3-4B-int4-ov）、`qwen3-embedding-0.6b`（Qwen3-Embedding-0.6B-int8-ov）。
    验证：`kubectl -n baihua exec deploy/bh-server -- curl -s http://bh-openvino:8000/v1/models`
+
+4. **改模型挂载时要小心 PVC 悬挂**：`baihua-models-pvc` 若有 Pod 占用时被删，会卡在 `Terminating`
+   （后续 Pod 因卷未绑定而 Pending）。正确顺序（root）：
+
+   ```bash
+   k3s kubectl -n baihua delete deploy bh-openvino --ignore-not-found
+   k3s kubectl -n baihua delete pod -l app=bh-openvino --force --grace-period=0
+   k3s kubectl -n baihua patch pvc baihua-models-pvc -p '{"metadata":{"finalizers":null}}'   # 卡住时
+   k3s kubectl -n baihua delete pvc baihua-models-pvc --force --grace-period=0
+   k3s kubectl delete pv baihua-models-pv --ignore-not-found
+   mount --bind /mnt/c/Users/lumin/.baihua/models /opt/baihua/models     # WSL 重启后要重做
+   k3s kubectl apply -f k8s/03-pvc.yaml -f k8s/22a-openvino.yaml
+   ```
+   > `k3s kubectl` 要 root（`/etc/rancher/k3s/k3s.yaml` 仅 root 可读），`mount` 也要 root；
+   > 普通用户执行会报 `permission denied` / `must be superuser`。
 
 > Windows 上的 native `ovms` 服务（scripts/install-openvino-ovms-service.ps1）已无必要：
 > 后端经 `OpenVinoOms__BaseUrl=http://bh-openvino:8000` 走集群内 OVMS。
