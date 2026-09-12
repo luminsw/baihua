@@ -1,4 +1,4 @@
-# 同步 nuget-local 离线包源（Docker 离线构建用）
+﻿# 同步 nuget-local 离线包源（Docker 离线构建用）
 # 从本机 NuGet 缓存把项目依赖的 nupkg 复制到 nuget-local/，
 # 使 Docker 构建（restore --source ./nuget-local）完全离线、不受外网波动影响。
 #

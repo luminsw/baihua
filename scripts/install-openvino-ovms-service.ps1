@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # 安装/更新 百花 OpenVINO Model Server（Intel OVMS）Windows 服务
 # 用法（管理员 PowerShell）:
 #   powershell -ExecutionPolicy Bypass -File install-openvino-ovms-service.ps1
