@@ -23,6 +23,18 @@ spec:
       labels:
         app: bh-server
     spec:
+      # 启动顺序：k8s 不保证 Pod 之间的依赖顺序，用 initContainer 等数据库可用再启动后端。
+      # （后端自身也有启动期重试兜底，见 services/Baihua.Server/Program.cs 的数据库初始化重试逻辑）
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:18-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until pg_isready -h bh-postgres -p 5432 -U baihua -d baihua; do echo "waiting for postgres..."; sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
       containers:
         - name: bh-server
           image: bh-server:latest

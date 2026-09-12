@@ -574,27 +574,54 @@ foreach (var module in modules)
 }
 
 // ---------------- 数据库与模块初始化 ----------------
+// 带重试：k8s/compose 下后端与 PostgreSQL 是并行启动的（没有启动顺序保证），
+// 数据库晚就绪几秒就永久留下"没建表"的半残状态，因此启动期必须重试而不是一次性尝试。
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
-try
 {
-    using var scope = app.Services.CreateScope();
-    var results = await DatabaseInitializer.InitializeAsync(scope.ServiceProvider, logger);
-    logger.LogInformation("数据库 {Database} 初始化：{Results}", DbConnections.DatabaseName, string.Join("；", results));
+    const int maxAttempts = 20;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++)
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var report = await DatabaseInitializer.InitializeAsync(scope.ServiceProvider, logger);
+            logger.LogInformation("数据库 {Database} 初始化（第 {Attempt} 次尝试）：{Results}",
+                DbConnections.DatabaseName, attempt, string.Join("；", report.Messages));
 
-    // API Key 历史数据迁移（幂等）
-    try
-    {
-        var aiDb = scope.ServiceProvider.GetRequiredService<AIDbContext>();
-        scope.ServiceProvider.GetRequiredService<MigrationService>().MigrateApiKeysIfNeeded(aiDb);
+            // 三个上下文全军覆没 = 数据库还没就绪（连接被拒），重试；部分成功则记警告继续（避免死循环）
+            if (report.AllFailed && attempt < maxAttempts)
+            {
+                var retryDelay = TimeSpan.FromSeconds(Math.Min(2 * attempt, 5));
+                logger.LogWarning("数据库 {Database} 尚未就绪（第 {Attempt}/{Max} 次），{Delay}s 后重试",
+                    DbConnections.DatabaseName, attempt, maxAttempts, retryDelay.TotalSeconds);
+                await Task.Delay(retryDelay);
+                continue;
+            }
+
+            // API Key 历史数据迁移（幂等）
+            try
+            {
+                var aiDb = scope.ServiceProvider.GetRequiredService<AIDbContext>();
+                scope.ServiceProvider.GetRequiredService<MigrationService>().MigrateApiKeysIfNeeded(aiDb);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "API Key 迁移失败（不影响启动）");
+            }
+            break;
+        }
+        catch (Exception ex) when (attempt < maxAttempts)
+        {
+            var delay = TimeSpan.FromSeconds(Math.Min(2 * attempt, 5));
+            logger.LogWarning("数据库初始化异常（第 {Attempt}/{Max} 次）：{Message}；{Delay}s 后重试",
+                attempt, maxAttempts, ex.Message, delay.TotalSeconds);
+            await Task.Delay(delay);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "数据库初始化失败（已重试 {Max} 次）", maxAttempts);
+        }
     }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "API Key 迁移失败（不影响启动）");
-    }
-}
-catch (Exception ex)
-{
-    logger.LogError(ex, "数据库初始化失败");
 }
 
 foreach (var module in modules)
