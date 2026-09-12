@@ -203,18 +203,33 @@ builder.Services.AddMcpServer()
     .WithTools<BaihuaLocalModelTools>();
 
 // ---------------- 限流 / 健康检查 / CORS ----------------
-// 配对码防暴力破解
+// 配对码防暴力破解。
+// 分区键优先用 X-Device-Id（客户端签名的同时会带上该头），没有才退回来源 IP —— 原因：
+// 经反向代理/端口转发部署时（本机 k3s 走 Traefik，WSL 前面还有 netsh portproxy），
+// RemoteIpAddress 可能是代理/节点地址而非真实客户端 IP，若按 IP 分区，家里所有手机
+// 会共用一个 5 次/小时的桶：每台设备每次同步结束都会调 /mg/register-device，
+// 多设备家庭很容易在第 6 次被 429。按设备分区后，限流真正落在"每个设备"上。
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("pair", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            partitionKey: ResolvePairPartitionKey(httpContext),
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 5,
                 Window = TimeSpan.FromHours(1)
             }));
 });
+
+static string ResolvePairPartitionKey(HttpContext httpContext)
+{
+    var deviceId = httpContext.Request.Headers["X-Device-Id"].FirstOrDefault();
+    if (!string.IsNullOrWhiteSpace(deviceId))
+        return $"dev:{deviceId}";
+
+    // 没有设备标识时退回来源 IP；再取不到（同机 loopback 等）用一个固定桶
+    return $"ip:{httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+}
 
 builder.Services.AddHealthChecks()
     .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy());

@@ -784,6 +784,17 @@ k3s kubectl -n kube-system get jobs
   然后 `wsl --shutdown` 重启（k3s 会随之重启；hostPath 数据保留，模型 bind-mount 需重做）。
   `bh lan status` 会显示 `模式: WSL mirrored（无需转发）`，`bh` 也就不会再尝试提权。
   额外好处：Windows 侧代理（127.0.0.1:7890）也能被 WSL/Docker 直接使用，拉镜像不再受限。
+- **客户端真实 IP（X-Forwarded-For）在 portproxy 模式下拿不到，这是转发方式决定的**，实测结论：
+  * `bh deploy` 会把 k3s 的 Traefik Service 打成 `externalTrafficPolicy: Local`（svclb/klipper-lb 在
+    Cluster 模式下会 SNAT，源 IP 到不了 Traefik）；服务端也配了 `BAIHUA_TRUSTED_PROXY_NETS=10.42.0.0/16`
+    （只采信来自 Pod 网段的 XFF）与 `BAIHUA_ADMIN_ALLOWED_NETS=10.0.0.0/8,192.168.3.0/24`。
+  * 但 **Windows 的 `netsh portproxy` 是用户态转发：它自己新建到 WSL 的连接**，真实客户端 IP 在进 WSL
+    之前就没了。实测把管理网段设成不可能命中的网段后，服务端日志打出的是
+    `[AccessControl] Blocked non-local request from 10.42.0.197`（Traefik Pod IP），而不是手机 IP。
+  * 因此依赖客户端 IP 的策略在这个模式下都会失真（审计日志里的 ipAddress、按 IP 分区等）。
+    **要拿到真实 IP 就走上面的 mirrored 网络**（那时 XFF 链路才有意义）；两者不要同时用。
+  * 不依赖客户端 IP 的补救已落地：配对限流改为**按 `X-Device-Id` 分区**（没有该头才退回 IP），
+    多设备家庭不会再共用一个 5 次/小时的桶。
 - **不要在 Windows 上直接跑 `k3s kubectl`/`mount`**：`/etc/rancher/k3s/k3s.yaml` 仅 root 可读、
   `mount` 也要 root；普通用户执行会 `permission denied` / `must be superuser`。用 `sudo` 或 `wsl -u root`。
 
