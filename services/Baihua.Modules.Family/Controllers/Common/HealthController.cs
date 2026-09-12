@@ -75,7 +75,7 @@ namespace Baihua.Modules.Family.Controllers;
             {
                 status = "healthy",
                 timestamp = DateTime.UtcNow.ToString("o"),
-                message = "Baihua Family Service is running"
+                message = "Baihua Server is running"
             };
         }
 

@@ -116,6 +116,18 @@ spec:
       services:
         - name: bh-server
           port: 8788
+    # 移动端「推送到百花」/「解除推送」：控制器用的是绝对路径（/mobile-vaults/push|unpush，
+    # VaultController.Mobile.Sync/Unpush 里的 [HttpPost("/mobile-vaults/...")]），
+    # 不带 /mg 前缀，所以必须单独放行 —— 否则会被下面的 PathPrefix('/') 兜底规则
+    # 转发到 bh-webui(5177)，手机端只会拿到 302 → /login（实测），推送功能整体失效。
+    - kind: Rule
+      match: PathPrefix(`/mobile-vaults/`)
+      priority: 742
+      middlewares:
+        - name: sec-headers
+      services:
+        - name: bh-server
+          port: 8788
     # MCP streamable-http 端点（Baihua.Server 内 MapMcp("/mcp")）
     - kind: Rule
       match: Path(`/mcp`) || PathPrefix(`/mcp/`)
