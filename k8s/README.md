@@ -730,4 +730,26 @@ k3s kubectl -n kube-system get jobs
 > 退役需管理员权限：`powershell -ExecutionPolicy Bypass -File scripts\install-openvino-ovms-service.ps1 -Remove`
 > （只停服务+删注册，模型目录与 OVMS 二进制保留，可随时重装）。
 
+### 6. Windows 宿主上的访问方式（`bh dashboard` 与手机）
+
+- **浏览器（Windows 本机）**：`bh dashboard` 已能自动打开 Windows 默认浏览器 ——
+  Windows 包装层（`tools/bh/bh.ps1`）用 `BAIHUA_DASHBOARD_PRINT_ONLY=1` 让 WSL 里只取 cli-token 并回传 URL，
+  再由 Windows 侧 `Start-Process` 打开（WSL 内没有浏览器，原来的实现只会打印 URL）。
+  实测链路：`GET /?cli-token=…` → 302（种 cookie）→ `GET /` → 200（百花页面）。
+- **手机/局域网**：Traefik 绑的是 WSL 的 :80（WSL IP 形如 `172.30.x.x`），Windows 本机能访问，
+  局域网设备访问不到。需在宿主做一次转发（**管理员**）：
+
+  ```powershell
+  pwsh -File scripts\expose-k3s-lan.ps1          # 宿主 :80 -> WSL:80 + 防火墙放行（幂等）
+  pwsh -File scripts\expose-k3s-lan.ps1 -Remove  # 撤销
+  ```
+
+  之后手机访问 `http://<宿主IP>/`；让 `bh dashboard` 也用宿主地址：
+  `$env:BAIHUA_PUBLIC_HOST='192.168.3.9'; bh dashboard`。
+  **WSL 重启后 IP 会变**，重跑该脚本即可（脚本会覆盖旧规则）。
+  配对二维码里的地址由 `k8s/01-configmap.yaml` 的 `Baihua__PublicBaseUrl` 决定，改用同一个宿主地址并 `bh deploy`。
+- **不要在 Windows 上直接跑 `k3s kubectl`/`mount`**：`/etc/rancher/k3s/k3s.yaml` 仅 root 可读、
+  `mount` 也要 root；普通用户执行会 `permission denied` / `must be superuser`。用 `sudo` 或 `wsl -u root`。
+
+
 
