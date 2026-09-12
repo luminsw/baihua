@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 <#
   bh - baihua 统一 CLI 入口（Windows）
   在 Windows 上经 WSL 调用 Linux k3s cell（tools/bh/linux/k8s/bh.sh）。
@@ -108,6 +108,38 @@ if ($cell -in @('help', '-h', '--help')) {
 $Rest = if ($Cells.ContainsKey($cell)) { @($All | Select-Object -Skip 1) } else { @($All) }
 $wslRepo = (wsl wslpath -u ($Repo -replace '\\', '/') 2>$null | Out-String).Trim()
 if (-not $wslRepo) { Write-Error '[k8s] wslpath 不可用，请确认已安装 WSL 且可执行 wsl 命令'; exit 1 }
-$inner = ($Rest | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
-wsl -u root -e bash -lc "cd '$wslRepo' && tools/bh/linux/k8s/bh.sh $inner"
-exit $LASTEXITCODE
+
+function Invoke-Cell([string[]]$CellArgs, [string]$EnvPrefix = '') {
+    $inner = ($CellArgs | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
+    wsl -u root -e bash -lc "cd '$wslRepo' && $EnvPrefix tools/bh/linux/k8s/bh.sh $inner"
+    return $LASTEXITCODE
+}
+
+# dashboard 特殊处理：CLI 在 WSL 里跑，打不开 Windows 的浏览器 —— 由本包装层代开。
+if ($cell -eq 'dashboard' -or ($Rest.Count -gt 0 -and $Rest[0] -eq 'dashboard')) {
+    # 公开地址：默认用 WSL 的 IP（Windows 侧实测可访问）；若已做 :80 转发到宿主机，
+    # 可设 BAIHUA_PUBLIC_HOST=192.168.3.9 让 URL 也能被手机/局域网设备打开。
+    $publicHost = $env:BAIHUA_PUBLIC_HOST
+    $envPrefix = 'BAIHUA_DASHBOARD_PRINT_ONLY=1 '
+    if ($publicHost) { $envPrefix += "BAIHUA_PUBLIC_HOST=$publicHost " }
+
+    $out = wsl -u root -e bash -lc "cd '$wslRepo' && $envPrefix tools/bh/linux/k8s/bh.sh dashboard" 2>&1
+    $out | Where-Object { $_ -notmatch '^URL=' } | ForEach-Object { Write-Host $_ }
+    $urlLine = $out | Where-Object { $_ -match '^URL=' } | Select-Object -Last 1
+    if (-not $urlLine) { Write-Warning '[dashboard] 未取到 URL（服务可能未就绪：bh status）'; exit 1 }
+
+    $url = $urlLine.Substring(4).Trim()
+    Write-Host ''
+    Write-Host "[dashboard] 正在用 Windows 默认浏览器打开：$url"
+    try { Start-Process $url } catch { Write-Warning "[dashboard] 自动打开失败，请手动复制：$url" }
+
+    if (-not $publicHost) {
+        $wslIp = ($url -replace '^https?://([^/:]+).*$', '$1')
+        Write-Host "[dashboard] 说明：URL 用的是 WSL 的 IP（$wslIp），Windows 本机可访问；"
+        Write-Host "            手机等局域网设备需先把宿主 :80 转发进 WSL：以管理员运行"
+        Write-Host "              pwsh -File scripts\expose-k3s-lan.ps1"
+    }
+    exit 0
+}
+
+exit (Invoke-Cell $Rest)

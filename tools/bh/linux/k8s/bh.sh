@@ -650,12 +650,18 @@ show_logs() {
 }
 
 open_dashboard() {
-    # 用局域网 IP 而非 localhost：打印的 URL 在本机或局域网其它设备的浏览器都能打开
+    # URL 主机优先级：BAIHUA_PUBLIC_HOST（手机/局域网访问用的宿主 IP）> 本机首个 IP（WSL 里就是 WSL IP）
+    # 说明：Windows 上 bh 是经 WSL 调用的，浏览器打不开只能由 Windows 侧代开，
+    #       因此支持 BAIHUA_DASHBOARD_PRINT_ONLY=1：只取 token 并输出一行 URL=（供 Windows 包装层捕获）。
     local host="localhost"
-    local lanip
-    lanip="$(hostname -I 2>/dev/null | awk '{print $1}')"
-    if [ -n "$lanip" ] && [[ "$lanip" =~ ^[0-9.]+$ ]]; then
-        host="$lanip"
+    if [ -n "${BAIHUA_PUBLIC_HOST:-}" ]; then
+        host="$BAIHUA_PUBLIC_HOST"
+    else
+        local lanip
+        lanip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+        if [ -n "$lanip" ] && [[ "$lanip" =~ ^[0-9.]+$ ]]; then
+            host="$lanip"
+        fi
     fi
     local url="http://$host"
     local token="" attempt
@@ -673,6 +679,12 @@ open_dashboard() {
         echo "[dashboard] cli-token 获取失败（traefik :80 未就绪？先打开无 token URL）"
     fi
     echo "[dashboard] URL: $url"
+
+    # 只输出 URL（Windows 包装层用：WSL 里没有浏览器，由 Windows 侧 Start-Process 打开）
+    if [ "${BAIHUA_DASHBOARD_PRINT_ONLY:-}" = "1" ]; then
+        echo "URL=$url"
+        return 0
+    fi
 
     # root/sudo 下 xdg-open 无法直接访问用户桌面（X/Wayland 授权），
     # 尝试以原用户身份打开；失败则只打印 URL。
