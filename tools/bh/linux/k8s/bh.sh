@@ -564,7 +564,9 @@ service_affected() {
     local paths=()
     case "$svc" in
         server)   paths=("services/Baihua.Server/" "services/Baihua.Modules.Family/" "services/Baihua.Modules.Ai/" "services/Baihua.Modules.Vault/" "services/Baihua.AI.Provider/" "services/Baihua.Core/" "services/Baihua.Contracts/" "services/Baihua.Data/" "libs/");;
-        webui)    paths=("services/Baihua.Web/" "services/Baihua.Core/" "services/Baihua.Contracts/" "services/Baihua.Data/" "libs/");;
+        # webui 只引用 Baihua.Contracts（见 services/Baihua.Web/Baihua.Web.csproj），
+        # 列上 Core/Data/libs 会误报"需要重建"（如只改 Baihua.Data 的 DbContext 时）。
+        webui)    paths=("services/Baihua.Web/" "services/Baihua.Contracts/");;
         openvino) paths=("k8s/images/Dockerfile.openvino-server" "services/Baihua.AI.Provider.OpenVino/");;
         postgres) paths=("k8s/25-postgres.yaml");;
     esac
