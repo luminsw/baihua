@@ -69,8 +69,7 @@ Write-Host ''
 if ($lanIp) {
     Write-Host "手机/局域网访问入口： http://$lanIp/"
     if (-not $Quiet) {
-        Write-Host "（配对二维码里的地址由 k8s/01-configmap.yaml 的 Baihua__PublicBaseUrl 决定，"
-        Write-Host "  建议改成同一个宿主地址并重跑: bh deploy）"
+        Write-Host "（配对二维码地址 Baihua__PublicBaseUrl 由 bh start/deploy 自动校正为 $lanIp，无需手改）"
     }
 } else {
     Write-Host '[!] 未识别到宿主局域网 IP，请手动确认手机访问地址。'

@@ -69,6 +69,12 @@ spec:
               mountPath: /app/logs
             - name: vaults
               mountPath: /vaults
+            # 同一份笔记再挂到 BAIHUA_HOME/vaults：应用的「知识库根目录」恒为 $BAIHUA_HOME/vaults
+            # （BaihuaPaths.Vaults），数据库里记录的路径也是 /app/data/vaults/... 。
+            # 早期这里是数据卷里的一个符号链接（-> /mnt/c/...），但那个目标在容器命名空间里不存在，
+            # 于是所有知识库路径都解析失败（健康检查报「知识库路径不存在」）。直接挂真实目录最稳。
+            - name: vaults
+              mountPath: /app/data/vaults
             # OpenVINO 模型目录（只读挂载，用于扫描可用模型列表）
             - name: models
               mountPath: /opt/baihua/models
