@@ -8,12 +8,12 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using Baihua.Contracts.Ai;
 using Baihua.Contracts.Master;
-using Baihua.Family.Controllers;
-using Baihua.Family.Controllers.AI.Stages;
+using Baihua.Modules.Family.Controllers;
+using Baihua.Modules.Family.Controllers.AI.Stages;
 using Baihua.Data;
 using Baihua.Data.Entities;
-using Baihua.Family.Models;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Models;
+using Baihua.Modules.Family.Services;
 using Xunit;
 
 namespace Baihua.Family.Tests.Services;
@@ -115,7 +115,7 @@ public class MasterControllerTests
         mockLoc.Setup(l => l["Master_UpdateFailed"]).Returns(new Microsoft.Extensions.Localization.LocalizedString("Master_UpdateFailed", "Update failed: {0}"));
         mockLoc.Setup(l => l["Master_EvictStageLabel"]).Returns(new Microsoft.Extensions.Localization.LocalizedString("Master_EvictStageLabel", "Stage:"));
         mockLoc.Setup(l => l["Master_EvictSummaryLabel"]).Returns(new Microsoft.Extensions.Localization.LocalizedString("Master_EvictSummaryLabel", "Summary:"));
-        var stageFactory = new Baihua.Family.Controllers.AI.Stages.StageStrategyFactory(mockLoc.Object);
+        var stageFactory = new Baihua.Modules.Family.Controllers.AI.Stages.StageStrategyFactory(mockLoc.Object);
 
         return new MasterController(
             null!, // AiClientService — 此类测试不会调用 AI

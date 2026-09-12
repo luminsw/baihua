@@ -79,7 +79,7 @@ public class FamilyDbContext : DbContext
         if (!optionsBuilder.IsConfigured)
         {
             var dbPath = GetDefaultDbPath();
-            optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.For("family"));
+            optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.Baihua);
         }
     }
 

@@ -3,7 +3,7 @@ using Baihua.Core.Services;
 using System.Reflection;
 using Baihua.Core.Localization;
 using Baihua.Data;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
@@ -44,8 +44,8 @@ public static class Fam33MakeupProbe
     public static Type? FindCheckinServiceType()
     {
         var asm = typeof(LeaderboardService).Assembly;
-        var direct = asm.GetType("Baihua.Family.Services.CheckinService")
-                    ?? asm.GetType("Baihua.Family.Services.Learning.CheckinService");
+        var direct = asm.GetType("Baihua.Modules.Family.Services.CheckinService")
+                    ?? asm.GetType("Baihua.Modules.Family.Services.Learning.CheckinService");
         if (direct != null) return direct;
         return asm.GetTypes()
             .FirstOrDefault(t => t.IsClass && !t.IsAbstract && t.IsPublic

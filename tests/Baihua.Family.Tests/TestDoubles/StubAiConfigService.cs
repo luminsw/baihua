@@ -1,3 +1,4 @@
+using Baihua.Contracts.Ai;
 using Baihua.Core.Models;
 using Baihua.Core.Security;
 using Baihua.Core.Services;
@@ -29,4 +30,10 @@ public class StubAiConfigService : IAiConfigService
     }
 
     public bool DeleteProvider(string providerId) => false;
+
+    public List<AiProviderBackupItem> ExportForBackup(string? password) => new();
+
+    public void ImportFromBackup(List<AiProviderBackupItem> items, string? password, bool replaceAll = false)
+    {
+    }
 }

@@ -42,7 +42,7 @@ public class VaultDbContext : DbContext
         if (!optionsBuilder.IsConfigured)
         {
             var dbPath = GetDefaultDbPath();
-            optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.For("vault"));
+            optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.Baihua);
         }
     }
 

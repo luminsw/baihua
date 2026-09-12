@@ -12,7 +12,7 @@ public class FamilyDbContextFactory : IDesignTimeDbContextFactory<FamilyDbContex
     public FamilyDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<FamilyDbContext>()
-            .UseNpgsql(DbConnections.For("family"))
+            .UseNpgsql(DbConnections.Baihua)
             .Options;
         return new FamilyDbContext(options);
     }

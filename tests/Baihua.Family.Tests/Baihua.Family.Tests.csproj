@@ -28,7 +28,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../services/Baihua.Family/Baihua.Family.csproj" />
+    <!-- 合并后测试对象是单一宿主 Baihua.Server（内含 Family/Ai/Vault 三模块） -->
+    <ProjectReference Include="../../services/Baihua.Server/Baihua.Server.csproj" />
     <ProjectReference Include="../../services/Baihua.Core/Baihua.Core.csproj" />
     <ProjectReference Include="../../services/Baihua.AI.Provider/Baihua.AI.Provider.csproj" />
   </ItemGroup>

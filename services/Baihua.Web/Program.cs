@@ -280,9 +280,8 @@ builder.Services.AddScoped<Baihua.Web.Services.ServerMessagingService>();
 builder.Services.AddScoped<Baihua.Web.Services.OnboardingService>();
 builder.Services.AddSingleton<Baihua.Web.Services.CapabilityService>();
 
-// Add Localization services (i18n, default: zh-CN)
+// 本地化：仅中文（zh-CN）。资源为 Baihua.Web/Localization/SharedResources.resx（中性资源即中文）
 builder.Services.AddLocalization();
-builder.Services.AddScoped<Baihua.Web.Services.CultureService>();
 
 // Add HttpClient with API base address + Polly retry
 var retryPolicy = HttpPolicyExtensions
@@ -380,8 +379,9 @@ app.MapStaticAssets();
 app.UseAntiforgery();
 
 // 请求关联ID中间件（最早阶段添加，确保所有日志都有 CorrelationId）
-// 本地化中间件（默认中文 zh-CN，支持英文 en）
-var supportedCultureInfos = new[] { new CultureInfo("zh-CN"), new CultureInfo("en") };
+// 本地化中间件：仅中文（zh-CN）。固定 SupportedCultures 可确保浏览器发送 Accept-Language: en
+// 也不会切走中文（数字/日期格式同样固定为 zh-CN）
+var supportedCultureInfos = new[] { new CultureInfo("zh-CN") };
 app.UseRequestLocalization(new RequestLocalizationOptions
 {
     DefaultRequestCulture = new RequestCulture("zh-CN"),

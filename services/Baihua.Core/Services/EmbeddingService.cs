@@ -15,9 +15,9 @@ namespace Baihua.Core.Services
 {
     /// <summary>
     /// 语义向量服务：基于 SQLite BLOB 缓存 + IEmbeddingGenerator 抽象，对关键词搜索结果按相似度重排
-    /// 
-    /// 一服务一数据库：Embedding 配置（EmbeddingConfigs 表）只存在于 AI 服务 ai.db，
-    /// 本服务（Family/Vault 进程）经 AI 服务 HTTP API（GET /api/embedding/config）读取，不直连 ai.db。
+    ///
+    /// 合并为单进程后：Embedding 配置（EmbeddingConfigs 表）仍归 AI 模块所有，
+    /// 本服务经 <see cref="Baihua.Core.Modules.IEmbeddingConfigProvider"/> 接口在进程内读取。
     /// </summary>
     public class EmbeddingService
     {
@@ -25,10 +25,10 @@ namespace Baihua.Core.Services
         private readonly AiSettingsService _aiSettings;
         private readonly VaultSettingsService _vaultSettings;
         private readonly IDbContextFactory<VaultDbContext> _vaultDbFactory;
-        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly Baihua.Core.Modules.IEmbeddingConfigProvider _embeddingConfigProvider;
         private readonly ILogger<EmbeddingService> _logger;
 
-        // Embedding 配置短缓存（避免每个向量调用都经 HTTP 打 AI 服务）
+        // Embedding 配置短缓存（向量索引/重排高频调用，避免反复查库）
         private EmbeddingConfig? _cachedEmbeddingConfig;
         private DateTime _embeddingConfigFetchedAtUtc;
         private readonly object _embeddingConfigLock = new();
@@ -50,14 +50,14 @@ namespace Baihua.Core.Services
             AiSettingsService aiSettings,
             VaultSettingsService vaultSettings,
             IDbContextFactory<VaultDbContext> vaultDbFactory,
-            IHttpClientFactory httpClientFactory,
+            Baihua.Core.Modules.IEmbeddingConfigProvider embeddingConfigProvider,
             ILogger<EmbeddingService> logger)
         {
             _aiClientService = aiClientService;
             _aiSettings = aiSettings;
             _vaultSettings = vaultSettings;
             _vaultDbFactory = vaultDbFactory;
-            _httpClientFactory = httpClientFactory;
+            _embeddingConfigProvider = embeddingConfigProvider;
             _logger = logger;
         }
 
@@ -89,10 +89,8 @@ namespace Baihua.Core.Services
         }
 
         /// <summary>
-        /// 读取 Embedding 配置（一服务一数据库：经 AI 服务 HTTP API，不直读 ai.db）。
-        /// 注意：HTTP 响应不含 API Key（掩码），本地嵌入模型（bge/Ollama/OpenVINO 等）无需 Key；
-        /// 需要鉴权的云端嵌入模型暂不支持（后续可加 AI 服务 embedding shim）。
-        /// 带 30s 短缓存：向量索引/重排高频调用，避免反复打 AI 服务。
+        /// 读取 Embedding 配置（进程内直调 AI 模块的 <see cref="Baihua.Core.Modules.IEmbeddingConfigProvider"/>）。
+        /// 带 30s 短缓存：向量索引/重排高频调用，避免反复查库。
         /// </summary>
         private EmbeddingConfig? GetEmbeddingConfig()
         {
@@ -107,30 +105,23 @@ namespace Baihua.Core.Services
                 EmbeddingConfig? config = null;
                 try
                 {
-                    var aiBase = AiServiceEndpoints.ResolveAiBaseUrl();
-                    using var client = _httpClientFactory.CreateClient();
-                    client.Timeout = TimeSpan.FromSeconds(5);
-                    var dto = client.GetFromJsonAsync<EmbeddingConfigDto>(
-                        $"{aiBase.TrimEnd('/')}/api/embedding/config").GetAwaiter().GetResult();
-                    if (dto != null)
+                    var settings = _embeddingConfigProvider.GetAsync().GetAwaiter().GetResult();
+                    config = new EmbeddingConfig
                     {
-                        config = new EmbeddingConfig
-                        {
-                            ProviderId = dto.ProviderId,
-                            Model = dto.Model,
-                            BaseUrl = dto.BaseUrl,
-                            IsEnabled = dto.IsEnabled,
-                            Dimensions = dto.Dimensions,
-                            EncryptedApiKey = null // Family/Vault 不持有 key
-                        };
-                    }
+                        ProviderId = settings.ProviderId,
+                        Model = settings.Model,
+                        BaseUrl = settings.BaseUrl,
+                        IsEnabled = settings.IsEnabled,
+                        Dimensions = settings.Dimensions,
+                        EncryptedApiKey = null // 密钥不出 AI 模块
+                    };
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogDebug(ex, "经 AI 服务读取 EmbeddingConfig 失败");
+                    _logger.LogDebug(ex, "读取 EmbeddingConfig 失败");
                 }
 
-                // 失败也短暂缓存 null（AI 服务不可达时避免每次调用都打 HTTP）
+                // 失败也短暂缓存 null，避免每次调用都重复失败
                 _cachedEmbeddingConfig = config;
                 _embeddingConfigFetchedAtUtc = DateTime.UtcNow;
                 return config;

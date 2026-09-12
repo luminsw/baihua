@@ -1,5 +1,5 @@
 using Baihua.Data;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -198,18 +198,18 @@ public class Fam22LeaderboardContractTests : IDisposable
     public void LeaderboardPage_HasSoloGuideText()
     {
         // AC6：单人/空榜时显示引导文案"邀请更多小伙伴一起学吧"
-        // 页面已 i18n 化：契约断言 resx key 引用 + 中文 resx 中的实际文案
+        // 页面已本地化：契约断言 resx key 引用 + 中性 resx（中文单语言，已无 zh-CN 附属资源）中的实际文案
         var source = ReadLeaderboardSource();
         Assert.True(
             source.Contains("Leaderboard_InviteHint", StringComparison.OrdinalIgnoreCase),
             "FAM-22-AC6：空状态缺少引导文案 key（Leaderboard_InviteHint）（红）");
 
         var zhResx = RepoPath.FindUp(Path.Combine(
-            "services", "Baihua.Web", "Localization", "SharedResources.zh-CN.resx"));
+            "services", "Baihua.Web", "Localization", "SharedResources.resx"));
         var zhSource = File.ReadAllText(zhResx);
         Assert.True(
             zhSource.Contains("邀请更多小伙伴一起学吧", StringComparison.OrdinalIgnoreCase),
-            "FAM-22-AC6：zh-CN resx 缺少'邀请更多小伙伴一起学吧'文案（红）");
+            "FAM-22-AC6：resx 缺少'邀请更多小伙伴一起学吧'文案（红）");
     }
 
     private static bool RegexActiveFirst(string source, string keyword)

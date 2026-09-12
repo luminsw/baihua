@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using Baihua.Data.Entities;
 
 namespace Baihua.Data;
-
 /// <summary>
 /// AI 研究域数据库上下文
 /// </summary>
@@ -22,7 +21,6 @@ public class AIDbContext : DbContext
 
     public DbSet<AiProviderSetting> AiProviderSettings => Set<AiProviderSetting>();
     public DbSet<AiUsageMetric> AiUsageMetrics => Set<AiUsageMetric>();
-    public DbSet<BenchmarkSessionEntity> BenchmarkSessions => Set<BenchmarkSessionEntity>();
     public DbSet<EmbeddingConfig> EmbeddingConfigs => Set<EmbeddingConfig>();
     public DbSet<ComfyArtworkEntity> ComfyArtworks => Set<ComfyArtworkEntity>();
 
@@ -35,7 +33,7 @@ public class AIDbContext : DbContext
         if (!optionsBuilder.IsConfigured)
         {
             var dbPath = GetDefaultDbPath();
-            optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.For("ai"));
+            optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.Baihua);
         }
     }
 
@@ -97,23 +95,6 @@ public class AIDbContext : DbContext
             entity.Property(e => e.Operation).HasMaxLength(50).IsRequired();
             entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
             entity.Property(e => e.CalledAt).HasDefaultValueSql("now()");
-        });
-
-        modelBuilder.Entity<BenchmarkSessionEntity>(entity =>
-        {
-            entity.ToTable("BenchmarkSessions");
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.SessionId).IsUnique();
-            entity.HasIndex(e => e.Category);
-            entity.HasIndex(e => e.TestedAt);
-
-            entity.Property(e => e.SessionId).HasMaxLength(20).IsRequired();
-            entity.Property(e => e.ModelName).HasMaxLength(200).IsRequired();
-            entity.Property(e => e.Category).HasMaxLength(50).IsRequired();
-            entity.Property(e => e.ProviderId).HasMaxLength(50).IsRequired();
-            entity.Property(e => e.ModelId).HasMaxLength(100).IsRequired();
-            entity.Property(e => e.ResultsJson).IsRequired().HasDefaultValue("[]");
-            entity.Property(e => e.TestedAt).HasDefaultValueSql("now()");
         });
 
         modelBuilder.Entity<EmbeddingConfig>(entity =>

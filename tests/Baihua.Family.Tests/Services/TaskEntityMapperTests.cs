@@ -3,7 +3,7 @@ using Baihua.Core.Services;
 using System.Text.Json;
 using Baihua.Core;
 using Baihua.Data.Entities;
-using Baihua.Family.Services;
+using Baihua.Modules.Family.Services;
 using Xunit;
 
 namespace Baihua.Family.Tests.Services;
