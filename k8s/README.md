@@ -743,11 +743,33 @@ k3s kubectl -n kube-system get jobs
    k3s kubectl -n baihua patch pvc baihua-models-pvc -p '{"metadata":{"finalizers":null}}'   # 卡住时
    k3s kubectl -n baihua delete pvc baihua-models-pvc --force --grace-period=0
    k3s kubectl delete pv baihua-models-pv --ignore-not-found
-   mount --bind /mnt/c/Users/lumin/.baihua/models /opt/baihua/models     # WSL 重启后要重做
+   ln -sfn /mnt/c/Users/lumin/.baihua/models /opt/baihua/models     # 符号链接，跨 WSL 重启有效
    k3s kubectl apply -f k8s/03-pvc.yaml -f k8s/22a-openvino.yaml
    ```
    > `k3s kubectl` 要 root（`/etc/rancher/k3s/k3s.yaml` 仅 root 可读），`mount` 也要 root；
    > 普通用户执行会报 `permission denied` / `must be superuser`。
+
+5. **本机 AI 链路怎么走通（重要）**：OVMS 只暴露成 ClusterIP，宿主机直连不到 :8000，所以要让宿主机侧
+   （DSH 的 `baihua-local` / `local_ai_small_task`）用上本地模型，必须把它注册成百花的 AI 提供方，
+   再由 shim 暴露出去。链路与实测：
+   ```
+   DSH(local_ai_small_task) → http://127.0.0.1/mg/ai/v1(Traefik :80) → 百花 shim
+     → provider `openvino-local`（baseUrl http://bh-openvino:8000/v3）
+     → bh-openvino → GPU 上的 qwen3-4b
+   ```
+   注册方式（WebUI 里加一个 OpenAI 兼容提供方，或直接调管理 API；幂等）：
+   ```bash
+   # loopback 管理 API（宿主机可经 port-forward 或 :80 访问）
+   curl -s -X POST http://127.0.0.1/api/ai/config/providers -H 'Content-Type: application/json' -d '{
+     "id":"openvino-local","name":"本机 OVMS（k3s bh-openvino）",
+     "baseUrl":"http://bh-openvino:8000/v3","isMain":false,
+     "models":[{"name":"qwen3-4b","isMain":false,"category":"chat"}],
+     "apiKey":"","sortOrder":50,"tier":2 }'
+   ```
+   > provider id 里带 `openvino`/`ovms` 是关键：`baihua-local-ai-dsh-plugin` 按 `owned_by` 白名单
+   > 判断"这是本地模型"，否则会把本地模型当云端模型过滤掉。
+   > 验证：`curl -s http://127.0.0.1/mg/ai/v1/models | grep qwen3-4b`，或让 DSH 跑一次
+   > `local_ai_small_task`（应显示"本地 shim/qwen3-4b"）。
 
 > Windows 上的 native `ovms` 服务（scripts/install-openvino-ovms-service.ps1）已无必要：
 > 后端经 `OpenVinoOms__BaseUrl=http://bh-openvino:8000` 走集群内 OVMS。
