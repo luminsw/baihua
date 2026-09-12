@@ -17,8 +17,15 @@ tools/bh/
 ```
 bh <command> [args]           执行命令
 bh k8s <command> [args]       同上（显式写 cell，兼容旧习惯）
+bh lan [on|off|status]        局域网入口（宿主 :80 → WSL k3s），默认 status
 bh install / uninstall        安装到 PATH / 移除
 ```
+
+> **Windows 侧的两个自动动作**（都在 `bh.ps1`，只读命令不动）：
+> 1. **局域网入口**：`start`/`deploy`/`up`/`restart`/`dashboard` 后自动确保宿主 :80 → WSL 转发，
+>    用「连通性」判断而非解析 `netsh` 输出；未就绪才弹一次 UAC（幂等，WSL 重启后自动重做）。
+> 2. **配对地址校正**：`start`/`deploy`/`up`/`restart` 后把 ConfigMap 的 `Baihua__PublicBaseUrl`
+>    校正为当前宿主 LAN IP（值变了才 patch + 滚动重启 `bh-server`），免得二维码扫出旧地址。
 
 - Windows 上 `bh ...` 自动经 `wsl -u root` 路由到 Linux k3s cell（路径经 `wslpath` 转换）。
 - Linux 上 `build`/`deploy`/`update` 需 root（containerd socket / k3s.yaml 仅 root 可读），
@@ -36,7 +43,8 @@ bh install / uninstall        安装到 PATH / 移除
 | `bh status` | pods / svc / pvc 总览（免 sudo） |
 | `bh logs <svc> [n]` | tail pod 日志，默认 50 行（免 sudo）；svc: server / webui / openvino / postgres |
 | `bh prune` | 清空 buildkit 构建缓存（释放磁盘、修复 nuget 缓存损坏导致的构建失败） |
-| `bh dashboard` | 打开 WebUI（cli-token 自动登录） |
+| `bh dashboard` | 打开 WebUI（cli-token 自动登录）；Windows 侧自动用默认浏览器打开 |
+| `bh lan [on\|off\|status]` | 局域网入口（宿主 :80 → WSL k3s Traefik）：查看 / 配置 / 撤销 |
 | `bh openvino <on\|off\|status>` | Intel GPU 相关服务按需启停 |
 | `bh destroy` | 删除 baihua 命名空间 |
 

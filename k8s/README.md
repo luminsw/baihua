@@ -394,7 +394,7 @@ OVMS（`config.json`）注册的 3 个模型目录（22a-openvino.yaml 内联 Co
 
 # 移动端（花记）入口：默认 80 端口，无显式端口号
 # http://<节点IP>/          ← Traefik :80，/mg/* /api/* /vault/* /mcp 走 bh-server
-# 配对二维码默认携带 Baihua:PublicBaseUrl（ConfigMap，如 http://192.168.3.13），不再带 :8788
+# 配对二维码默认携带 Baihua:PublicBaseUrl（ConfigMap；由 bh 自动校正为当前宿主 LAN IP），不再带 :8788
 
 # 当前仅 HTTP(:80)；HTTPS 留待以后上公网时启用
 # （Let's Encrypt 需域名 + 公网可达，届时把 IngressRoute 复制一份加 websecure + tls）
@@ -660,9 +660,23 @@ k3s kubectl -n kube-system get jobs
 - 本机 docker **没有 buildx**：`DOCKER_BUILDKIT=1 docker build` 会报
   "BuildKit is enabled but the buildx component is missing" → 用 `DOCKER_BUILDKIT=0`（legacy builder）。
 - `docker/Dockerfile.server` 的 build 阶段要拉 ~800MB 的 dotnet SDK 镜像（本机国际链路很慢）。
-  实用替代：宿主机 `dotnet publish -c Release -r linux-x64 -o out/k8s/server`，
-  再基于 `k8s/images/Dockerfile.base-runtime` 只做 runtime 层（COPY 产物），
-  最后 `docker save bh-server:latest | k3s ctr -n k8s.io images import -`。
+  标准源码构建（`bh build server`）依赖 `bh/sdk-offline` 镜像（内含 SDK + `nuget-local` 离线包源），
+  本机 k3s 里没有该镜像、也不方便把一个 SDK 镜像搬进集群，因此改用**预编译产物**路径
+  （两侧 Dockerfile 都在仓库里，不再是临时文件）：
+  ```bash
+  # 1) 宿主 publish（Windows 侧就有 SDK，无需再往集群塞 SDK）
+  dotnet publish services/Baihua.Server/Baihua.Server.csproj -c Release -r linux-x64 -o out/k8s/server
+  dotnet publish services/Baihua.Web/Baihua.Web.csproj   -c Release -r linux-x64 -o out/k8s/webui
+  # 2) runtime 层（context 是 publish 输出目录，FROM 已在 WSL docker 里的 bh/base-runtime:latest）
+  docker build -DOCKER_BUILDKIT=0 -f k8s/images/Dockerfile.server-prebuilt -t bh-server:latest out/k8s/server
+  docker build -DOCKER_BUILDKIT=0 -f k8s/images/Dockerfile.webui-prebuilt  -t bh-webui:latest  out/k8s/webui
+  # 3) 导入 k3s containerd 并滚动重启
+  docker save bh-server:latest | wsl -u root k3s ctr -n k8s.io images import -
+  docker save bh-webui:latest  | wsl -u root k3s ctr -n k8s.io images import -
+  wsl -u root k3s kubectl -n baihua rollout restart deploy/bh-server deploy/bh-webui
+  ```
+  > `bh/base-runtime:latest` 只需构建一次（`k8s/images/Dockerfile.base-runtime`，FROM .NET runtime aspnet）。
+  > 换了 .NET 大版本或系统依赖时才需要重做它。
 
 ### 3. 启动顺序与数据库（已修）
 
@@ -678,8 +692,12 @@ k3s kubectl -n kube-system get jobs
 
 - Traefik CRD 是硬前提（`24-traefik.yaml`）。集群未装 Traefik 时 `bh deploy` 会跳过该清单并提示，
   可用 `kubectl port-forward svc/bh-server 8788:8788` 临时访问。
-- `01-configmap.yaml` 的 `Baihua__PublicBaseUrl` 决定移动端配对二维码/广播地址，
-  **换机后要改成宿主机局域网 IP**（本机 WSL 节点为 `172.30.213.225`；旧值 `192.168.3.13` 只适用旧集群）。
+- `01-configmap.yaml` 的 `Baihua__PublicBaseUrl` 决定移动端配对二维码/广播地址。
+  **无需手改**：`bh start|deploy|up|restart` 会按默认路由网卡探测到的宿主 LAN IP 自动 patch 该键
+  （值变了才 patch，并滚动重启 `bh-server`，因为环境变量是启动时读入的）；
+  清单里的字面值只是占位，**不要删掉这个键**（删掉后 `kubectl apply` 会移除它，后端退回 Pod IP，二维码就扫不通）。
+  WSL 节点 IP 会变（本机实测曾为 `172.30.213.225`），但那只影响 Traefik 侧，与配对地址无关。
+  手动核对/查看：`bh lan status` 或 `kubectl -n baihua get cm baihua-config -o jsonpath='{.data.Baihua__PublicBaseUrl}'`。
 - 本机实测：`http://<节点IP>/health` → 200、`/` → 302（WebUI）、`/mg/*` → 401（需 HMAC 签名，符合预期）。
 
 ### 5. OVMS（bh-openvino）在 k3s 里跑起来要注意三件事（本机已踩）
@@ -692,13 +710,19 @@ k3s kubectl -n kube-system get jobs
    k3s ctr -n k8s.io images tag docker.1ms.run/openvino/model_server:latest-gpu docker.io/openvino/model_server:latest-gpu
    k3s ctr -n k8s.io images tag docker.1ms.run/openvino/model_server:latest-gpu docker.io/library/bh-openvino:latest
    ```
-2. **模型仓库**：`baihua-models-pvc` 的 hostPath 是 WSL 内的 `/opt/baihua/models`，默认是空目录；
-   真实模型在 Windows 侧，需要 bind-mount（不跨重启保留，WSL 重启后要重做）：
+2. **模型仓库**：`baihua-models-pvc` 的 hostPath 是 WSL 内的 `/opt/baihua/models`，真实模型在 Windows 侧。
+   用**符号链接**指向 Windows 目录（落在 ext4 上，**跨 WSL 重启有效**）：
 
    ```bash
-   mkdir -p /opt/baihua/models
-   mount --bind /mnt/c/Users/lumin/.baihua/models /opt/baihua/models
+   ln -sfn /mnt/c/Users/lumin/.baihua/models /opt/baihua/models
    ```
+
+   > 早期用的是 `mount --bind /mnt/c/... /opt/baihua/models`，**那个不跨重启**（不写 fstab、也没有
+   > systemd 单元），WSL 一重启 /opt/baihua/models 就变成空目录，OVMS 起不来且报错很隐蔽 —— 已改符号链接。
+   > 同理 `/opt/baihua/data/vaults`（`BAIHUA_HOME/vaults`，容器内 `/app/data/vaults`）也是指向
+   > `/mnt/c/Users/lumin/.baihua/vaults` 的符号链接。
+   > kubelet 解析 hostPath 时会跟随符号链接，所以 PV 定义（hostPath `/opt/baihua/models`）无需改动。
+   > 想更彻底也可以把 PV 的 hostPath 直接写成 `/mnt/c/...`（PV 的 hostPath 不可变，需删 PV/PVC 重建）。
    模型目录里若有指向 modelscope 缓存的软链，还要把缓存目录挂进 Pod（本机已在部署里加了
    `modelscope-cache` 卷：hostPath `/mnt/c/Users/lumin/.cache/modelscope` → 容器内同路径）。
 3. **配置驱动**：`22a-openvino.yaml` 用 `--config_path=/ovms-config/config.json`（`model_config_list`，
@@ -748,7 +772,7 @@ k3s kubectl -n kube-system get jobs
 
   之后手机访问 `http://<宿主IP>/`（脚本/`bh` 会自动用默认路由网卡的地址，已排除 WSL 虚拟网卡）；
   **WSL 重启后 IP 会变**，下一次 `bh start`/`dashboard` 会自动重做（脚本幂等）。
-  配对二维码里的地址由 `k8s/01-configmap.yaml` 的 `Baihua__PublicBaseUrl` 决定，改成同一个宿主地址并 `bh deploy`。
+  配对二维码里的地址（`Baihua__PublicBaseUrl`）由 `bh` 按同一个宿主地址自动校正，无需手改。
 - **零管理员方案（可选，推荐长期用）**：改用 WSL **mirrored 网络**，WSL 与宿主共享网络栈，
   Traefik 的 :80 直接就在宿主局域网 IP 上，**不再需要任何 portproxy / UAC**：
 

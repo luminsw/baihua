@@ -115,7 +115,7 @@ Cursor 等）。实现见 `services/Baihua.Modules.Family/Services/Mcp/BaihuaMcp
   `baihua_vault_search` / `baihua_vault_list` / `baihua_vault_read_note` / `baihua_budget_summary` / `baihua_tasks_list`
 - 调用路径：`vault_list` / `budget_summary` / `tasks_list` 直接调 `Baihua.Core` 服务层（零 HTTP 跳，强类型契约）；
   `vault_search` / `vault_read_note` 走 `Baihua.Core.Modules.IVaultQueryService`（知识库模块实现）
-  ——**合并后是同进程直调，不再有 k8s 跨 pod HTTP**；检索逻辑（语义 / FTS5 / obsidian-cli / 文件扫描）与
+  ——**合并后是同进程直调，不再有 k8s 跨 pod HTTP**；检索逻辑（语义 / FTS5 / 文件扫描）与
   WebUI、移动端共用同一实现，单一来源。
 - 鉴权：复用 `DshController` 模式——回环 + `BAIHUA_ADMIN_ALLOWED_NETS` 免鉴权；
   否则要求 `BAIHUA_AI_EXTERNAL_TOKEN`（Bearer / X-Server-Token / ?token=）
