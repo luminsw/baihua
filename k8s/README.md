@@ -737,17 +737,29 @@ k3s kubectl -n kube-system get jobs
   再由 Windows 侧 `Start-Process` 打开（WSL 内没有浏览器，原来的实现只会打印 URL）。
   实测链路：`GET /?cli-token=…` → 302（种 cookie）→ `GET /` → 200（百花页面）。
 - **手机/局域网**：Traefik 绑的是 WSL 的 :80（WSL IP 形如 `172.30.x.x`），Windows 本机能访问，
-  局域网设备访问不到。需在宿主做一次转发（**管理员**）：
+  局域网设备访问不到。**不需要用户记脚本** —— `bh start` / `deploy` / `up` / `restart` / `dashboard`
+  会自动检查并补齐（用连通性判断，已就绪则静默；需要时才弹一次 UAC 自动提权执行转发）：
 
   ```powershell
-  pwsh -File scripts\expose-k3s-lan.ps1          # 宿主 :80 -> WSL:80 + 防火墙放行（幂等）
-  pwsh -File scripts\expose-k3s-lan.ps1 -Remove  # 撤销
+  bh lan status                  # 查看入口状态（WSL IP / 宿主 IP / 是否就绪）
+  bh lan on                      # 手动确保（等价于自动那步）
+  bh lan off                     # 撤销转发
   ```
 
-  之后手机访问 `http://<宿主IP>/`；让 `bh dashboard` 也用宿主地址：
-  `$env:BAIHUA_PUBLIC_HOST='192.168.3.9'; bh dashboard`。
-  **WSL 重启后 IP 会变**，重跑该脚本即可（脚本会覆盖旧规则）。
-  配对二维码里的地址由 `k8s/01-configmap.yaml` 的 `Baihua__PublicBaseUrl` 决定，改用同一个宿主地址并 `bh deploy`。
+  之后手机访问 `http://<宿主IP>/`（脚本/`bh` 会自动用默认路由网卡的地址，已排除 WSL 虚拟网卡）；
+  **WSL 重启后 IP 会变**，下一次 `bh start`/`dashboard` 会自动重做（脚本幂等）。
+  配对二维码里的地址由 `k8s/01-configmap.yaml` 的 `Baihua__PublicBaseUrl` 决定，改成同一个宿主地址并 `bh deploy`。
+- **零管理员方案（可选，推荐长期用）**：改用 WSL **mirrored 网络**，WSL 与宿主共享网络栈，
+  Traefik 的 :80 直接就在宿主局域网 IP 上，**不再需要任何 portproxy / UAC**：
+
+  ```ini
+  # %USERPROFILE%\.wslconfig
+  [wsl2]
+  networkingMode=mirrored
+  ```
+  然后 `wsl --shutdown` 重启（k3s 会随之重启；hostPath 数据保留，模型 bind-mount 需重做）。
+  `bh lan status` 会显示 `模式: WSL mirrored（无需转发）`，`bh` 也就不会再尝试提权。
+  额外好处：Windows 侧代理（127.0.0.1:7890）也能被 WSL/Docker 直接使用，拉镜像不再受限。
 - **不要在 Windows 上直接跑 `k3s kubectl`/`mount`**：`/etc/rancher/k3s/k3s.yaml` 仅 root 可读、
   `mount` 也要 root；普通用户执行会 `permission denied` / `must be superuser`。用 `sudo` 或 `wsl -u root`。
 
