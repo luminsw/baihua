@@ -5,15 +5,12 @@ namespace Baihua.Data;
 
 public class FamilyDbContext : DbContext
 {
-    private string? _dbPath;
-
     public FamilyDbContext(DbContextOptions<FamilyDbContext> options) : base(options)
     {
     }
 
     public FamilyDbContext()
     {
-        _dbPath = GetDefaultDbPath();
     }
 
     public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
@@ -53,53 +50,15 @@ public class FamilyDbContext : DbContext
     public DbSet<ServerPeer> ServerPeers => Set<ServerPeer>();
     public DbSet<ServerMessage> ServerMessages => Set<ServerMessage>();
 
-    // 一服务一数据库：测速历史从 ai.db 迁至 Family 自有库（BenchmarkRepository 使用）
+    // 测速历史（BenchmarkRepository 使用）
     public DbSet<BenchmarkSessionEntity> BenchmarkSessions => Set<BenchmarkSessionEntity>();
-
-    public string DatabasePath
-    {
-        get
-        {
-            if (_dbPath != null)
-                return _dbPath;
-            try
-            {
-                _dbPath = Database.GetDbConnection().ConnectionString;
-                return _dbPath;
-            }
-            catch (InvalidOperationException)
-            {
-                return "InMemory";
-            }
-        }
-    }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
         {
-            var dbPath = GetDefaultDbPath();
             optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.Baihua);
         }
-    }
-
-    private static string GetDefaultDbPath()
-    {
-        var dataDir = ResolveDataDir();
-        Directory.CreateDirectory(dataDir);
-        return Path.Combine(dataDir, "family.db");
-    }
-
-    internal static string ResolveDataDir()
-    {
-        var dbDir = Baihua.Contracts.BaihuaPaths.Db;
-        Directory.CreateDirectory(dbDir);
-        return dbDir;
-    }
-
-    public static string GetDbPath()
-    {
-        return GetDefaultDbPath();
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
