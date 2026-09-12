@@ -662,7 +662,7 @@
     <value>创建一篇笔记并保存到知识库。当用户要求保存、记录、创建笔记时使用。</value>
   </data>
   <data name="AiFunction_GetSystemStatusDesc" xml:space="preserve">
-    <value>获取系统各组件的健康状态，包括 Git、Obsidian、Ollama、Python、Node、API Key、知识库路径等。当用户询问系统状态、是否正常运行、有哪些问题时使用。</value>
+    <value>获取系统各组件的健康状态，包括 Git、Ollama、Python、Node、API Key、知识库路径等。当用户询问系统状态、是否正常运行、有哪些问题时使用。</value>
   </data>
 
   <data name="Master_EvictStageLabel" xml:space="preserve">
@@ -725,7 +725,7 @@
     <value>API Key 检测异常</value>
   </data>
   <data name="Health_VaultPathNotConfigured" xml:space="preserve">
-    <value>未配置知识库路径。请前往设置页面配置 Obsidian 知识库路径</value>
+    <value>未配置知识库路径。请前往设置页面配置知识库路径</value>
   </data>
   <data name="Health_VaultPathNotExists" xml:space="preserve">
     <value>知识库路径不存在: {0}。该目录可能被删除或移动，请重新配置</value>
@@ -734,7 +734,7 @@
     <value>知识库已配置: {0} ({1} 个文档)</value>
   </data>
   <data name="Health_VaultPathConfigured" xml:space="preserve">
-    <value>知识库路径已配置: {0}。点击[在 Obsidian 中打开]按钮初始化</value>
+    <value>知识库路径已配置: {0}</value>
   </data>
   <data name="Health_VaultCheckError" xml:space="preserve">
     <value>知识库路径检测异常</value>
@@ -753,18 +753,6 @@
   </data>
   <data name="Health_GitCheckError" xml:space="preserve">
     <value>Git 检测异常</value>
-  </data>
-  <data name="Health_ObsidianRunning" xml:space="preserve">
-    <value>Obsidian 桌面客户端运行中</value>
-  </data>
-  <data name="Health_ObsidianNotRunningLinux" xml:space="preserve">
-    <value>Obsidian 桌面客户端未运行（Linux 上 FTS5 搜索已替代 CLI 功能）</value>
-  </data>
-  <data name="Health_ObsidianNotRunningWindows" xml:space="preserve">
-    <value>Obsidian 桌面客户端未运行（CLI 功能需要桌面客户端）</value>
-  </data>
-  <data name="Health_ObsidianCheckError" xml:space="preserve">
-    <value>Obsidian 检测异常</value>
   </data>
 
   <!-- Local Model Deployment -->
@@ -1217,10 +1205,7 @@
     <value>请前往 WebUI → AI设置 页面配置 API Key</value>
   </data>
   <data name="Health_Fix_Vault" xml:space="preserve">
-    <value>请前往 WebUI → 知识库 页面配置 Obsidian 知识库路径</value>
-  </data>
-  <data name="Health_Fix_Obsidian" xml:space="preserve">
-    <value>请启动 Obsidian 桌面客户端</value>
+    <value>请前往 WebUI → 知识库 页面配置知识库路径</value>
   </data>
   <data name="Health_Fix_NotSupported" xml:space="preserve">
     <value>暂不支持自动修复</value>
@@ -1609,6 +1594,9 @@
   <data name="Vault_RestoreFailed" xml:space="preserve">
     <value>恢复失败，知识库不存在或原始路径已被占用</value>
   </data>
+  <data name="Vault_ReadFailed" xml:space="preserve">
+    <value>读取知识库文件失败</value>
+  </data>
   <!-- === Phase 4 Batch 9: Vault + AI remaining strings === -->
   <data name="Vault_NameNotesRequired" xml:space="preserve">
     <value>知识库名称和笔记列表不能为空</value>
@@ -1773,18 +1761,6 @@
   </data>
   <data name="Git_DiscardFailed" xml:space="preserve">
     <value>撤销失败: {0}</value>
-  </data>
-  <data name="Obsidian_NoVaultConfigured" xml:space="preserve">
-    <value>没有配置知识库</value>
-  </data>
-  <data name="Obsidian_PathEmpty" xml:space="preserve">
-    <value>路径不能为空</value>
-  </data>
-  <data name="Obsidian_CreateDirFailed" xml:space="preserve">
-    <value>无法创建目录: {0}</value>
-  </data>
-  <data name="Obsidian_LaunchFailed" xml:space="preserve">
-    <value>启动失败: {0}</value>
   </data>
   <data name="Onboarding_VaultCreated" xml:space="preserve">
     <value>知识库 '{0}' 创建成功</value>
@@ -1989,23 +1965,6 @@
     <value>PID: {0}</value>
   </data>
 
-  <!-- === Phase 4 Batch 11: NotesMdCliController === -->
-  <data name="NotesMdCli_PathEmpty" xml:space="preserve">
-    <value>路径不能为空</value>
-  </data>
-  <data name="NotesMdCli_DirNotFound" xml:space="preserve">
-    <value>目录不存在</value>
-  </data>
-  <data name="NotesMdCli_AddFailed" xml:space="preserve">
-    <value>添加失败，请检查 notesmd-cli 是否正常工作</value>
-  </data>
-  <data name="NotesMdCli_PathsEmpty" xml:space="preserve">
-    <value>路径列表不能为空</value>
-  </data>
-  <data name="NotesMdCli_NoValidPaths" xml:space="preserve">
-    <value>没有有效的目录路径</value>
-  </data>
-
   <!-- === Phase 4 Batch 11: LocalModelDeploymentService.Lifecycle === -->
   <data name="LocalModel_Lifecycle_OllamaNotRunning" xml:space="preserve">
     <value>Ollama 服务未运行且自动启动失败，请手动启动后重试。</value>
@@ -2106,15 +2065,6 @@
   </data>
   <data name="Vault_PathEmpty" xml:space="preserve">
     <value>知识库路径为空</value>
-  </data>
-  <data name="ObsidianStatus_Unknown" xml:space="preserve">
-    <value>Obsidian 状态未知</value>
-  </data>
-  <data name="ObsidianStatus_Timeout" xml:space="preserve">
-    <value>检测超时，Obsidian 可能未运行</value>
-  </data>
-  <data name="ObsidianStatus_CheckFailed" xml:space="preserve">
-    <value>检测 Obsidian 状态失败</value>
   </data>
   <data name="AiClient_LocalServiceStartFailed" xml:space="preserve">
     <value>本地 AI 服务 {0} 未运行且自动启动失败，请手动启动后重试。</value>
@@ -2335,9 +2285,6 @@
   </data>
   <data name="Exception_OnnxDirNotFound" xml:space="preserve">
     <value>ONNX 模型目录不存在: {0}</value>
-  </data>
-  <data name="Exception_NotesMdCliStart" xml:space="preserve">
-    <value>无法启动 notesmd-cli 进程</value>
   </data>
   <data name="Default_Learner" xml:space="preserve">
     <value>默认学习者</value>

@@ -281,16 +281,15 @@ namespace Baihua.Modules.Family.Services
                     });
                 }
 
-                // 只要路径存在即视为有效，不再强制要求 .obsidian 目录或 .md 文件
-                // 用户可以通过 WebUI 的"在 Obsidian 中打开"按钮来初始化该目录
-                var hasObsidianDir = Directory.Exists(Path.Combine(vaultPath, ".obsidian"));
+                // 只要路径存在即视为有效，不要求任何特定子目录或标记文件。
+                // 目录内已有 Markdown 笔记时报告笔记数，空目录只报告路径。
                 var mdFiles = Directory.GetFiles(vaultPath, "*.md", SearchOption.TopDirectoryOnly);
-                
+
                 return Task.FromResult(new ComponentStatus
                 {
                     Name = "Vault",
                     Status = "healthy",
-                    Message = hasObsidianDir 
+                    Message = mdFiles.Length > 0
                         ? string.Format(_loc["Health_VaultConfigured"], Path.GetFileName(vaultPath), mdFiles.Length)
                         : string.Format(_loc["Health_VaultPathConfigured"], Path.GetFileName(vaultPath))
                 });

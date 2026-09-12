@@ -14,7 +14,7 @@ public interface IVaultQueryService
     /// <summary>把知识库 id 解析为磁盘绝对路径；id 为空或知识库不存在时返回 null</summary>
     string? ResolveVaultPath(string? vaultId);
 
-    /// <summary>检索笔记（语义 → FTS5 → obsidian-cli → 文件扫描，逐级回退）</summary>
+    /// <summary>检索笔记（语义 → FTS5 → 文件扫描，逐级回退）</summary>
     Task<VaultSearchOutcome> SearchAsync(string query, string vaultId, CancellationToken cancellationToken = default);
 
     /// <summary>读取一篇笔记（含 frontmatter 解析出的标签/AI 元信息）</summary>

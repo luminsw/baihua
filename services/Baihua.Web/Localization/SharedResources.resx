@@ -1036,24 +1036,6 @@
   <data name="Vaults_PathNotExist" xml:space="preserve">
     <value>路径不存在，新建知识库时会自动创建</value>
   </data>
-  <data name="Vaults_NotesMdRecommend" xml:space="preserve">
-    <value>推荐安装 NotesMD CLI</value>
-  </data>
-  <data name="Vaults_NotesMdDesc" xml:space="preserve">
-    <value>是一个无需运行 Obsidian 即可管理 vault 的命令行工具，非常适合脚本化和自动化场景。</value>
-  </data>
-  <data name="Vaults_NotesMdRegisterHint" xml:space="preserve">
-    <value>安装后可将本系统的知识库一键注册到 Obsidian，实现无缝衔接。</value>
-  </data>
-  <data name="Vaults_NotesMdInstallCmd" xml:space="preserve">
-    <value>安装命令（Windows: scoop install notesmd-cli | macOS/Linux: brew install yakitrak/yakitrak/notesmd-cli）</value>
-  </data>
-  <data name="Vaults_NotesMdReady" xml:space="preserve">
-    <value>notesmd-cli 已就绪</value>
-  </data>
-  <data name="Vaults_RegisterAllToObsidian" xml:space="preserve">
-    <value>一键注册全部到 Obsidian</value>
-  </data>
   <data name="Vaults_AddVault" xml:space="preserve">
     <value>添加新知识库</value>
   </data>
@@ -1140,15 +1122,6 @@
   </data>
   <data name="Vaults_GenerateCards" xml:space="preserve">
     <value>生成记忆卡片</value>
-  </data>
-  <data name="Vaults_OpenInObsidian" xml:space="preserve">
-    <value>用 Obsidian 打开</value>
-  </data>
-  <data name="Vaults_RegisterToObsidian" xml:space="preserve">
-    <value>注册到 Obsidian (notesmd-cli)</value>
-  </data>
-  <data name="Vaults_RegisteredToObsidian" xml:space="preserve">
-    <value>已注册到 Obsidian</value>
   </data>
   <data name="Vaults_Rename" xml:space="preserve">
     <value>重命名</value>
@@ -1390,18 +1363,6 @@
   <data name="Vaults_ConfirmDiscard" xml:space="preserve">
     <value>确认撤销</value>
   </data>
-  <data name="Vaults_RegisteredCountBefore" xml:space="preserve">
-    <value>已注册</value>
-  </data>
-  <data name="Vaults_RegisteredCountAfter" xml:space="preserve">
-    <value>个 Obsidian 知识库</value>
-  </data>
-  <data name="Vaults_UnregisteredCountBefore" xml:space="preserve">
-    <value>，尚有</value>
-  </data>
-  <data name="Vaults_UnregisteredCountAfter" xml:space="preserve">
-    <value>个未注册</value>
-  </data>
   <data name="Vaults_CreatedAtLabel" xml:space="preserve">
     <value>创建时间：</value>
   </data>
@@ -1412,7 +1373,7 @@
     <value>探测本机工具链。</value>
   </data>
   <data name="Health_ArchDesc1_Pre" xml:space="preserve">
-    <value>本页向 Baihua.Family 请求</value>
+    <value>本页向 Baihua.Server 请求</value>
   </data>
   <data name="Health_ArchDesc1_Strong" xml:space="preserve">
     <value>并行</value>
@@ -1592,10 +1553,10 @@
     <value>总请求数</value>
   </data>
   <data name="Health_WebuiConnectivityFailed" xml:space="preserve">
-    <value>WebUI 无法访问 Baihua.Family: {0}</value>
+    <value>WebUI 无法访问 Baihua.Server: {0}</value>
   </data>
   <data name="Health_WebuiConnectivityOk" xml:space="preserve">
-    <value>WebUI 可正常访问 Baihua.Family（{0}ms）</value>
+    <value>WebUI 可正常访问 Baihua.Server（{0}ms）</value>
   </data>
   <data name="Devices_PageTitle" xml:space="preserve">
     <value>花记设备</value>
@@ -3211,7 +3172,7 @@
     <value>后台服务连接失败</value>
   </data>
   <data name="ServiceUnavailable_Description" xml:space="preserve">
-    <value>无法连接到 Baihua.Family 后台服务（端口 8788）。&lt;br/&gt;部分功能（任务管理、AI 对话、搜索等）暂时不可用。</value>
+    <value>无法连接到 Baihua.Server 后台服务（端口 8788）。&lt;br/&gt;部分功能（任务管理、AI 对话、搜索等）暂时不可用。</value>
   </data>
   <data name="ServiceUnavailable_HelpTitle" xml:space="preserve">
     <value>请尝试以下步骤：</value>
@@ -3424,7 +3385,7 @@
     <value>&lt;strong&gt;P99 &amp;gt; 2000ms&lt;/strong&gt;：存在长尾延迟，检查偶发慢请求</value>
   </data>
   <data name="ApiCallPerf_TipSuccessRate" xml:space="preserve">
-    <value>&lt;strong&gt;成功率 &amp;lt; 99%&lt;/strong&gt;：检查 Baihua.Family 服务稳定性</value>
+    <value>&lt;strong&gt;成功率 &amp;lt; 99%&lt;/strong&gt;：检查 Baihua.Server 服务稳定性</value>
   </data>
   <data name="ApiCallPerf_TipTooManyCalls" xml:space="preserve">
     <value>&lt;strong&gt;调用次数过多&lt;/strong&gt;：考虑批量请求或添加客户端缓存</value>
@@ -3906,15 +3867,6 @@
   <data name="Devices_DeviceRevoked" xml:space="preserve">
     <value>已撤销设备授权</value>
   </data>
-  <data name="ObsidianStatus_Unknown" xml:space="preserve">
-    <value>Obsidian 状态未知</value>
-  </data>
-  <data name="ObsidianStatus_Timeout" xml:space="preserve">
-    <value>检测超时，Obsidian 可能未运行</value>
-  </data>
-  <data name="ObsidianStatus_CheckFailed" xml:space="preserve">
-    <value>检测 Obsidian 状态失败</value>
-  </data>
   <data name="PromptTemplates_CardChatSystemPromptLabel" xml:space="preserve">
     <value>对话系统提示词：</value>
   </data>
@@ -4035,9 +3987,6 @@
   <data name="Search_ConfigVaultPathSuffix" xml:space="preserve">
     <value>后再搜索</value>
   </data>
-  <data name="Search_DownloadObsidian" xml:space="preserve">
-    <value>下载 Obsidian</value>
-  </data>
   <data name="Search_ErrorMessage" xml:space="preserve">
     <value>搜索失败，请稍后重试</value>
   </data>
@@ -4092,9 +4041,6 @@
   <data name="Search_MethodLabel" xml:space="preserve">
     <value>搜索方式：</value>
   </data>
-  <data name="Search_MethodObsidianCli" xml:space="preserve">
-    <value>Obsidian CLI</value>
-  </data>
   <data name="Search_MethodSemantic" xml:space="preserve">
     <value>语义搜索</value>
   </data>
@@ -4103,21 +4049,6 @@
   </data>
   <data name="Search_NoResults" xml:space="preserve">
     <value>未找到相关结果</value>
-  </data>
-  <data name="Search_ObsidianHint" xml:space="preserve">
-    <value>提示：</value>
-  </data>
-  <data name="Search_ObsidianNotRunning" xml:space="preserve">
-    <value>Obsidian 未运行</value>
-  </data>
-  <data name="Search_ObsidianNotRunningDesc" xml:space="preserve">
-    <value>安装 Obsidian 可获得更完整的剪贴板联动体验。</value>
-  </data>
-  <data name="Search_ObsidianRunning" xml:space="preserve">
-    <value>Obsidian 已连接</value>
-  </data>
-  <data name="Search_ObsidianRunningDesc" xml:space="preserve">
-    <value>正在监听剪贴板，随时可以粘贴和搜索。</value>
   </data>
   <data name="Search_PageTitle" xml:space="preserve">
     <value>全文搜索</value>

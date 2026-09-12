@@ -114,15 +114,6 @@ public partial class HealthController
                             });
                             break;
 
-                        case "Obsidian":
-                            fixes.Add(new HealthFixItemDto
-                            {
-                                Component = component.Name,
-                                Status = "manual_required",
-                                Message = _loc["Health_Fix_Obsidian"]
-                            });
-                            break;
-
                         default:
                             fixes.Add(new HealthFixItemDto
                             {

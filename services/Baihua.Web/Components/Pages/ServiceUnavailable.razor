@@ -31,13 +31,13 @@
                     @if (Environment.IsDevelopment())
                     {
                         <div class="command-block">
-                            <code>cd services/Baihua.Family && dotnet run --urls "http://localhost:8788"</code>
+                            <code>cd services/Baihua.Server && dotnet run --urls "http://localhost:8788"</code>
                         </div>
                     }
                     else
                     {
                         <div class="command-block">
-                            <code>./Baihua.Family --urls "http://localhost:8788"</code>
+                            <code>./bh-server --urls "http://localhost:8788"</code>
                         </div>
                         <p class="release-hint">
                             @L["ServiceUnavailable_ReleaseHint"]

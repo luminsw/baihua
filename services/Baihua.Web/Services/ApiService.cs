@@ -179,15 +179,6 @@ namespace Baihua.Web.Services
         Task<LeaderboardSettingsDto> GetAllFamilyTabSettingAsync();
         Task<LeaderboardSettingsDto> SetAllFamilyTabSettingAsync(bool enabled);
 
-        // Obsidian 操作
-        Task<bool> OpenInObsidianAsync(CancellationToken cancellationToken = default);
-        Task<bool> OpenVaultInObsidianAsync(string path);
-
-        // NotesMD CLI
-        Task<NotesMdCliStatus?> GetNotesMdCliStatusAsync();
-        Task<bool> AddVaultToNotesMdCliAsync(string path);
-        Task<NotesMdBatchResult?> BatchAddVaultsToNotesMdCliAsync(List<string> paths);
-
         // 平台信息
         Task<PlatformInfoResponse?> GetPlatformAsync(CancellationToken cancellationToken = default);
 

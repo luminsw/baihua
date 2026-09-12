@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 460" role="img" aria-labelledby="t d">
   <title id="t">Health Check Architecture</title>
-  <desc id="d">Browser - Baihua.Web - Baihua.Family. Baihua.Family checks Git, Obsidian, Ollama, Python, Node.js, PIP, API Key, and Vault in parallel.</desc>
+  <desc id="d">Browser - Baihua.Web - Baihua.Family. Baihua.Family checks Git, Ollama, Python, Node.js, PIP, API Key, and Vault in parallel.</desc>
 
   <defs>
     <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
@@ -26,24 +26,20 @@
 
   <line x1="460" y1="172" x2="460" y2="198" stroke="#6c757d" stroke-width="2" marker-end="url(#a)"/>
 
-  <!-- Row 1 of 4: Git, Obsidian, Ollama, Python -->
+  <!-- Row 1 of 4: Git, Ollama, Python -->
   <g transform="translate(0, 202)">
-    <!-- 4 * 132 + 3 * 14 = 570; (920 - 570) / 2 = 175 -->
-    <rect x="175" y="0" width="132" height="72" rx="6" fill="#fff" stroke="#dee2e6" stroke-width="1.5" filter="url(#s)"/>
-    <text x="241" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#212529" font-family="system-ui,Segoe UI,Roboto,sans-serif">Git</text>
-    <text x="241" y="48" text-anchor="middle" font-size="10.5" fill="#6c757d" font-family="system-ui,Segoe UI,Roboto,sans-serif">VCS / sync</text>
+    <!-- 3 * 132 + 2 * 14 = 424; (920 - 424) / 2 = 248 -->
+    <rect x="248" y="0" width="132" height="72" rx="6" fill="#fff" stroke="#dee2e6" stroke-width="1.5" filter="url(#s)"/>
+    <text x="314" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#212529" font-family="system-ui,Segoe UI,Roboto,sans-serif">Git</text>
+    <text x="314" y="48" text-anchor="middle" font-size="10.5" fill="#6c757d" font-family="system-ui,Segoe UI,Roboto,sans-serif">VCS / sync</text>
 
-    <rect x="321" y="0" width="132" height="72" rx="6" fill="#fff" stroke="#dee2e6" stroke-width="1.5" filter="url(#s)"/>
-    <text x="387" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#212529" font-family="system-ui,Segoe UI,Roboto,sans-serif">Obsidian</text>
-    <text x="387" y="48" text-anchor="middle" font-size="10.5" fill="#6c757d" font-family="system-ui,Segoe UI,Roboto,sans-serif">Vault / desktop</text>
+    <rect x="394" y="0" width="132" height="72" rx="6" fill="#fff" stroke="#dee2e6" stroke-width="1.5" filter="url(#s)"/>
+    <text x="460" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#212529" font-family="system-ui,Segoe UI,Roboto,sans-serif">Ollama</text>
+    <text x="460" y="48" text-anchor="middle" font-size="10.5" fill="#6c757d" font-family="system-ui,Segoe UI,Roboto,sans-serif">LLM :11434</text>
 
-    <rect x="467" y="0" width="132" height="72" rx="6" fill="#fff" stroke="#dee2e6" stroke-width="1.5" filter="url(#s)"/>
-    <text x="533" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#212529" font-family="system-ui,Segoe UI,Roboto,sans-serif">Ollama</text>
-    <text x="533" y="48" text-anchor="middle" font-size="10.5" fill="#6c757d" font-family="system-ui,Segoe UI,Roboto,sans-serif">LLM :11434</text>
-
-    <rect x="613" y="0" width="132" height="72" rx="6" fill="#fff" stroke="#dee2e6" stroke-width="1.5" filter="url(#s)"/>
-    <text x="679" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#212529" font-family="system-ui,Segoe UI,Roboto,sans-serif">Python</text>
-    <text x="679" y="48" text-anchor="middle" font-size="10.5" fill="#6c757d" font-family="system-ui,Segoe UI,Roboto,sans-serif">runtime</text>
+    <rect x="540" y="0" width="132" height="72" rx="6" fill="#fff" stroke="#dee2e6" stroke-width="1.5" filter="url(#s)"/>
+    <text x="606" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#212529" font-family="system-ui,Segoe UI,Roboto,sans-serif">Python</text>
+    <text x="606" y="48" text-anchor="middle" font-size="10.5" fill="#6c757d" font-family="system-ui,Segoe UI,Roboto,sans-serif">runtime</text>
   </g>
 
   <!-- Row 2 of 4: Node.js, PIP, API Key, Vault -->

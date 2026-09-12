@@ -140,7 +140,7 @@ public partial class AtomNoteSplitter
 
                 await _taskManager.UpdateProgress(taskId, steps.Count + 2, totalSteps, _loc["AtomNote_SavingNotes", allNotes.Count]);
 
-                // 拆分完成后：修复 Obsidian wikilink 在 AI 拆分后丢失分类目录的问题。
+                // 拆分完成后：修复 wikilink 在 AI 拆分后丢失分类目录的问题。
                 // 规则：若 wikilink 形如 [[桂枝汤]]（target 不包含 '/'），且 target 与某条生成笔记的 title 唯一匹配，
                 // 则补全为 [[分类/标题]]（保留 #header 与 |alias）。
                 

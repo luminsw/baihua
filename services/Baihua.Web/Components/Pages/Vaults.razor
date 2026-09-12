@@ -111,65 +111,6 @@
                         </div>
                     </div>
 
-                <!-- NotesMD CLI 推荐/状态 -->
-                @if (notesMdStatus == null)
-                {
-                    <div class="alert alert-light border mb-3">
-                        <h6 class="alert-heading">💡 @L["Vaults_NotesMdRecommend"]</h6>
-                        <p class="mb-1 small">
-                            <a href="https://github.com/Yakitrak/notesmd-cli" target="_blank">notesmd-cli</a> 
-                            @L["Vaults_NotesMdDesc"]
-                            @L["Vaults_NotesMdRegisterHint"]
-                        </p>
-                        <p class="mb-0 small text-muted">
-                            @L["Vaults_NotesMdInstallCmd"]
-                        </p>
-                    </div>
-                }
-                else if (notesMdStatus.Available)
-                {
-                    <div class="card mb-3">
-                        <div class="card-body py-2">
-                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                <div class="small">
-                                    <span class="badge bg-success">✅ @L["Vaults_NotesMdReady"]</span>
-                                    <span class="text-muted ms-2">
-                                        @L["Vaults_RegisteredCountBefore"] @(notesMdStatus.RegisteredPaths.Count) @L["Vaults_RegisteredCountAfter"]
-                                        @if (GetUnregisteredVaultCount() > 0)
-                                        {
-                                            <span class="text-warning">@L["Vaults_UnregisteredCountBefore"] @(GetUnregisteredVaultCount()) @L["Vaults_UnregisteredCountAfter"]</span>
-                                        }
-                                    </span>
-                                </div>
-                                @if (GetUnregisteredVaultCount() > 0)
-                                {
-                                    <button class="btn btn-sm btn-outline-success" @onclick="BatchAddVaultsToNotesMd" disabled="@isNotesMdLoading">
-                                        @if (isNotesMdLoading)
-                                        {
-                                            <span class="spinner-border spinner-border-sm me-1"></span>
-                                        }
-                                        📌 @L["Vaults_RegisterAllToObsidian"]
-                                    </button>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                }
-                else
-                {
-                    <div class="alert alert-light border mb-3">
-                        <h6 class="alert-heading">💡 @L["Vaults_NotesMdRecommend"]</h6>
-                        <p class="mb-1 small">
-                            <a href="https://github.com/Yakitrak/notesmd-cli" target="_blank">notesmd-cli</a> 
-                            @L["Vaults_NotesMdDesc"]
-                            @L["Vaults_NotesMdRegisterHint"]
-                        </p>
-                        <p class="mb-0 small text-muted">
-                            @L["Vaults_NotesMdInstallCmd"]
-                        </p>
-                    </div>
-                }
-
                 <!-- 添加新知识库 -->
                 <div class="card mb-4">
                     <div class="card-header">
@@ -341,28 +282,6 @@
                                             </td>
                                             <td>
                                                 <div class="btn-group btn-group-sm">
-                                                    <button class="btn btn-outline-dark" @onclick="() => OpenInObsidian(vault)" title="@L["Vaults_OpenInObsidian"]">
-                                                        🔮
-                                                    </button>
-                                                    @if (notesMdStatus?.Available == true && !IsVaultRegisteredInNotesMd(vault.Path))
-                                                    {
-                                                        <button class="btn btn-outline-success" @onclick="() => AddVaultToNotesMd(vault)" disabled="@(notesMdAddingVaultId == vault.Id)" title="@L["Vaults_RegisterToObsidian"]">
-                                                            @if (notesMdAddingVaultId == vault.Id)
-                                                            {
-                                                                <span class="spinner-border spinner-border-sm"></span>
-                                                            }
-                                                            else
-                                                            {
-                                                                <span>📌</span>
-                                                            }
-                                                        </button>
-                                                    }
-                                                    else if (notesMdStatus?.Available == true && IsVaultRegisteredInNotesMd(vault.Path))
-                                                    {
-                                                        <button class="btn btn-outline-success" disabled title="@L["Vaults_RegisteredToObsidian"]">
-                                                            ✓
-                                                        </button>
-                                                    }
                                                     <button class="btn btn-outline-secondary" @onclick="() => StartEdit(vault)" title="重命名">
                                                         @L["Vaults_Rename"]
                                                     </button>
@@ -931,11 +850,6 @@
     // 平台信息（用于路径示例）
     private PlatformInfoResponse? _platformInfo;
 
-    // NotesMD CLI
-    private NotesMdCliStatus? notesMdStatus;
-    private bool isNotesMdLoading;
-    private string? notesMdAddingVaultId;
-
     protected override void OnInitialized()
     {
         // 从URL查询参数读取tab设置
@@ -1000,18 +914,16 @@
         isLoading = true;
         try
         {
-            // 并行加载知识库列表、根路径偏好、NotesMD CLI 状态
+            // 并行加载知识库列表与根路径偏好
             var vaultsTask = VaultsService.GetVaultsAsync(forceRefresh: true);
             var rootPathTask = VaultsService.GetVaultRootPathPreferenceAsync();
-            var notesMdTask = ApiService.GetNotesMdCliStatusAsync();
 
-            await Task.WhenAll(vaultsTask, rootPathTask, notesMdTask);
+            await Task.WhenAll(vaultsTask, rootPathTask);
 
             var response = vaultsTask.Result;
             vaults = response.Vaults;
             activeVault = vaults.FirstOrDefault();
             vaultRootPathPreference = rootPathTask.Result;
-            notesMdStatus = notesMdTask.Result;
 
             // 并行加载各知识库的笔记数量和卡片数量
             _ = LoadVaultNoteCountsAsync();
@@ -1026,18 +938,6 @@
         {
             isLoading = false;
         }
-    }
-
-    private bool IsVaultRegisteredInNotesMd(string path)
-    {
-        if (notesMdStatus?.RegisteredPaths == null || notesMdStatus.RegisteredPaths.Count == 0)
-            return false;
-        var normalized = path.Trim().Replace("\\", "/").TrimEnd('/');
-        return notesMdStatus.RegisteredPaths.Any(r =>
-        {
-            var regNormalized = r.Trim().Replace("\\", "/").TrimEnd('/');
-            return string.Equals(regNormalized, normalized, StringComparison.OrdinalIgnoreCase);
-        });
     }
 
     private async Task LoadVaultNoteCountsAsync()
@@ -1126,85 +1026,6 @@
             isGeneratingCards = false;
             generatingVaultId = null;
             StateHasChanged();
-        }
-    }
-
-    private int GetUnregisteredVaultCount()
-    {
-        if (notesMdStatus?.Available != true)
-            return 0;
-        return vaults.Count(v => !IsVaultRegisteredInNotesMd(v.Path));
-    }
-
-    private async Task AddVaultToNotesMd(VaultConfig vault)
-    {
-        if (notesMdStatus?.Available != true) return;
-        notesMdAddingVaultId = vault.Id;
-        try
-        {
-            var result = await ApiService.AddVaultToNotesMdCliAsync(vault.Path);
-            if (result)
-            {
-                notesMdStatus = await ApiService.GetNotesMdCliStatusAsync();
-                message = $"知识库 \"{vault.Name}\" {L["Vaults_RegisteredToObsidian"]}";
-                success = true;
-            }
-            else
-            {
-                message = $"注册失败，请检查 notesmd-cli 是否正常工作";
-                success = false;
-            }
-        }
-        catch (Exception ex)
-        {
-            message = $"注册失败: {ex.Message}";
-            success = false;
-        }
-        finally
-        {
-            notesMdAddingVaultId = null;
-        }
-    }
-
-    private async Task BatchAddVaultsToNotesMd()
-    {
-        if (notesMdStatus?.Available != true) return;
-        var unregistered = vaults.Where(v => !IsVaultRegisteredInNotesMd(v.Path)).ToList();
-        if (unregistered.Count == 0) return;
-
-        isNotesMdLoading = true;
-        try
-        {
-            var paths = unregistered.Select(v => v.Path).ToList();
-            var result = await ApiService.BatchAddVaultsToNotesMdCliAsync(paths);
-            if (result != null)
-            {
-                notesMdStatus = await ApiService.GetNotesMdCliStatusAsync();
-                if (result.Success)
-                {
-                    message = $"成功注册 {result.SucceededCount} 个知识库到 Obsidian";
-                    success = true;
-                }
-                else
-                {
-                    message = $"注册完成：成功 {result.SucceededCount} 个，失败 {result.FailedCount} 个";
-                    success = result.FailedCount == 0;
-                }
-            }
-            else
-            {
-                message = "批量注册失败，请检查 notesmd-cli 是否正常工作";
-                success = false;
-            }
-        }
-        catch (Exception ex)
-        {
-            message = $"批量注册失败: {ex.Message}";
-            success = false;
-        }
-        finally
-        {
-            isNotesMdLoading = false;
         }
     }
 
@@ -1363,24 +1184,6 @@
         return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
     }
 
-
-    private async Task OpenInObsidian(VaultConfig vault)
-    {
-        try
-        {
-            var result = await ApiService.OpenVaultInObsidianAsync(vault.Path);
-            if (!result)
-            {
-                message = "启动 Obsidian 失败，请检查是否已安装";
-                success = false;
-            }
-        }
-        catch (Exception ex)
-        {
-            message = $"启动 Obsidian 失败: {ex.Message}";
-            success = false;
-        }
-    }
 
     private async Task SwitchTab(string tab)
     {

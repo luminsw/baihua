@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Baihua.Contracts.Search;
 using Baihua.Contracts.Vaults;
 using Baihua.Core.Localization;
@@ -10,7 +9,7 @@ namespace Baihua.Modules.Vault.Services;
 
 /// <summary>
 /// 知识库查询服务：检索与笔记读写的唯一实现（控制器与 MCP 工具共用，避免两份逻辑）。
-/// 检索顺序：语义向量 → FTS5 → obsidian-cli → 直接扫描文件。
+/// 检索顺序：语义向量 → FTS5 → 直接扫描文件。
 /// </summary>
 public sealed class VaultQueryService : IVaultQueryService
 {
@@ -87,41 +86,8 @@ public sealed class VaultQueryService : IVaultQueryService
 
         _logger.LogInformation("搜索知识库：{Query}", query);
 
-        var canUseCli = ObsidianExecutableResolver.TryGetPath(out var obsidianExe);
-        var obsidianRunning = Process.GetProcessesByName("Obsidian").Length > 0;
         var searchMethod = "file-scan";
         string? errorMessage = null;
-
-        if (canUseCli && obsidianRunning)
-        {
-            var vaultName = Path.GetFileName(vaultPath.TrimEnd('/'));
-            var cliResults = await SearchWithObsidianCli(obsidianExe, vaultName, query);
-
-            if (cliResults != null && cliResults.Count > 0)
-            {
-                _logger.LogInformation("obsidian-cli 搜索成功：找到 {Count} 条结果", cliResults.Count);
-                return new VaultSearchOutcome(cliResults, new SearchStatusInfo
-                {
-                    VaultConfigured = true,
-                    VaultExists = true,
-                    ObsidianRunning = true,
-                    SearchMethod = "obsidian-cli"
-                });
-            }
-
-            if (cliResults == null)
-            {
-                _logger.LogDebug("obsidian-cli 搜索失败或超时，回退到文件扫描");
-            }
-        }
-        else if (canUseCli && !obsidianRunning)
-        {
-            _logger.LogDebug("Obsidian 未运行，使用文件扫描");
-        }
-        else
-        {
-            _logger.LogDebug("obsidian-cli 不可用，使用文件扫描");
-        }
 
         // 纯向量检索优先：语义搜索启用时，即使无关键词命中也能按语义召回
         if (_embeddingService.IsSemanticSearchEnabled())
@@ -134,7 +100,6 @@ public sealed class VaultQueryService : IVaultQueryService
                 {
                     VaultConfigured = true,
                     VaultExists = true,
-                    ObsidianRunning = obsidianRunning,
                     SearchMethod = "semantic"
                 });
             }
@@ -155,7 +120,6 @@ public sealed class VaultQueryService : IVaultQueryService
                 {
                     VaultConfigured = true,
                     VaultExists = true,
-                    ObsidianRunning = obsidianRunning,
                     SearchMethod = "fts5+semantic"
                 });
             }
@@ -164,7 +128,6 @@ public sealed class VaultQueryService : IVaultQueryService
             {
                 VaultConfigured = true,
                 VaultExists = true,
-                ObsidianRunning = obsidianRunning,
                 SearchMethod = searchMethod
             });
         }
@@ -180,7 +143,6 @@ public sealed class VaultQueryService : IVaultQueryService
             {
                 VaultConfigured = true,
                 VaultExists = true,
-                ObsidianRunning = obsidianRunning,
                 SearchMethod = "semantic"
             });
         }
@@ -194,7 +156,6 @@ public sealed class VaultQueryService : IVaultQueryService
         {
             VaultConfigured = true,
             VaultExists = true,
-            ObsidianRunning = obsidianRunning,
             SearchMethod = searchMethod,
             ErrorMessage = errorMessage
         });
@@ -312,77 +273,6 @@ public sealed class VaultQueryService : IVaultQueryService
         {
             _logger.LogError(ex, "写入笔记失败：{Path}", path);
             throw new VaultQueryException(VaultErrorCode.Failure, _loc["Common_WriteFailed"].Value);
-        }
-    }
-
-    private async Task<List<SearchResult>?> SearchWithObsidianCli(string obsidianExe, string vaultName, string query)
-    {
-        try
-        {
-            var escapedQuery = query.Replace("\"", "\\\"");
-            var searchProcess = Process.Start(new ProcessStartInfo
-            {
-                FileName = obsidianExe,
-                Arguments = $"vault=\"{vaultName}\" search query=\"{escapedQuery}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                // 关键：obsidian-cli 输出编码在 Windows 上经常不是 UTF-8
-                // 退回到系统默认编码，避免中文路径乱码。
-                StandardOutputEncoding = System.Text.Encoding.Default,
-                StandardErrorEncoding = System.Text.Encoding.Default
-            });
-
-            if (searchProcess == null) return null;
-
-            // 15 秒超时
-            var timeoutTask = Task.Delay(15000);
-            var outputTask = searchProcess.StandardOutput.ReadToEndAsync();
-
-            var completed = await Task.WhenAny(outputTask, timeoutTask);
-            if (completed == timeoutTask)
-            {
-                _logger.LogWarning("obsidian-cli 搜索超时");
-                searchProcess.Kill();
-                return null;
-            }
-
-            var output = await outputTask;
-            await searchProcess.WaitForExitAsync();
-
-            if (searchProcess.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
-                return null;
-
-            var results = new List<SearchResult>();
-            foreach (var line in output.Split('\n').Select(l => l.Trim()).Where(l => !string.IsNullOrEmpty(l)))
-            {
-                if (line.StartsWith("path") || line.StartsWith("-") || line.StartsWith("id"))
-                    continue;
-
-                var path = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-                if (!string.IsNullOrEmpty(path) && path.EndsWith(".md"))
-                {
-                    var relativePath = VaultNotePath.NormalizeRelative(path, removeNotesPrefix: true);
-                    var title = System.IO.Path.GetFileNameWithoutExtension(path);
-
-                    results.Add(new SearchResult
-                    {
-                        Id = title,
-                        Title = title,
-                        Path = relativePath,
-                        Preview = $"[obsidian-cli] {path}",
-                        Score = 10
-                    });
-                }
-            }
-
-            return results.Count > 0 ? results : null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "obsidian-cli 搜索失败");
-            return null;
         }
     }
 

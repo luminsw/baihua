@@ -45,7 +45,7 @@ namespace Baihua.Modules.Vault.Controllers;
             ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"
         };
 
-        // 排除的目录
+        // 排除的目录（".obsidian" 仅作为知识库内实际存在的目录名做过滤，与任何外部客户端集成无关）
         private static readonly HashSet<string> ExcludedDirs = new(StringComparer.OrdinalIgnoreCase)
         {
             ".git", ".obsidian", ".trash", "node_modules", ".DS_Store"
