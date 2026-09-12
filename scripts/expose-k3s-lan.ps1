@@ -14,7 +14,9 @@
 [CmdletBinding()]
 param(
     [int[]]$Ports = @(80),
-    [switch]$Remove
+    [switch]$Remove,
+    # 静默模式：供 bh 自动调用时使用（只输出结果，不打印大段说明）
+    [switch]$Quiet
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,11 +68,15 @@ netsh interface portproxy show v4tov4
 Write-Host ''
 if ($lanIp) {
     Write-Host "手机/局域网访问入口： http://$lanIp/"
-    Write-Host "（配对二维码里的地址由 k8s/01-configmap.yaml 的 Baihua__PublicBaseUrl 决定，"
-    Write-Host "  建议改成同一个宿主地址并重跑: bh deploy）"
+    if (-not $Quiet) {
+        Write-Host "（配对二维码里的地址由 k8s/01-configmap.yaml 的 Baihua__PublicBaseUrl 决定，"
+        Write-Host "  建议改成同一个宿主地址并重跑: bh deploy）"
+    }
 } else {
     Write-Host '[!] 未识别到宿主局域网 IP，请手动确认手机访问地址。'
 }
-Write-Host ''
-Write-Host "提示：WSL 重启后 IP 可能变化，重跑本脚本即可（幂等）；让 bh dashboard 也输出宿主地址："
-Write-Host "      `$env:BAIHUA_PUBLIC_HOST='$lanIp'; bh dashboard"
+if (-not $Quiet) {
+    Write-Host ''
+    Write-Host "提示：WSL 重启后 IP 可能变化，重跑本脚本即可（幂等）；让 bh dashboard 也输出宿主地址："
+    Write-Host "      `$env:BAIHUA_PUBLIC_HOST='$lanIp'; bh dashboard"
+}

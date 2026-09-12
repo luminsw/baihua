@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
   bh - baihua 统一 CLI 入口（Windows）
   在 Windows 上经 WSL 调用 Linux k3s cell（tools/bh/linux/k8s/bh.sh）。
@@ -38,7 +38,10 @@ function Show-Help {
     Write-Host '用法:'
     Write-Host '  bh <command> [args]           执行命令'
     Write-Host '  bh k8s <command> [args]       同上（显式写 cell，兼容旧习惯）'
+    Write-Host '  bh lan [on|off|status]        局域网入口（宿主 :80 -> WSL k3s），status 为默认'
     Write-Host '  bh install / uninstall        加入 / 移出用户 PATH'
+    Write-Host ''
+    Write-Host '说明: start/deploy/up/restart/dashboard 会自动确保局域网入口（首次弹一次 UAC；已就绪则静默）'
     Write-Host ''
     Write-Host '部署形态: Linux k3s（PostgreSQL + 后端 + WebUI + OVMS 全部容器化）'
     Write-Host ''
@@ -115,11 +118,123 @@ function Invoke-Cell([string[]]$CellArgs, [string]$EnvPrefix = '') {
     return $LASTEXITCODE
 }
 
+# ---------------- 局域网入口（宿主 -> WSL k3s :80）----------------
+# 背景：k3s 跑在 WSL 里，Traefik 绑的是 WSL 的 :80（172.30.x.x）。Windows 本机能访问，
+# 但手机/局域网设备访问不到，需要在宿主做一次 netsh portproxy 转发（管理员）。
+# 为了不让用户记脚本，这里把它变成 bh 的自动行为：
+#   - 用**连通性**判断（不解析 netsh 输出，避免中文系统/格式差异）：宿主 LAN IP 的 /health 通 = 已就绪
+#   - 不通且后端在跑 → 自动以管理员身份执行 scripts\expose-k3s-lan.ps1（弹一次 UAC），做完复检
+#   - WSL 重启导致 WSL IP 变化时，同一个检测会发现"过期"并自动重做（幂等）
+#   - 若 WSL 已是 mirrored 网络模式，宿主 IP 直接就有 :80，检测直接通过，永远不会弹 UAC
+
+function Get-WslIp {
+    $ip = (wsl -e bash -lc "hostname -I | awk '{print `$1}'" 2>$null | Out-String).Trim()
+    if ($ip -match '^\d+\.\d+\.\d+\.\d+$') { return $ip }
+    return ''
+}
+
+function Get-HostLanIp {
+    # 取"默认路由所在网卡"的 IPv4 —— 手机/局域网设备要访问的是这个地址。
+    # 只按私有地址正则会把 WSL 的 vEthernet（172.30.208.1）误当成宿主 IP，必须排除虚拟网卡。
+    try {
+        $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
+            Sort-Object RouteMetric | Select-Object -First 1
+        if ($route) {
+            $ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $route.InterfaceIndex -ErrorAction Stop |
+                Select-Object -First 1).IPAddress
+            if ($ip -and $ip -notmatch '^127\.') { return $ip }
+        }
+    } catch { }
+    $ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {
+        $_.IPAddress -match '^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))\.' -and
+        $_.InterfaceAlias -notmatch 'WSL|Hyper-V|vEthernet|Loopback'
+    } | Select-Object -ExpandProperty IPAddress
+    if ($ips) { return $ips[0] }
+    return ''
+}
+
+function Test-Http([string]$Url) {
+    try {
+        $r = Invoke-WebRequest -Uri $Url -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
+        return ($r.StatusCode -ge 200 -and $r.StatusCode -lt 400)
+    } catch {
+        # 302 之类会抛异常，但响应码本身说明服务在
+        $code = $_.Exception.Response.StatusCode.value__
+        return ($code -ge 200 -and $code -lt 400)
+    }
+}
+
+function Get-LanExposureState {
+    $wslIp = Get-WslIp
+    $lanIp = Get-HostLanIp
+    $state = [ordered]@{
+        WslIp = $wslIp; LanIp = $lanIp
+        BackendUp = ($wslIp -and (Test-Http "http://$wslIp/health"))
+        LanUp = ($lanIp -and (Test-Http "http://$lanIp/health"))
+        Mirrored = $false
+    }
+    if ($state.LanUp -and $state.WslIp -eq $state.LanIp) { $state.Mirrored = $true }
+    return [pscustomobject]$state
+}
+
+function Ensure-LanExposure {
+    param([switch]$Quiet)
+
+    $st = Get-LanExposureState
+    if (-not $st.LanIp) { if (-not $Quiet) { Write-Host '[lan] 未识别到宿主局域网 IP，跳过局域网入口配置' }; return }
+    if ($st.LanUp) {
+        if (-not $Quiet) {
+            $how = if ($st.Mirrored) { 'WSL mirrored 网络（无需转发）' } else { '宿主 :80 已转发进 WSL' }
+            Write-Host "[lan] 局域网入口就绪：http://$($st.LanIp)/  （$how）"
+        }
+        return
+    }
+    if (-not $st.BackendUp) {
+        if (-not $Quiet) { Write-Host "[lan] 后端未在 WSL 内就绪（http://$($st.WslIp)/health 不通），先 bh start/deploy" }
+        return
+    }
+
+    # 需要（重新）转发：自动提权执行
+    $script = Join-Path $Repo 'scripts\expose-k3s-lan.ps1'
+    if (-not (Test-Path $script)) { Write-Warning "[lan] 缺少 $script"; return }
+    if (-not $Quiet) { Write-Host "[lan] 局域网入口未就绪 → 需要一次管理员授权（UAC）来做宿主 :80 转发 ..." }
+    try {
+        $p = Start-Process -FilePath 'pwsh' -Verb RunAs -PassThru -ArgumentList @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"", '-Quiet'
+        ) -ErrorAction Stop
+        $null = Wait-Process -Id $p.Id -Timeout 120 -ErrorAction SilentlyContinue
+    } catch {
+        Write-Warning "[lan] 自动提权失败或被取消：请以管理员运行 pwsh -File `"$script`""
+        return
+    }
+
+    $again = Get-LanExposureState
+    if ($again.LanUp) {
+        Write-Host "[lan] 局域网入口已就绪：http://$($again.LanIp)/  （手机/局域网设备可用）"
+    } else {
+        Write-Warning "[lan] 转发后仍不通，请手动执行：pwsh -File `"$script`""
+    }
+}
+
+function Show-LanStatus {
+    $st = Get-LanExposureState
+    Write-Host "[lan] WSL IP : $($st.WslIp)"
+    Write-Host "[lan] 宿主 IP: $($st.LanIp)"
+    Write-Host "[lan] 后端可用: $(if ($st.BackendUp) { '是' } else { '否（先 bh start/deploy）' })"
+    Write-Host "[lan] 局域网入口: $(if ($st.LanUp) { "已就绪 http://$($st.LanIp)/" } else { '未就绪（bh lan on 配置，或 WSL 重启后重跑）' })"
+    if ($st.Mirrored) { Write-Host '[lan] 模式: WSL mirrored（宿主直接持有 :80，无需 portproxy）' }
+    elseif ($st.LanUp) { Write-Host '[lan] 模式: netsh portproxy 宿主:80 -> WSL:80' }
+}
+
 # dashboard 特殊处理：CLI 在 WSL 里跑，打不开 Windows 的浏览器 —— 由本包装层代开。
 if ($cell -eq 'dashboard' -or ($Rest.Count -gt 0 -and $Rest[0] -eq 'dashboard')) {
-    # 公开地址：默认用 WSL 的 IP（Windows 侧实测可访问）；若已做 :80 转发到宿主机，
-    # 可设 BAIHUA_PUBLIC_HOST=192.168.3.9 让 URL 也能被手机/局域网设备打开。
+    # 公开地址：默认用 WSL 的 IP；做过宿主转发（或 mirrored）后用宿主 IP，手机也能打开
+    $st0 = Get-LanExposureState
+    Ensure-LanExposure -Quiet
+    $st0 = Get-LanExposureState
     $publicHost = $env:BAIHUA_PUBLIC_HOST
+    if (-not $publicHost -and $st0.LanUp) { $publicHost = $st0.LanIp }
+
     $envPrefix = 'BAIHUA_DASHBOARD_PRINT_ONLY=1 '
     if ($publicHost) { $envPrefix += "BAIHUA_PUBLIC_HOST=$publicHost " }
 
@@ -132,14 +247,34 @@ if ($cell -eq 'dashboard' -or ($Rest.Count -gt 0 -and $Rest[0] -eq 'dashboard'))
     Write-Host ''
     Write-Host "[dashboard] 正在用 Windows 默认浏览器打开：$url"
     try { Start-Process $url } catch { Write-Warning "[dashboard] 自动打开失败，请手动复制：$url" }
+    exit 0
+}
 
-    if (-not $publicHost) {
-        $wslIp = ($url -replace '^https?://([^/:]+).*$', '$1')
-        Write-Host "[dashboard] 说明：URL 用的是 WSL 的 IP（$wslIp），Windows 本机可访问；"
-        Write-Host "            手机等局域网设备需先把宿主 :80 转发进 WSL：以管理员运行"
-        Write-Host "              pwsh -File scripts\expose-k3s-lan.ps1"
+# 局域网入口是 Windows 宿主侧的概念，只有这几个命令需要顺带确保
+if ($cell -eq 'lan' -or ($Rest.Count -gt 0 -and $Rest[0] -eq 'lan')) {
+    $sub = if ($cell -eq 'lan') { if ($Rest.Count -gt 0) { $Rest[0] } else { 'status' } } else { if ($Rest.Count -gt 1) { $Rest[1] } else { 'status' } }
+    switch ($sub) {
+        'on'     { Ensure-LanExposure }
+        'off'    {
+            $script = Join-Path $Repo 'scripts\expose-k3s-lan.ps1'
+            Write-Host '[lan] 撤销宿主 :80 转发（需要一次管理员授权）...'
+            try {
+                $p = Start-Process -FilePath 'pwsh' -Verb RunAs -PassThru -ArgumentList @(
+                    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"", '-Remove', '-Quiet'
+                ) -ErrorAction Stop
+                $null = Wait-Process -Id $p.Id -Timeout 120 -ErrorAction SilentlyContinue
+            } catch { Write-Warning "[lan] 提权失败或被取消：请以管理员运行 pwsh -File `"$script`" -Remove" }
+        }
+        default  { Show-LanStatus }
     }
     exit 0
 }
 
-exit (Invoke-Cell $Rest)
+$code = Invoke-Cell $Rest
+
+# 后端类命令执行完顺带确保一次局域网入口（已就绪则静默；未就绪才弹 UAC）
+if ($Rest.Count -gt 0 -and $Rest[0] -in @('start', 'deploy', 'up', 'restart') -and $code -eq 0) {
+    Ensure-LanExposure
+}
+
+exit $code
