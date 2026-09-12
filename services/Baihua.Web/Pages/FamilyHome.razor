@@ -175,10 +175,6 @@
                                         <th>@L["Devices_ColDeviceName"]</th>
                                         <th>@L["Devices_ColIpAddress"]</th>
                                         <th>@L["Devices_ColAuthorizedTime"]</th>
-                                        <th>@L["Devices_ColFirstSync"]</th>
-                                        <th>@L["Devices_ColLastSync"]</th>
-                                        <th>@L["Devices_ColSyncCount"]</th>
-                                        <th>@L["Devices_ColSyncedVaults"]</th>
                                         <th>@L["Devices_ColActions"]</th>
                                     </tr>
                                 </thead>
@@ -196,31 +192,6 @@
                                             <td class="text-muted small">@device.IpAddress</td>
                                             <td class="small">
                                                 @(device.AuthorizedTime.HasValue ? device.AuthorizedTime.Value.ToLocalTime().ToString("MM-dd HH:mm") : "-")
-                                            </td>
-                                            <td class="small">
-                                                @(device.FirstSyncTime.HasValue ? device.FirstSyncTime.Value.ToLocalTime().ToString("MM-dd HH:mm") : "-")
-                                            </td>
-                                            <td class="small">
-                                                @(device.LastSyncTime.HasValue ? device.LastSyncTime.Value.ToLocalTime().ToString("MM-dd HH:mm") : "-")
-                                            </td>
-                                            <td class="small">
-                                                <span class="badge bg-info">@(device.SyncCount)</span>
-                                            </td>
-                                            <td>
-                                                @if (device.SyncedVaultIds.Any())
-                                                {
-                                                    <div class="d-flex flex-wrap gap-1">
-                                                        @foreach (var sv in device.SyncedVaultIds)
-                                                        {
-                                                            var svName = device.SyncedVaultNames.TryGetValue(sv, out var foundName) ? foundName : sv;
-                                                            <span class="badge bg-success bg-opacity-75" style="font-size: 0.65rem;">@svName</span>
-                                                        }
-                                                    </div>
-                                                }
-                                                else
-                                                {
-                                                    <span class="text-muted small">-</span>
-                                                }
                                             </td>
                                             <td>
                                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => RevokeDeviceAsync(device.DeviceId)" disabled="@isProcessingDevice">@L["Devices_Revoke"]</button>
@@ -519,12 +490,7 @@
         public string DeviceName { get; set; } = "";
         public string? SystemDeviceName { get; set; }
         public DateTime? AuthorizedTime { get; set; }
-        public DateTime? LastSyncTime { get; set; }
-        public DateTime? FirstSyncTime { get; set; }
         public string IpAddress { get; set; } = "";
-        public int SyncCount { get; set; }
-        public List<string> SyncedVaultIds { get; set; } = new();
-        public Dictionary<string, string> SyncedVaultNames { get; set; } = new();
     }
 
     private class PendingDeviceInfo
@@ -717,12 +683,7 @@
                 DeviceName = d.DeviceName ?? L["Devices_UnknownDevice"],
                 SystemDeviceName = d.SystemDeviceName,
                 AuthorizedTime = d.AuthorizedTime,
-                LastSyncTime = d.LastSyncTime,
-                IpAddress = d.IpAddress ?? "",
-                SyncCount = d.SyncCount,
-                FirstSyncTime = d.FirstSyncTime,
-                SyncedVaultIds = d.SyncedVaultIds ?? new List<string>(),
-                SyncedVaultNames = d.SyncedVaultNames ?? new Dictionary<string, string>()
+                IpAddress = d.IpAddress ?? ""
             }).ToList();
         }
         catch (Exception ex)

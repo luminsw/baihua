@@ -1678,18 +1678,6 @@
   <data name="Devices_ColAuthorizedTime" xml:space="preserve">
     <value>授权时间</value>
   </data>
-  <data name="Devices_ColFirstSync" xml:space="preserve">
-    <value>首次同步</value>
-  </data>
-  <data name="Devices_ColLastSync" xml:space="preserve">
-    <value>最后同步</value>
-  </data>
-  <data name="Devices_ColSyncCount" xml:space="preserve">
-    <value>同步次数</value>
-  </data>
-  <data name="Devices_ColSyncedVaults" xml:space="preserve">
-    <value>已同步知识库</value>
-  </data>
   <data name="Devices_Revoke" xml:space="preserve">
     <value>撤销授权</value>
   </data>
