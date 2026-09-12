@@ -58,10 +58,20 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.hostIP
-            # 管理 API 访问控制：放行 Pod 网段（WebUI 等 Pod 经 Service 调用管理 API；
-            # Traefik 反向代理的入口 IP 也在该网段内）
+            # 管理 API 访问控制：放行集群网段 + 本机所在局域网。
+            # 关键点：必须同时声明 BAIHUA_TRUSTED_PROXY_NETS（见下），否则服务端看到的来源 IP
+            # 永远是 Traefik 的 Pod IP（10.42.x.x），一切"按客户端 IP"的策略都会失真：
+            #  - 管理 API 会因 Pod IP 落在放行网段而对整个局域网事实上开放（且看不出真实来源）；
+            #  - /mg/register-device 的 5 次/小时配对限流会被所有手机共用一个桶（多设备家庭易 429）；
+            #  - 设备记录/审计日志里的 ipAddress 全是 Pod IP。
+            # 采信 XFF 后，来源 IP 变为真实局域网地址，因此这里必须显式列出局域网网段。
+            # 换网段（路由器改了 192.168.x）时记得同步改这里，否则管理 API/插件会 403。
             - name: BAIHUA_ADMIN_ALLOWED_NETS
-              value: "10.0.0.0/8"
+              value: "10.0.0.0/8,192.168.3.0/24"
+            # 受信任的反向代理网段：只有来自这些网段的 X-Forwarded-For 才被采信
+            # （k3s 默认 Pod 网段 10.42.0.0/16；局域网客户端不在其中，无法伪造来源 IP）
+            - name: BAIHUA_TRUSTED_PROXY_NETS
+              value: "10.42.0.0/16"
           volumeMounts:
             - name: data
               mountPath: /app/data

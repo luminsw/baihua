@@ -428,6 +428,18 @@ deploy_all() {
         echo "         移动端/外部入口需要 :80 —— k3s 默认自带 Traefik（若被 --disable traefik 关掉，需重新启用或自建入口）"
         echo "         临时入口可用: kubectl -n $NAMESPACE port-forward svc/bh-server 8788:8788 / svc/bh-webui 5177:5177"
     fi
+    # k3s 的 svclb（klipper-lb）默认 externalTrafficPolicy=Cluster，会对来源做 SNAT，
+    # 真实客户端 IP 在到达 Traefik 之前就丢了（X-Forwarded-For 只能是集群内地址）。
+    # 改成 Local 后才谈得上"按客户端 IP"的策略（配合服务端 BAIHUA_TRUSTED_PROXY_NETS）。
+    # 单节点 k3s 无副作用；集群没装 Traefik 时跳过。
+    if k -n kube-system get svc traefik >/dev/null 2>&1; then
+        local etp
+        etp="$(k -n kube-system get svc traefik -o jsonpath='{.spec.externalTrafficPolicy}' 2>/dev/null || true)"
+        if [ "$etp" != "Local" ]; then
+            k -n kube-system patch svc traefik -p '{"spec":{"externalTrafficPolicy":"Local"}}' >/dev/null 2>&1 \
+                && echo "[deploy] traefik Service externalTrafficPolicy: $etp -> Local（保留客户端源 IP）"
+        fi
+    fi
     # 给 deployment 打上 git commit 标注（供 bh status --json 判断运行代码是否最新）。
     # 标注语义是「这个工作负载最后一次是在哪个 commit 部署的」，不是「镜像由本仓库构建」，
     # 所以 postgres 这类上游镜像也一起打 —— 否则它永远是 upToDate:false，看着像待处理问题。
