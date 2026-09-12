@@ -9,6 +9,7 @@ namespace Baihua.Contracts.Metrics;
 /// </summary>
 public class ServiceMetrics : IDisposable
 {
+    // 指标名沿用合并前的 "baihua.family"：OpenObserve 既有看板按此过滤，改名会让历史与现网指标断档
     public const string MeterName = "baihua.family";
 
     private readonly Meter _meter;

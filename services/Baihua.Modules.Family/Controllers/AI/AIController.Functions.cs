@@ -6,7 +6,7 @@ using Microsoft.Extensions.Localization;
 namespace Baihua.Modules.Family.Controllers;
 
 /// <summary>
-/// AI 函数（工具）调用端点：供 Baihua.AI 本地模型工具调用复用 Family 的工具实现
+/// AI 函数（工具）调用端点：供 AI 模块的本地模型工具复用家庭模块的工具实现（同进程直调）
 /// </summary>
 public partial class AIController
 {

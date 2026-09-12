@@ -22,7 +22,8 @@ test('[legacy-e2e] chat bubble overflow check', async ({ page }, testInfo) => {
   const ta = page.locator('textarea.chat-textarea');
   await ta.waitFor({ timeout: 15000 });
   await ta.fill('请详细介绍一下软考系统架构师的考试内容，包括所有科目的详细说明、考试重点和备考建议，尽量写详细一些，包括列表和表格。');
-  const sendBtn = page.locator('button:has-text("发送"), button:has-text("Send")').first();
+  // 仅中文 UI（产品固定 zh-CN）
+  const sendBtn = page.locator('button:has-text("发送")').first();
   await sendBtn.click();
 
   // 5. 等待 AI 回复完成（typing 指示器消失 + 出现 ai 气泡）

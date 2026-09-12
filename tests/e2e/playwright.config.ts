@@ -4,8 +4,8 @@ import * as path from 'path';
 // shared-e2e folder sits under tests/shared-e2e relative to this file (tests/e2e)
 const sharedE2EPath = path.resolve(__dirname, '..', 'shared-e2e');
 
-process.env.PLAYWRIGHT_BASE_URL = 'http://127.0.0.1:5177';
-process.env.API_PORT = '8788';
+process.env.PLAYWRIGHT_BASE_URL = 'http://127.0.0.1:5177';   // WebUI（仍独立进程）
+process.env.API_PORT = '8788';                              // 唯一后端 Baihua.Server
 process.env.CATEGORY_NAME = '笔记';
 
 export default defineConfig({
@@ -22,8 +22,10 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     storageState: './storage-state.json',
-    // 固定中文 UI：WebUI 本地化会按 Accept-Language 返回语言（默认 zh-CN，含 en），
-    // Playwright 默认 locale=en-US 会导致页面渲染英文、中文断言全挂
+    // 固定中文 UI：百花已改为**仅中文**（后端 SupportedCultures 固定 zh-CN，中性 resx 即中文文案，
+    // 英文附属资源与语言切换功能已删除）。
+    // 该 fixture 同时是回归护栏：Playwright 默认 locale=en-US，浏览器会发送 Accept-Language: en-US；
+    // 断言保持中文，等于验证「Accept-Language: en-US 也不会切走英文」。
     locale: 'zh-CN',
     // Ubuntu 26.04 下 Playwright 无法自动下载浏览器，使用系统 Chromium
     // On Linux use system Chromium when PW_CHROMIUM_PATH is not set; on other OS leave undefined so Playwright uses its own browsers

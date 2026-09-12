@@ -10,21 +10,21 @@ import { test, expect } from '@playwright/test';
  * 如需部署后验证，请单独启用本文件（把 describe.skip 改为 describe）。
  */
 
-const WEBUI_BASE = 'http://127.0.0.1:5177';
-const FAMILY_BASE = 'http://127.0.0.1:8788';
+const WEBUI_BASE = 'http://127.0.0.1:5177';   // WebUI（独立进程）
+const SERVER_BASE = 'http://127.0.0.1:8788';  // 唯一后端 Baihua.Server
 
-test.describe.skip('[legacy-e2e] Family 版部署验证（Docker 部署专用，迁移后跳过）', () => {
+test.describe.skip('[legacy-e2e] 百花部署验证（Docker 部署专用，迁移后跳过）', () => {
 
-  test('Baihua.Family 健康检查', async ({ request }) => {
-    const resp = await request.get(`${FAMILY_BASE}/health`);
+  test('Baihua.Server 健康检查', async ({ request }) => {
+    const resp = await request.get(`${SERVER_BASE}/health`);
     expect(resp.status()).toBe(200);
   });
 
-  test('Baihua.Family API 能力评估', async ({ request }) => {
-    const resp = await request.get(`${FAMILY_BASE}/api/capability`);
+  test('Baihua.Server API 能力评估', async ({ request }) => {
+    const resp = await request.get(`${SERVER_BASE}/api/capability`);
     expect(resp.status()).toBe(200);
     const data: any = await resp.json();
-    // 兼容 PascalCase（当前）与 camelCase（旧版）
+    // 兼容 camelCase（当前）与 PascalCase（合并前 Family 特例）
     expect(data.Level ?? data.level).toBeTruthy();
     expect(data.AvailableFeatures ?? data.availableFeatures).toBeTruthy();
     expect(Array.isArray(data.AvailableFeatures ?? data.availableFeatures)).toBe(true);
@@ -43,7 +43,7 @@ test.describe.skip('[legacy-e2e] Family 版部署验证（Docker 部署专用，
   });
 
   test('知识库列表 API 可访问', async ({ request }) => {
-    const resp = await request.get(`${FAMILY_BASE}/api/vaults`);
+    const resp = await request.get(`${SERVER_BASE}/api/vaults`);
     expect([200, 401]).toContain(resp.status());
   });
 

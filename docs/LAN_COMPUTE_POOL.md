@@ -13,7 +13,7 @@
 | 服务器互联 | ✅ 已有（UDP 45678 发现 + `/mg/server-msg/inbox` 互发消息） | 只传消息，不传算力信息 |
 | AI 提供方 | ✅ `AiProviderConfig`（OpenAI 兼容 baseUrl + 模型列表 + 分层 Tier） | 只能配本机视角的 URL，对端算力靠手动填 IP |
 | 模型测速 | ✅ `ModelBenchmarkService` 实测每模型 token/s + `HardwareBenchmark` 硬件估算 | 只测本机，无跨机汇总 |
-| 跨机访问 | ⚠️ 部分：本机 `.13:8791` 已可达（200）；本地模型服务（Ollama/llama.cpp/OpenVINO host）天然 OpenAI 兼容 | k8s 内 ClusterIP 不对局域网暴露；无统一网关 |
+| 跨机访问 | ⚠️ 部分：本机 `.13:8788` 已可达（200）；本地模型服务（Ollama/llama.cpp/OpenVINO host）天然 OpenAI 兼容 | k8s 内 ClusterIP 不对局域网暴露；无统一网关 |
 
 ## 2. 总体架构（三层）
 
@@ -73,7 +73,9 @@ GET /mg/capabilities
 - 每台机器新增 `ComputeNodeService`：维护对端能力缓存。
 - 把对端机器的推理端点**自动注册为本机只读 AI 提供方**（写入 `AiProviderConfig`，`Id` 加 `peer-` 前缀，`IsMain=false`，`Name` = "192.168.3.9 · Qwen2.5-14B"）。
 - 本机 AiSettingsService 照常工作——聊天/拜师/OpenClaw 天然就能用对端模型，零协议改动。
-- 对端机器的推理端点需要局域网可达：k8s 部署在 Traefik 加一条 `/mg/ai/` 路由 → AI 服务；本地模型服务（Ollama/llama.cpp/OpenVINO host）由 AI 服务代理转发（AI 服务已有 `LocalAIController` 类能力）。
+- 对端机器的推理端点需要局域网可达：k8s 部署在 Traefik 上以 `/mg/ai/` 路由对外暴露推理端点
+  （→ `bh-server`，8788；**合并后 AI 模块与家庭同进程**——原 `/mg/ai/` → `bh-ai:8791` 的独立后端已不存在，
+  8790/8791 两个端口已随三服务合一消失）；本地模型服务（Ollama/llama.cpp/OpenVINO host）由 AI 模块代理转发。
 
 **M3 阶段：统一推理网关（进阶）**
 
@@ -119,7 +121,7 @@ GET /mg/capabilities
 
 | 里程碑 | 内容 | 状态 |
 |--------|------|------|
-| **M1** | `/mg/capabilities` + `ComputePoolService` + 对端提供方自动注册 + Traefik `/mg/ai/` 路由 + AI 服务 OpenAI 兼容 shim + WebUI `/compute` 页 | ✅ 已实施（见下） |
+| **M1** | `/mg/capabilities` + `ComputePoolService` + 对端提供方自动注册 + Traefik `/mg/ai/` 路由 + AI 模块 OpenAI 兼容 shim + WebUI `/compute` 页 | ✅ 已实施（见下） |
 | **M2** | `/mg/benchmark/run` 跨机测速 + ECharts 趋势折线 + 一键选用完善 | ✅ 跨机测速已实施（见下） |
 | **M2.5** | 局域网模型商店（模型去重共享、断点续传）+ **跨机布署（拉取 + 启动运行时）** | ✅ 模型商店 + 布署已实施（见下） |
 | **M3** | 统一推理网关 /mg/pool/v1：模型名全网路由 + 速度优先（v1） | ✅ 已实施 |
@@ -134,10 +136,10 @@ GET /mg/capabilities
   自动把声明了 OpenAI 端点的对端注册为本机提供方 `peer-{ServerId}`，模型合并去重；
   模型一致则跳过写入）
 - **管理端点**：`GET /api/compute-pool`、`POST /api/compute-pool/refresh`、`POST /api/compute-pool/select`
-- **OpenAI 兼容 shim**：`Baihua.AI` 的 `/mg/ai/v1/chat/completions`（非流式 + 流式 SSE）与
+- **OpenAI 兼容 shim**：`Baihua.Modules.Ai`（同一 `Baihua.Server` 进程）的 `/mg/ai/v1/chat/completions`（非流式 + 流式 SSE）与
   `/mg/ai/v1/models`——按模型名路由到本机 AI 提供方（含本地 Ollama/llama.cpp/OpenVINO），
   鉴权 `Authorization: Bearer` 对 `BAIHUA_AI_EXTERNAL_TOKEN`（未配置则局域网信任）
-- **Traefik**：`/mg/ai/`（priority 760）→ bh-ai:8791
+- **Traefik**：`/mg/ai/`（priority 760）→ `bh-server`:8788（合并前 → `bh-ai`:`8791`，该后端已随三服务合一删除）
 - **WebUI**：`/compute` 算力池页（节点卡片 + 模型×TPS 柱状图（CSS bar）+ 一键选用）+
   侧栏「算力池」入口
 
@@ -204,20 +206,20 @@ GET /mg/capabilities
   `OpenVinoRuntimeManager`、`OpenVinoChatInference`、`LocalVisionOptions` 全部在此；
   LocalVision 的 `vision_server.py` / `openvino_llm_server.py` 随发布拷贝。
 - **NVIDIA / AMD 预留**：新项目 `Baihua.AI.Provider.Cuda` / `Baihua.AI.Provider.Rocm` 分别实现
-  上述四个接口即可接入（Family/AI/WebUI 零改动）：
+  上述四个接口即可接入（`Baihua.Server` 宿主 / WebUI 零改动）：
   - CUDA：`ILocalRuntimeManager` → vLLM / TensorRT-LLM 进程；`ILocalVisionInference` → VL 模型服务
   - ROCm：`ILocalRuntimeManager` → vLLM-ROCm / llama.cpp ROCm；`ILocalModelTool.Id` = `"cuda"` / `"rocm"`
-- DI 注册（Family Program.cs）：`AddSingleton<ILocalModelTool, OpenVinoToolService>()`、
-  `AddSingleton<ILocalRuntimeManager, OpenVinoRuntimeManager>()`（AI Program.cs 同理注册视觉/推理）。
-- 命名空间迁移：`LocalAiOptions` 移至 `Baihua.Core`（Family/AI 共用）；其余 OpenVINO 类型命名空间
+- DI 注册（`services/Baihua.Server/Program.cs`，合并前三服务各自注册）：`AddSingleton<ILocalModelTool, OpenVinoToolService>()`、
+  `AddSingleton<ILocalRuntimeManager, OpenVinoRuntimeManager>()`。
+- 命名空间迁移：`LocalAiOptions` 移至 `Baihua.Core`（各模块共用）；其余 OpenVINO 类型命名空间
   改为 `Baihua.AI.Provider.OpenVino`。
 
 ### 待办（收尾）
 
 - 本机本地模型接入 OpenAI 提供方（把已下载的 OpenVINO 模型注册为指向 bh-openvino:8000 的提供方），
   让本机算力真正可被对端选用
-- AI 服务各提供方 API Key 需在「AI 配置」页确认有效（shim 会透传其存储的 key）
-- k8s 部署（如桃夭馆 .13）的 Family 容器内无 OpenVINO 运行时 → 对端布署到此类节点会返回
+- AI 模块各提供方 API Key 需在「AI 配置」页确认有效（shim 会透传其存储的 key）
+- k8s 部署（如桃夭馆 .13）的 `bh-server` 容器内无 OpenVINO 运行时 → 对端布署到此类节点会返回
   "未找到可用 Python/设备不支持"；需把布署目标指向 native（Windows/Linux 本机）或先实现
   OpenVINO 服务 pod 代理后接 runtime 接口
 

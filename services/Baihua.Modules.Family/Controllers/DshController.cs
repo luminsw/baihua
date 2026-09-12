@@ -33,21 +33,20 @@ public class DshController : ControllerBase
         if (!Authorize()) return Unauthorized(new { error = "unauthorized" });
 
         var baseUrl = $"{Request.Scheme}://{Request.Host}".TrimEnd('/');
-        var vault = Environment.GetEnvironmentVariable("BAIHUA_VAULT_URL") ?? "http://127.0.0.1:8790";
-        var ai = Environment.GetEnvironmentVariable("BAIHUA_AI_URL") ?? "http://127.0.0.1:8791";
         var externalToken = _configuration["BAIHUA_AI_EXTERNAL_TOKEN"] ?? "";
 
         return Ok(new
         {
             ok = true,
             baseUrl,                                  // 宿主机访问本机百花的入口（客户端本次所用）
-            familyUrl = baseUrl,                      // 本机 family（/api、/mg/*）
-            vaultUrl = vault.TrimEnd('/'),            // 知识库保存/检索（固定 ClusterIP）
-            aiUrl = ai.TrimEnd('/'),                  // AI 服务（固定 ClusterIP）
+            familyUrl = baseUrl,                      // 本机后端（/api、/mg/*）
+            // 合并为单进程后知识库/AI 与家庭域同属一个后端，不再有独立的 vault/ai 地址
+            vaultUrl = baseUrl,                       // 知识库保存/检索
+            aiUrl = baseUrl,                          // AI 服务
             webUrl = baseUrl,                         // WebUI（Traefik :80，/ 直达）
             drawGatewayUrl = baseUrl,                 // 绘图网关（comfy 客户端会拼接 /mg/pool/v1/draw/*）
             poolUrl = $"{baseUrl}/mg/pool/v1",        // 算力池统一网关（供 local-ai 探测 /models）
-            aiShimUrl = $"{baseUrl}/mg/ai/v1",        // OpenAI 兼容 shim（Traefik /mg/ai/ → ai）
+            aiShimUrl = $"{baseUrl}/mg/ai/v1",        // OpenAI 兼容 shim（同一后端）
             drawToken = externalToken,                // 绘图/池网关 token（本地免鉴权时为空）
             poolToken = externalToken,
             comfyModelType = _configuration["BAIHUA_COMFY_MODEL_TYPE"] ?? "z-image-turbo",

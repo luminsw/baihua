@@ -20,11 +20,11 @@ RUN sed -i 's|http://archive.ubuntu.com|https://mirrors.huaweicloud.com|g' /etc/
     true
 
 # 安装运行时依赖（所有 .NET 容器的最小公共集）：
-# - libgomp1: LLamaSharp (OpenMP 支持)
+# - libgomp1: OpenMP 支持（本地推理后端）
 # - curl: 健康检查
 # - ca-certificates: HTTPS 证书
-# 注意：Vulkan 运行时（LLamaSharp Vulkan backend）只有 bh-ai 需要，
-# 已移至 Dockerfile.ai 的 runtime 阶段，避免所有容器都背 GPU 依赖。
+# 注意：合并后不再有独立的 AI 容器，Vulkan 运行时也已随之退役（LLamaSharp 依赖已移除），
+# 因此基础镜像不需要任何 GPU 依赖。
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libgomp1 \

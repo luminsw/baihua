@@ -1,46 +1,47 @@
 # bh - 百花统一 CLI
 
-矩阵式入口：OS × 部署方式 的 cell 脚本统一分派。
+百花只有**一种部署形态**：Linux k3s（PostgreSQL + 后端 + WebUI + OVMS 全部容器化）。
+合并为单进程 + 单库后，原先的 native / docker cell 已删除；Windows 上经 WSL 调用同一套 k3s cell。
 
 ```
 tools/bh/
-├── bh.ps1          Windows 统一入口（分派器）
+├── bh.ps1          Windows 入口（经 WSL 路由到 Linux k3s cell）
 ├── bh.cmd          Windows cmd shim（让 cmd/PowerShell 都能直接 `bh`）
-├── bh.sh           Linux 统一入口（分派器）
-├── win/
-│   ├── native/     Windows native（dotnet 进程管理）bh.ps1
-│   └── docker/     Windows docker（compose）bh.ps1
-└── linux/
-    ├── k8s/        Linux k3s（containerd，nerdctl 构建）bh.sh
-    └── native/     Linux native（dotnet 进程管理）bh.sh
+├── bh.sh           Linux 入口
+├── locator.ps1/.sh 自包含定位器（安装到 PATH 用）
+└── linux/k8s/      Linux k3s（containerd，nerdctl 构建）bh.sh —— 唯一 cell
 ```
 
 ## 用法
 
 ```
-bh <cell> <command> [args]    路由到指定 cell（cell: native | docker | k8s）
-bh <command> [args]           默认 cell（Windows→native，Linux→k8s）
+bh <command> [args]           执行命令
+bh k8s <command> [args]       同上（显式写 cell，兼容旧习惯）
 bh install / uninstall        安装到 PATH / 移除
 ```
 
-- Windows 默认 cell 是 native（本机 dotnet 服务）；`bh k8s ...` 自动经 WSL root 路由到 Linux k3s。
-- Linux 默认 cell 是 k8s；`build`/`deploy`/`update` 需 root（containerd socket / k3s.yaml 仅 root 可读），`status`/`logs`/`dashboard` 等只读命令检测到配置不可读时自动提权，无需手动 sudo。
-- 各 cell 内部命令见 `bh <cell> help`。
+- Windows 上 `bh ...` 自动经 `wsl -u root` 路由到 Linux k3s cell（路径经 `wslpath` 转换）。
+- Linux 上 `build`/`deploy`/`update` 需 root（containerd socket / k3s.yaml 仅 root 可读），
+  `status`/`logs`/`dashboard` 等只读命令检测到配置不可读时自动提权，无需手动 sudo。
+- 完整命令清单：`bh help`。
 
 ### k8s cell 命令速查
 
 | 命令 | 说明 |
 |------|------|
-| `bh build [img...]` | 构建镜像进 k3s containerd；默认全部 5 个，可指定部分（如 `bh build family webui`） |
-| `bh deploy` | `kubectl apply` k8s/ 清单 + 滚动重启应用 |
+| `bh build [img...]` | 构建镜像进 k3s containerd；默认全部，可指定部分（如 `bh build server webui`） |
+| `bh deploy` | `kubectl apply` k8s/ 清单（含 postgres）+ 滚动重启应用 |
 | `bh up` | 按 git 变更只构建受影响镜像 + deploy（未变更镜像跳过）；`bh up --all` 强制全量 |
 | `bh update` | `git pull` + `up` |
 | `bh status` | pods / svc / pvc 总览（免 sudo） |
-| `bh logs <svc> [n]` | tail pod 日志，默认 50 行（免 sudo） |
+| `bh logs <svc> [n]` | tail pod 日志，默认 50 行（免 sudo）；svc: server / webui / openvino / postgres |
 | `bh prune` | 清空 buildkit 构建缓存（释放磁盘、修复 nuget 缓存损坏导致的构建失败） |
 | `bh dashboard` | 打开 WebUI（cli-token 自动登录） |
 | `bh openvino <on\|off\|status>` | Intel GPU 相关服务按需启停 |
 | `bh destroy` | 删除 baihua 命名空间 |
+
+> 镜像与工作负载：`bh-server`（唯一后端，8788）、`bh-webui`（5177）、`bh-openvino`（8000）、`bh-postgres`。
+> 合并前的 `bh-family` / `bh-ai` / `bh-vault` 已不存在。
 
 ## 安装
 

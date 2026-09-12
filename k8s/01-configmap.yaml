@@ -12,33 +12,27 @@ data:
   BAIHUA_VAULT_ROOT: "/vaults"
   BAIHUA_HOME: "/app/data"
 
+  # 移动端二维码/广播入口地址：Traefik :80（无显式端口号），/mg/* 由 Traefik 转发到 bh-server
+  # 花记扫码后使用 http://<host>/，不再出现 :8788 显式端口
+  Baihua__PublicBaseUrl: "http://192.168.3.13"
+
   # OpenObserve 可观测性（如有部署则填实际 URL）
   OpenObserve__WebUrl: "http://openobserve:5080/"
   OpenObserve__Enabled: "true"
 
-  # Nginx 配置
-  BAIHUA_NGINX_PORT: "80"
-  BAIHUA_WEBUI_PREFIX: ""
-  BAIHUA_NGINX_CLIENT_MAX_BODY_SIZE: "100M"
-
-  # Family → Vault/AI 内部通信。用固定的 ClusterIP（集群内与宿主机 DSH 都可达、跨部署不变），
-  # 使 /api/dsh/config 能返回宿主机直连地址，DSH 免配置自举。
-  BAIHUA_VAULT_URL: "http://10.43.242.109:8790"
-  BAIHUA_AI_URL: "http://10.43.139.63:8791"
-
-  # PostgreSQL（一服务一数据库：family / vault / ai 三库；密码经 Secret 注入 PG_PASSWORD）
+  # PostgreSQL：整个百花只有一个数据库 baihua（密码经 Secret 注入 PG_PASSWORD）
   PG_HOST: "bh-postgres"
   PG_USER: "baihua"
+  PG_DATABASE: "baihua"
 
-  # WebUI → 后端服务（K8s Service DNS）
-  FamilyApi__BaseUrl: "http://bh-family:8788/"
-  AiApi__BaseUrl: "http://bh-ai:8791/"
-  VaultApi__BaseUrl: "http://bh-vault:8790/"
+  # WebUI → 唯一后端服务（K8s Service DNS）
+  # 合并前的 FamilyApi__BaseUrl / AiApi__BaseUrl / VaultApi__BaseUrl 三个键已删除
+  BaihuaServer__BaseUrl: "http://bh-server:8788/"
 
   # OpenVINO 推理服务（bh-openvino = Intel OVMS，K8s Service DNS :8000 REST）
-  # Family/AI 通过此 URL 探测 OVMS 是否在托管模型（OpenAI 兼容 /v1/models）
+  # bh-server 通过此 URL 探测 OVMS 是否在托管模型（OpenAI 兼容 /v1/models）
   OPENVINO_LLM_URL: "http://bh-openvino:8000"
   OPENVINO_HOST_URL: "http://bh-openvino:8000"
 
-  # OVMS（OpenVINO Model Server）REST 基地址 —— AI/Family 推理统一走 /v3/chat/completions、/v3/embeddings
+  # OVMS（OpenVINO Model Server）REST 基地址 —— 推理统一走 /v3/chat/completions、/v3/embeddings
   OpenVinoOms__BaseUrl: "http://bh-openvino:8000"

@@ -115,15 +115,15 @@ public class AiSettingsService
     }
 
     /// <summary>
-    /// 本机 AI 服务的 OpenAI 兼容 shim 地址（/mg/ai/v1）。
-    /// 一服务一数据库：Family 的模型推理统一经此转发（AI 服务持有 API Key 与模型路由），
-    /// Family 不再直连云端/本地模型。
+    /// 本机 OpenAI 兼容 shim 地址（/mg/ai/v1）。
+    /// 合并为单进程后 shim 与后端同址，默认取本机 8788（可用 BAIHUA_AI_URL / AiApi:BaseUrl 显式覆盖）。
     /// </summary>
     public string AiShimUrl =>
         Environment.GetEnvironmentVariable("BAIHUA_AI_URL")
         ?? Environment.GetEnvironmentVariable("TASK_RUNNER_AI_API_URL")
         ?? _configuration["AiApi:BaseUrl"]
-        ?? "http://127.0.0.1:8791";
+        ?? _configuration["BaihuaServer:BaseUrl"]
+        ?? "http://127.0.0.1:8788";
 
     /// <summary>
     /// 推理是否经本机 AI shim 转发（一服务一库的转发开关）：

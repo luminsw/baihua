@@ -11,7 +11,7 @@
 | [DSH_INTEGRATION.md](DSH_INTEGRATION.md) | DSH（DeepSeek Harness）插件生态集成总文档（桥接/运维/绘图/本地 AI/MCP） | 现行 |
 | [COMPUTE_POOL_DRAW.md](COMPUTE_POOL_DRAW.md) | 算力池文生图/文生视频（ComfyUI 网关）使用指南 | 现行 |
 | [LAN_COMPUTE_POOL.md](LAN_COMPUTE_POOL.md) | 局域网算力池（LAN Compute Pool）整体架构设计 | 现行 |
-| [CONFIG_STORAGE_ARCHITECTURE.md](CONFIG_STORAGE_ARCHITECTURE.md) | 配置与存储架构（三库 PostgreSQL / 密钥加密 / 数据目录） | 现行 |
+| [CONFIG_STORAGE_ARCHITECTURE.md](CONFIG_STORAGE_ARCHITECTURE.md) | 配置与存储架构（单库 `baihua` PostgreSQL / 密钥加密 / 数据目录） | 现行 |
 | [sync_protocol.md](sync_protocol.md) | 移动端与后端同步协议（manifest → 文件 → 本地写入） | 现行 |
 | [mobile_vault_distribution.md](mobile_vault_distribution.md) | 移动端知识库分发/导入方案（多知识库 vaultId 隔离） | 现行 |
 | [openclaw-openvino-integration.md](openclaw-openvino-integration.md) | OpenClaw 本地 AI（OpenVINO/llama.cpp/Ollama/LM Studio）集成 | 现行 |
@@ -31,4 +31,4 @@
   审计快照、i18n 计划、VMASTER 一次性提示词、测试报告等），历史可查 git。
 - 2026-08-06：清理历史分析类、故障快照类、临时修复记录类文档，以 git 历史为准。
 
-最后更新：2026-08-23
+最后更新：2026-09-12（三服务合一 commit `aa053f1` 后的文档同步）

@@ -18,12 +18,10 @@ K8S_DIR="$SCRIPT_DIR"
 NAMESPACE="baihua"
 REGISTRY="${REGISTRY:-}"  # 如有远程镜像仓库，设置 REGISTRY=registry.example.com/
 
-# 镜像列表
+# 镜像列表（本仓库构建的镜像；数据库镜像 postgres:18-alpine 是外部镜像，不在此构建/加载）
 IMAGES=(
-    "bh-vault:latest"
-    "bh-ai:latest"
+    "bh-server:latest"
     "bh-webui:latest"
-    "bh-family:latest"
     "bh-openvino:latest"
 )
 
@@ -66,28 +64,20 @@ build_images() {
     docker buildx build --build-context "nuget=$PROJECT_ROOT/nuget-local" \
         -f "$K8S_DIR/images/Dockerfile.sdk-offline" -t bh/sdk-offline:latest "$PROJECT_ROOT"
 
-    # Vault
-    log "  构建 bh-vault:latest ..."
-    docker build -f "$K8S_DIR/images/Dockerfile.vault" -t bh-vault:latest "$PROJECT_ROOT"
-
-    # AI
-    log "  构建 bh-ai:latest ..."
-    docker build -f "$K8S_DIR/images/Dockerfile.ai" -t bh-ai:latest "$PROJECT_ROOT"
+    # Server（唯一后端：家庭 / AI / 知识库三模块同一进程，合并前是 vault+ai+family 三个镜像）
+    log "  构建 bh-server:latest（唯一后端，OpenVINO 已拆分到独立容器）..."
+    docker build -f "$K8S_DIR/images/Dockerfile.server" -t bh-server:latest "$PROJECT_ROOT"
 
     # WebUI
     log "  构建 bh-webui:latest ..."
     docker build -f "$K8S_DIR/images/Dockerfile.webui" -t bh-webui:latest "$PROJECT_ROOT"
-
-    # Family (轻量版，不含 OpenVINO)
-    log "  构建 bh-family:latest（轻量版，OpenVINO 已拆分到独立容器）..."
-    docker build -f "$K8S_DIR/images/Dockerfile.family" -t bh-family:latest "$PROJECT_ROOT"
 
     # OpenVINO 推理服务器（独立容器，含 GPU 支持）
     log "  构建 bh-openvino:latest（OpenVINO + Intel GPU 推理服务）..."
     docker build -f "$K8S_DIR/images/Dockerfile.openvino-server" -t bh-openvino:latest "$PROJECT_ROOT"
 
     log "所有镜像构建完成"
-    docker images | grep -E "bh-(vault|ai|webui|family|openvino)" | head -10
+    docker images | grep -E "bh-(server|webui|openvino)" | head -10
 }
 
 # ============================================================
@@ -159,14 +149,15 @@ deploy() {
     log "部署到 K8s 集群 (namespace: $NAMESPACE) ..."
 
     # 基础清单（与 GPU 无关，始终部署）
+    # 25-postgres 必须在这里：此前它被本列表遗漏（清单从未被任何部署路径应用），
+    # 导致 bh-server 起来后连不上数据库。
     local manifests=(
         "00-namespace.yaml"
         "01-configmap.yaml"
         "02-secret.yaml"
         "03-pvc.yaml"
-        "20-vault.yaml"
-        "21-ai.yaml"
-        "22-family.yaml"
+        "25-postgres.yaml"
+        "20-server.yaml"
         "23-webui.yaml"
         "24-traefik.yaml"
     )
@@ -194,11 +185,11 @@ deploy() {
 
     log "滚动重启应用新镜像（本地 :latest 镜像不重启不会生效）..."
     # 显式列出应用 deployment，避免误重启 bh-postgres（数据库无需随应用重建而重启）
-    kubectl -n "$NAMESPACE" rollout restart deployment bh-vault bh-ai bh-webui bh-family bh-openvino >/dev/null 2>&1 || \
+    kubectl -n "$NAMESPACE" rollout restart deployment bh-server bh-webui bh-openvino >/dev/null 2>&1 || \
         warn "rollout restart 失败（首次部署可忽略）"
 
     log "等待应用滚动完成（rollout status，确保新 pod 全部就绪）..."
-    kubectl -n "$NAMESPACE" rollout status deployment bh-vault bh-ai bh-webui bh-family bh-openvino --timeout=300s 2>&1 || \
+    kubectl -n "$NAMESPACE" rollout status deployment bh-server bh-webui bh-openvino --timeout=300s 2>&1 || \
         warn "部分 deployment 未在 300s 内就绪，请用 'status' 命令查看详情"
 
     log "部署完成！"
@@ -230,7 +221,7 @@ status() {
     local NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null)
     if [ -n "$NODE_IP" ]; then
         info "  WebUI:  http://$NODE_IP/   (Traefik :80)"
-        info "  Family: http://$NODE_IP/   (Traefik /mg/* 转发)"
+        info "  Server: http://$NODE_IP/   (Traefik /mg/* /api/* /vault/* /mcp 转发)"
         info "  OpenVINO (OVMS): http://bh-openvino:8000 (集群内, OpenAI 兼容 /v3)"
     fi
 }
@@ -239,7 +230,7 @@ status() {
 # 6. 查看日志
 # ============================================================
 show_logs() {
-    local service="${1:-bh-family}"
+    local service="${1:-bh-server}"
     local tail="${2:-50}"
     log "=== $service 日志 (最后 $tail 行) ==="
     kubectl -n "$NAMESPACE" logs -l app="$service" --tail="$tail" --all-containers=true
@@ -295,15 +286,15 @@ verify_gpu() {
     ovms_ready=$(kubectl -n "$NAMESPACE" get pod -l app=bh-openvino -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)
     if [ "$ovms_ready" = "True" ]; then
         log "  bh-openvino Ready（/v2/health/ready 通过）"
-        kubectl -n "$NAMESPACE" exec deployment/bh-openvino -- bash -c 'command -v curl >/dev/null 2>&1 && curl -s http://localhost:8000/v1/models || echo "(OVMS 镜像无 curl，可从 Family 侧探测)"' 2>&1 | head -c 300 || true
+        kubectl -n "$NAMESPACE" exec deployment/bh-openvino -- bash -c 'command -v curl >/dev/null 2>&1 && curl -s http://localhost:8000/v1/models || echo "(OVMS 镜像无 curl，可从 Server 侧探测)"' 2>&1 | head -c 300 || true
     else
         warn "  bh-openvino 未就绪（首次加载 7B 模型编译较慢，需数分钟；稍后 bh status 复查）"
     fi
 
-    # 检查 Family → OVMS 连通性（Family 镜像自带 curl）
-    log "5. 检查 Family → OVMS 连通性 ..."
-    kubectl -n "$NAMESPACE" exec deployment/bh-family -- curl -s -m 5 http://bh-openvino:8000/v1/models 2>&1 | head -c 200 || \
-        warn "  Family 暂时无法连接到 bh-openvino:8000（OVMS 可能仍在启动）"
+    # 检查 Server → OVMS 连通性（bh-server 镜像自带 curl）
+    log "5. 检查 Server → OVMS 连通性 ..."
+    kubectl -n "$NAMESPACE" exec deployment/bh-server -- curl -s -m 5 http://bh-openvino:8000/v1/models 2>&1 | head -c 200 || \
+        warn "  Server 暂时无法连接到 bh-openvino:8000（OVMS 可能仍在启动）"
 }
 
 # ============================================================
@@ -347,7 +338,7 @@ case "${1:-help}" in
         echo "  deploy       部署到 K8s 集群"
         echo "  load         加载镜像到 minikube 集群"
         echo "  status       查看部署状态"
-        echo "  logs <svc>   查看服务日志 (默认: bh-family)"
+        echo "  logs <svc>   查看服务日志 (默认: bh-server)"
         echo "  verify-gpu   验证 Intel GPU + OpenVINO 服务可用性"
         echo "  destroy      删除所有 K8s 资源"
         echo "  all          build + load + deploy + verify-gpu"

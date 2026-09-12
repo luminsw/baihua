@@ -1,16 +1,13 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 <#
   bh - baihua 统一 CLI 入口（Windows）
-  路由到 tools/bh/<os>/<deployment>/ 下的 cell 脚本。
+  在 Windows 上经 WSL 调用 Linux k3s cell（tools/bh/linux/k8s/bh.sh）。
 
-  Cells:
-    native    Windows native（dotnet 进程管理）    win\native\bh.ps1
-    docker    Windows docker（compose）            win\docker\bh.ps1
-    k8s       Linux k3s（经 WSL，root）            linux\k8s\bh.sh
+  部署形态只有一种：Linux k3s（含 PostgreSQL / 后端 / WebUI / OVMS 全部容器化）。
+  合并为单进程 + 单库后不再需要 native / docker 两套 cell 脚本。
 
   用法:
-    bh <cell> <command> [args]   路由到指定 cell
-    bh <command> [args]          使用默认 cell（native，Windows 平台）
+    bh <command> [args]          执行命令（可选写 bh k8s <command> 兼容旧习惯）
     bh install                   复制自包含定位器到 %USERPROFILE%\.local\bin（含 bh.cmd shim，加入用户 PATH）
     bh uninstall                 移除定位器与 PATH 项
 #>
@@ -32,26 +29,20 @@ $Arg1 = if ($All.Count -gt 0) { $All[0] } else { '' }
 $Rest = @($All | Select-Object -Skip 1)
 
 $Cells = @{
-    'native' = @{ Script = 'win\native\bh.ps1'; Desc = 'Windows native（dotnet 进程）' }
-    'docker' = @{ Script = 'win\docker\bh.ps1'; Desc = 'Windows docker（compose）' }
-    'k8s'    = @{ Script = 'linux\k8s\bh.sh';    Desc = 'Linux k3s（经 WSL，root）' }
+    'k8s' = @{ Script = 'linux\k8s\bh.sh'; Desc = 'Linux k3s（经 WSL，root）——唯一部署形态' }
 }
-$DefaultCell = 'native'
 
 function Show-Help {
-    Write-Host 'bh - baihua 统一 CLI（Windows）'
+    Write-Host 'bh - baihua 统一 CLI（Windows，经 WSL 调 Linux k3s）'
     Write-Host ''
     Write-Host '用法:'
-    Write-Host '  bh <cell> <command> [args]    路由到指定 cell'
-    Write-Host '  bh <command> [args]           默认 cell（native）'
+    Write-Host '  bh <command> [args]           执行命令'
+    Write-Host '  bh k8s <command> [args]       同上（显式写 cell，兼容旧习惯）'
     Write-Host '  bh install / uninstall        加入 / 移出用户 PATH'
     Write-Host ''
-    Write-Host 'cells:'
-    foreach ($k in ($Cells.Keys | Sort-Object)) {
-        Write-Host ('  {0,-8} {1}' -f $k, $Cells[$k].Desc)
-    }
+    Write-Host '部署形态: Linux k3s（PostgreSQL + 后端 + WebUI + OVMS 全部容器化）'
     Write-Host ''
-    Write-Host 'cell 内可用命令: bh <cell> help'
+    Write-Host '可用命令: bh help（详情见 tools/bh/README.md）'
 }
 
 function Invoke-Install {
@@ -107,22 +98,16 @@ if ($cell -in @('install', 'uninstall')) {
     exit 0
 }
 
-if ($Cells.ContainsKey($cell)) {
-    # 显式 cell 路由
-    if ($cell -eq 'k8s') {
-        # Windows → WSL：路径映射 + root（bh.sh 需访问 buildkit socket）
-        # 反斜杠转正斜杠：wsl.exe 传参会剥离 \，wslpath -u 接受正斜杠形式
-        $wslRepo = (wsl wslpath -u ($Repo -replace '\\', '/') 2>$null | Out-String).Trim()
-        if (-not $wslRepo) { Write-Error '[k8s] wslpath 不可用，请确认 WSL 已安装'; exit 1 }
-        $inner = ($Rest | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
-        wsl -u root -e bash -lc "cd '$wslRepo' && tools/bh/linux/k8s/bh.sh $inner"
-        exit $LASTEXITCODE
-    }
-    & (Join-Path $Root $Cells[$cell].Script) @Rest
-    exit $LASTEXITCODE
+if ($cell -in @('help', '-h', '--help')) {
+    Show-Help
+    exit 0
 }
 
-# 默认 cell 透传（第一个参数视为 cell 内命令）
-# 注意：$Arg1 是 string，不能 @splat（会把字符串拆成字符数组），直接位置传参；$Rest 是数组才 splat
-& (Join-Path $Root $Cells[$DefaultCell].Script) $Arg1 @Rest
+# 统一入口：Windows 上一律经 WSL 调用 Linux k3s cell
+# （可选显式写 bh k8s <command>，与旧用法兼容）
+$Rest = if ($Cells.ContainsKey($cell)) { @($All | Select-Object -Skip 1) } else { @($All) }
+$wslRepo = (wsl wslpath -u ($Repo -replace '\\', '/') 2>$null | Out-String).Trim()
+if (-not $wslRepo) { Write-Error '[k8s] wslpath 不可用，请确认已安装 WSL 且可执行 wsl 命令'; exit 1 }
+$inner = ($Rest | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
+wsl -u root -e bash -lc "cd '$wslRepo' && tools/bh/linux/k8s/bh.sh $inner"
 exit $LASTEXITCODE

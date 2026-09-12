@@ -4,6 +4,11 @@
 > 日期：2026-09-10
 > 原则：沿用 AI 精减总原则——百花只保留稳定层（存储 + 展示 + 协议接口），「变化快」的探测/硬编码/选型逻辑全部交由 Agent。
 
+> ⚠️ **写在三服务合一之前**：文中 `Baihua.Family /mcp` 现由 `Baihua.Server`(8788) 提供
+> （工具实现在 `services/Baihua.Modules.Family/Services/Mcp/BaihuaMcpTools.cs`）；
+> 「family 库」现为单一 `baihua` 库（schema 仍为 `public`，实体归属决定边界）。
+> 计划结论仍然有效，实施落点改为 `Baihua.Modules.*` / `Baihua.Server`。
+
 ## 一、目标架构
 
 ```

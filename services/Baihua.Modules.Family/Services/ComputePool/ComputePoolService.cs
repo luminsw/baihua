@@ -790,20 +790,13 @@ public class ComputePoolService : IHostedService, IDisposable
         return result;
     }
 
-    private async Task<List<ComputeProviderDto>> GetAiServiceProvidersAsync(CancellationToken ct)
+    private Task<List<ComputeProviderDto>> GetAiServiceProvidersAsync(CancellationToken ct)
     {
         try
         {
-            var aiBase = Environment.GetEnvironmentVariable("BAIHUA_AI_URL")
-                ?? Environment.GetEnvironmentVariable("TASK_RUNNER_AI_API_URL")
-                ?? "http://127.0.0.1:8791";
-            using var client = _httpClientFactory.CreateClient("ComputePool");
-            client.Timeout = TimeSpan.FromSeconds(8);
-            var resp = await client.GetAsync($"{aiBase.TrimEnd('/')}/api/ai/config/providers", ct);
-            if (!resp.IsSuccessStatusCode)
-                return new List<ComputeProviderDto>();
-            var providers = await resp.Content.ReadFromJsonAsync<List<AiProviderConfig>>(ct);
-            return providers?
+            // 合并后提供方配置归 AI 模块所有，进程内经 IAiConfigService 读取（不再 HTTP）
+            var providers = _aiConfig.GetProviders();
+            return Task.FromResult(providers
                 .Where(p => p.Models is { Count: > 0 })
                 .Select(p => new ComputeProviderDto
                 {
@@ -817,11 +810,11 @@ public class ComputePoolService : IHostedService, IDisposable
                         TokensPerSecond = GetBenchmarkTps(m.Name)
                     }).ToList()
                 })
-                .ToList() ?? new List<ComputeProviderDto>();
+                .ToList());
         }
         catch
         {
-            return new List<ComputeProviderDto>();
+            return Task.FromResult(new List<ComputeProviderDto>());
         }
     }
 

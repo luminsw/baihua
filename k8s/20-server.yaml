@@ -1,29 +1,31 @@
-# bh-family: 核心家庭服务（端口 8788）
-# OpenVINO 推理已拆分到 bh-openvino 独立服务
-# Family 通过 K8s Service DNS (http://bh-openvino:8000) 调用 OpenVINO API
-# 不再需要 Intel GPU 资源
+# bh-server: 唯一后端服务（端口 8788）
+# 家庭 / AI / 知识库三个模块同进程（services/Baihua.Server，AssemblyName bh-server，dll bh-server.dll）
+# 合并前这里是三个独立后端（家庭 / 知识库 / AI 各一个 Deployment + Service）
+#
+# OpenVINO 推理在 bh-openvino 独立服务；bh-server 通过 K8s Service DNS
+# (http://bh-openvino:8000) 调用 OVMS，因此本 Pod 不需要 Intel GPU 资源。
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: bh-family
+  name: bh-server
   namespace: baihua
   labels:
-    app: bh-family
+    app: bh-server
     app.kubernetes.io/part-of: baihua
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: bh-family
+      app: bh-server
   template:
     metadata:
       labels:
-        app: bh-family
+        app: bh-server
     spec:
       containers:
-        - name: bh-family
-          image: bh-family:latest
+        - name: bh-server
+          image: bh-server:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8788
@@ -38,23 +40,16 @@ spec:
               value: "http://0.0.0.0:8788"
             - name: BAIHUA_SKIP_MUTEX
               value: "true"
-            # 移动端二维码入口地址：走 nginx 80 端口（无显式端口号），/mg/* 由 nginx 转发到本服务
-            # 花记扫码后使用 http://<host>/（默认 80），不再出现 :8788 显式端口
-            - name: Baihua__PublicBaseUrl
-              value: "http://192.168.3.13"
             # 服务器互联（百花↔百花 互发消息）：入口地址自动探测（下行 API 注入节点 IP，广播/回发用）。
             # 如入口不在 80 或想用域名，可显式覆盖 BAIHUA_SERVER_PUBLIC_BASE_URL
             - name: BAIHUA_HOST_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.hostIP
-            # 管理 API 访问控制：放行 Pod 网段（WebUI 等 Pod 通过 Service 调用管理 API）
+            # 管理 API 访问控制：放行 Pod 网段（WebUI 等 Pod 经 Service 调用管理 API；
+            # Traefik 反向代理的入口 IP 也在该网段内）
             - name: BAIHUA_ADMIN_ALLOWED_NETS
               value: "10.0.0.0/8"
-            # OpenVINO 远程服务 URL（K8s Service DNS，bh-openvino = Intel OVMS）
-            # 设为非 localhost 时，Family 跳过本地 Python 进程启动，直接调用远程 API
-            - name: OPENVINO_LLM_URL
-              value: "http://bh-openvino:8000"
           volumeMounts:
             - name: data
               mountPath: /app/data
@@ -81,11 +76,13 @@ spec:
             periodSeconds: 30
             failureThreshold: 3
           resources:
+            # 合并前的额度：family 2Gi + ai 2Gi + vault 512Mi 三个进程；现在同一个进程承载三模块，
+            # 因此上限取三者之和量级（4Gi），避免合并后仍按 2Gi 限额被 OOMKill。
             limits:
-              memory: 2Gi
+              memory: 4Gi
             requests:
               cpu: 500m
-              memory: 512Mi
+              memory: 1Gi
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false
@@ -106,17 +103,16 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: bh-family
+  name: bh-server
   namespace: baihua
   labels:
-    app: bh-family
+    app: bh-server
     app.kubernetes.io/part-of: baihua
 spec:
   selector:
-    app: bh-family
-  # 固定 ClusterIP：宿主机 DSH/mcp-server 直接经该 IP 访问；固定后不随 Service 重建而改变，
-  # 避免配置里的 familyUrl / BAIHUA_FAMILY_URL 失效。IP 必须在 k3s service CIDR（默认 10.43.0.0/16）内且空闲。
-  clusterIP: 10.43.159.101
+    app: bh-server
+  # 不再固定 clusterIP：合并前固定 ClusterIP 只是为了让兄弟 Pod（及宿主机 DSH）按 IP 找到
+  # family/vault/ai 三个后端；现在只有一个后端，统一用 Service DNS（bh-server:8788）。
   ports:
     - name: http
       port: 8788

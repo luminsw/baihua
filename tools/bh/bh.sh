@@ -1,14 +1,11 @@
 #!/bin/bash
 # bh - baihua 统一 CLI 入口（Linux）
-# 路由到 tools/bh/linux/<deployment>/ 下的 cell 脚本。
 #
-# Cells:
-#   k8s      Linux k3s（containerd，nerdctl 构建）  linux/k8s/bh.sh
-#   native   Linux native（dotnet 进程）            linux/native/bh.sh
+# 部署形态只有一种：Linux k3s（containerd + nerdctl 构建）——tools/bh/linux/k8s/bh.sh。
+# 合并为单进程 + 单库后不再需要 native / docker 两套 cell 脚本。
 #
 # 用法:
-#   bh <cell> <command> [args]   路由到指定 cell
-#   bh <command> [args]          使用默认 cell（k8s）
+#   bh <command> [args]          直接执行（可选写 bh k8s <command> 兼容旧习惯）
 #   bh install                   复制自包含定位器到 PATH（~/.local/bin/bh 或 /usr/local/bin/bh）
 #   bh uninstall                 移除定位器
 set -u
@@ -17,9 +14,9 @@ set -u
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 case "${1:-}" in
-    k8s|native)
-        cell="$1"; shift
-        exec "$ROOT/linux/$cell/bh.sh" "$@"
+    k8s)
+        shift
+        exec "$ROOT/linux/k8s/bh.sh" "$@"
         ;;
     install)
         if [ "$(id -u)" = "0" ]; then
@@ -58,8 +55,8 @@ case "${1:-}" in
         echo "bh - baihua 统一 CLI（Linux）"
         echo ""
         echo "用法:"
-        echo "  bh <cell> <command> [args]    路由到指定 cell（k8s | native）"
-        echo "  bh <command> [args]           默认 cell（k8s）"
+        echo "  bh <command> [args]           执行命令（k8s 部署形态）"
+        echo "  bh k8s <command> [args]       同上（显式写 cell，兼容旧习惯）"
         echo "  bh install / uninstall        安装到 PATH（root→/usr/local/bin，普通用户→~/.local/bin）/ 移除"
         echo "                                安装的是自包含定位器（非软链），仓库改名/移动后无需重装"
         echo ""

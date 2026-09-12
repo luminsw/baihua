@@ -11,7 +11,7 @@
 # nerdctl / buildkit（buildkitd+buildctl）缺失时 build 会自动下载安装（GitHub release → /usr/local/bin）。
 #
 # Usage: ./tools/bh/linux/k8s/bh.sh <command> [args]
-#   build [img...]  nerdctl 构建镜像进 k3s containerd（默认 5 个；可指定部分，如: family webui）
+#   build [img...]  nerdctl 构建镜像进 k3s containerd（默认 3 个；可指定部分，如: server webui）
 #   deploy      kubectl apply k8s/ manifests + wait ready
 #   up          仅构建 git 变更涉及的镜像 + deploy（未变更镜像跳过；bh up --all 强制全量重建）
 #   update      git pull + up（pull 以真实用户执行，build/deploy 自动提权，sudo 与否均可）
@@ -30,7 +30,7 @@ K8S_DIR="$ROOT/k8s"
 IMAGE_DIR="$ROOT/k8s/images"   # Dockerfile 配方 + entrypoint 全在这里
 NAMESPACE="baihua"
 
-IMAGES="bh-vault:latest bh-ai:latest bh-webui:latest bh-family:latest bh-openvino:latest"
+IMAGES="bh-server:latest bh-webui:latest bh-openvino:latest"
 
 # k3s containerd socket（k3s 默认）
 K3S_CONTAINERD_SOCK="/run/k3s/containerd/containerd.sock"
@@ -42,20 +42,18 @@ n() { nerdctl -a "$K3S_CONTAINERD_SOCK" -n k8s.io "$@"; }
 # buildkitd socket（prune 用；nerdctl build 内部自动连接同一 daemon）
 BUILDKIT_ADDR="unix:///run/buildkit/buildkitd.sock"
 
-# 镜像名 → Dockerfile 映射（支持 "bh-family" 或 "family" 两种写法）
+# 镜像名 → Dockerfile 映射（支持 "bh-server" 或 "server" 两种写法）
 dockerfile_of() {
     case "${1#bh-}" in
-        vault)   echo "Dockerfile.vault" ;;
-        ai)      echo "Dockerfile.ai" ;;
+        server)  echo "Dockerfile.server" ;;
         webui)   echo "Dockerfile.webui" ;;
-        family)  echo "Dockerfile.family" ;;
         openvino) echo "Dockerfile.openvino-server" ;;
         *)       echo "" ;;
     esac
 }
 
-# 全部 .NET 应用镜像（Contracts/Data/Core 等共享库变更时全部受影响）
-ALL_DOTNET="vault ai webui family"
+# 全部 .NET 应用镜像（Contracts/Data/Core/Modules 等共享库变更时全部受影响）
+ALL_DOTNET="server webui"
 
 # kubectl 封装：优先 k3s 自带 kubectl（k3s kubectl），再 PATH 里的 kubectl
 # 惰性解析——help 等不实际用 kubectl 的命令在 k3s 缺失时也能跑
@@ -370,7 +368,7 @@ build_all() {
         echo "        请确认 k3s 已运行（k3s 安装见 k8s/README.md 前提条件）"
         exit 1
     fi
-    # base-runtime：vault/ai/webui/family 的 FROM（运行时基础镜像）
+    # base-runtime：server/webui 的 FROM（运行时基础镜像）
     if ! n images | grep -qE 'bh/base-runtime\s+latest'; then
         n build -o type=image -f "$IMAGE_DIR/Dockerfile.base-runtime" -t bh/base-runtime:latest "$IMAGE_DIR" >/dev/null || exit 1
         echo "[build] bh/base-runtime"
@@ -380,19 +378,19 @@ build_all() {
         n build --build-context "nuget=$ROOT/nuget-local" -o type=image -f "$IMAGE_DIR/Dockerfile.sdk-offline" -t bh/sdk-offline:latest "$ROOT" >/dev/null || exit 1
         echo "[build] bh/sdk-offline"
     fi
-    # 目标镜像：默认全部 5 个；可传参指定（bh build family webui）
+    # 目标镜像：默认全部 3 个；可传参指定（bh build server webui）
     local targets
     if [ $# -gt 0 ]; then
         targets=""
         for a in "$@"; do
             if [ -z "$(dockerfile_of "$a")" ]; then
-                echo "[build] 未知镜像: $a（可用: vault ai webui family openvino）" >&2
+                echo "[build] 未知镜像: $a（可用: server webui openvino）" >&2
                 exit 1
             fi
             targets="$targets ${a#bh-}"
         done
     else
-        targets=" vault ai webui family openvino"
+        targets=" server webui openvino"
     fi
 
     # .NET 镜像：多阶段源码构建（容器内 dotnet publish，restore 走 sdk-offline 里的离线包源），context 需仓库根（services/ 源码）
@@ -414,13 +412,24 @@ deploy_all() {
         git_commit="$(cd "$ROOT" && git rev-parse --short HEAD 2>/dev/null || echo unknown)"
     fi
     # 基础清单（与 GPU 无关，始终部署）
+    # 25-postgres 必须在这里：此前它被本列表遗漏（清单从未被任何部署路径应用）。
     for m in 00-namespace.yaml 01-configmap.yaml 02-secret.yaml 03-pvc.yaml \
-             20-vault.yaml 21-ai.yaml 22-family.yaml 23-webui.yaml 24-traefik.yaml; do
+             25-postgres.yaml 20-server.yaml 23-webui.yaml; do
         echo "[deploy] $m"
         k apply -f "$K8S_DIR/$m" >/dev/null || exit 1
     done
+    # 24-traefik.yaml 是 IngressRoute（traefik.io CRD）：集群未装 Traefik 时先跳过而不是整体失败，
+    # 否则基础工作负载已经起来了却因为入口层报错中断，容易误判成"部署挂了"。
+    if k get crd ingressroutes.traefik.io >/dev/null 2>&1; then
+        echo "[deploy] 24-traefik.yaml"
+        k apply -f "$K8S_DIR/24-traefik.yaml" >/dev/null || exit 1
+    else
+        echo "[deploy] 跳过 24-traefik.yaml：集群无 traefik.io CRD（未安装 Traefik）"
+        echo "         移动端/外部入口需要 :80 —— k3s 默认自带 Traefik（若被 --disable traefik 关掉，需重新启用或自建入口）"
+        echo "         临时入口可用: kubectl -n $NAMESPACE port-forward svc/bh-server 8788:8788 / svc/bh-webui 5177:5177"
+    fi
     # 给应用 deployment 打上 git commit 标注（postgres 不属应用镜像，跳过）
-    for svc in bh-vault bh-ai bh-webui bh-family bh-openvino; do
+    for svc in bh-server bh-webui bh-openvino; do
         k -n "$NAMESPACE" annotate deploy "$svc" "baihua.git-commit=$git_commit" --overwrite >/dev/null 2>&1 || true
     done
     echo "[deploy] 记录源码 commit: $git_commit"
@@ -441,9 +450,9 @@ deploy_all() {
     fi
     echo "[deploy] 滚动重启应用新镜像（本地 :latest 镜像不重启不会生效）"
     # 显式列出应用 deployment，避免误重启 bh-postgres（数据库无需随应用重建而重启）
-    k -n "$NAMESPACE" rollout restart deployment bh-vault bh-ai bh-webui bh-family bh-openvino >/dev/null 2>&1 || true
+    k -n "$NAMESPACE" rollout restart deployment bh-server bh-webui bh-openvino >/dev/null 2>&1 || true
     echo "[deploy] 等待应用滚动完成（rollout status，确保新 pod 全部就绪）..."
-    k -n "$NAMESPACE" rollout status deployment bh-vault bh-ai bh-webui bh-family bh-openvino --timeout=300s \
+    k -n "$NAMESPACE" rollout status deployment bh-server bh-webui bh-openvino --timeout=300s \
         || echo "[deploy] 部分 deployment 未在 300s 内就绪（可稍后 bh status 复查，或 bh logs <svc> 查看原因）"
     status_all
 }
@@ -454,7 +463,7 @@ deploy_all() {
 
 
 
-# up：始终全量重建 4 个 .NET 应用镜像 + deploy。
+# up：始终全量重建 2 个 .NET 应用镜像 + deploy。
 # 不再做源码变更检测（曾用 changed_images 决定重建哪些，导致"部署镜像与源码脱节、标注撒谎"这类误导），
 # 全量重建 + buildkit 缓存未变更层（开销可控）始终把.NET 应用带到当前 HEAD，稳定可靠。
 # 注：openvino 的 FROM 是外部 registry 镜像（openvino/model_server:latest-gpu），构建依赖代理/网络，
@@ -538,12 +547,12 @@ status_all() {
 }
 
 # 机器可读状态（供 DSH 桥插件/运维界面消费）：每个应用 deployment 一行
-# 服务名统一不带 bh- 前缀（family/ai/vault/webui/openvino/postgres）
+# 服务名统一不带 bh- 前缀（server/webui/openvino/postgres）
 # 额外输出 git 版本信息：HEAD + 各服务部署时记录的 commit（baihua.git-commit annotation），
 # 用于判断当前运行的代码是否最新（gitHead == imageCommit 即最新；unknown 表示尚未部署标注）。
-# 判断某服务在两个 commit 之间是否受影响：检查其专属源码目录 + 共享层（Contracts/Core/Data）。
+# 判断某服务在两个 commit 之间是否受影响：检查其专属源码目录 + 共享层（Contracts/Core/Data/Modules）。
 # 仅文档（docs/、*.md 等）或其他服务的变更不算本服务受影响——避免误报"落后"。
-# 参数：svc（family/ai/vault/webui/openvino）from to。输出 true/false。
+# 参数：svc（server/webui/openvino/postgres）from to。输出 true/false。
 service_affected() {
     local svc="$1" from="$2" to="$3"
     [ "$from" = "$to" ] && { echo false; return; }
@@ -552,11 +561,10 @@ service_affected() {
     fi
     local paths=()
     case "$svc" in
-        family)   paths=("services/Baihua.Family/" "services/Baihua.Core/" "services/Baihua.Contracts/" "services/Baihua.Data/" "libs/");;
-        ai)       paths=("services/Baihua.AI/" "services/Baihua.AI.Provider/" "services/Baihua.Core/" "services/Baihua.Contracts/" "services/Baihua.Data/" "libs/");;
-        vault)    paths=("services/Baihua.Vault/" "services/Baihua.Core/" "services/Baihua.Contracts/" "services/Baihua.Data/" "libs/");;
+        server)   paths=("services/Baihua.Server/" "services/Baihua.Modules.Family/" "services/Baihua.Modules.Ai/" "services/Baihua.Modules.Vault/" "services/Baihua.AI.Provider/" "services/Baihua.Core/" "services/Baihua.Contracts/" "services/Baihua.Data/" "libs/");;
         webui)    paths=("services/Baihua.Web/" "services/Baihua.Core/" "services/Baihua.Contracts/" "services/Baihua.Data/" "libs/");;
-        openvino) paths=("k8s/images/Dockerfile.openvino" "services/Baihua.AI.Provider.OpenVino/");;
+        openvino) paths=("k8s/images/Dockerfile.openvino-server" "services/Baihua.AI.Provider.OpenVino/");;
+        postgres) paths=("k8s/25-postgres.yaml");;
     esac
     local pat=""; for p in "${paths[@]}"; do pat="${pat:+"$pat|"}$p"; done
     if git -C "$ROOT" diff --name-only "$from".."$to" 2>/dev/null | grep -E "^(${pat})" | grep -q .; then
@@ -575,7 +583,7 @@ status_json() {
             git_dirty="true"
         fi
     fi
-    local services="bh-family bh-ai bh-vault bh-webui bh-openvino bh-postgres"
+    local services="bh-server bh-webui bh-openvino bh-postgres"
     local entries=""
     local first=1
     local ready_total=0 total=0
@@ -617,7 +625,7 @@ status_json() {
 # 单个服务启停/重启（操作 deployment 副本数/滚动重启；服务名可不带 bh- 前缀）
 scale_service() {
     local svc="${2:-}"
-    [ -z "$svc" ] && { echo "[${1}] 用法: bh ${1} <svc>（family/ai/vault/webui/openvino/postgres）" >&2; return 1; }
+    [ -z "$svc" ] && { echo "[${1}] 用法: bh ${1} <svc>（server/webui/openvino/postgres）" >&2; return 1; }
     case "$svc" in bh-*) ;; *) svc="bh-$svc" ;; esac
     if [ "$(id -u)" != "0" ]; then
         echo "[${1}] 需要 root 权限（k3s.yaml 仅 root 可读），自动提权..." >&2
@@ -632,8 +640,8 @@ scale_service() {
 }
 
 show_logs() {
-    local svc="${1:-bh-family}"
-    # 自动补 bh- 前缀：logs vault → app=bh-vault
+    local svc="${1:-bh-server}"
+    # 自动补 bh- 前缀：logs webui → app=bh-webui
     case "$svc" in
         bh-*) ;;            # 已带前缀
         *) svc="bh-$svc" ;;
@@ -753,7 +761,7 @@ update_all() {
 #       仅供"镜像重建并已滚动重启成功"后调用（见 DSH 插件 build-restart 流程）。
 annotate_commit() {
     local svc="${1:-}"
-    [ -z "$svc" ] && { echo "[annotate] 用法: bh annotate <svc>（family/ai/vault/webui/openvino）" >&2; return 1; }
+    [ -z "$svc" ] && { echo "[annotate] 用法: bh annotate <svc>（server/webui/openvino）" >&2; return 1; }
     case "$svc" in bh-*) ;; *) svc="bh-$svc" ;; esac
     if [ "$(id -u)" != "0" ]; then
         echo "[annotate] 需要 root 权限（k3s.yaml 仅 root 可读），自动提权..." >&2
@@ -782,7 +790,7 @@ case "${1:-help}" in
     start|stop|restart) scale_service "${1}" "${2:-}" ;;
     annotate)  annotate_commit "${2:-}" ;;
     openvino)  openvino_cmd "${2:-status}" ;;
-    logs)      show_logs "${2:-bh-family}" "${3:-50}" ;;
+    logs)      show_logs "${2:-bh-server}" "${3:-50}" ;;
     destroy)   k delete namespace "$NAMESPACE"; echo "[destroy] done" ;;
     dashboard) open_dashboard ;;
     help)      help_text ;;

@@ -20,6 +20,8 @@ export async function authorize(page: Page) {
 /**
  * FAM-35：确保测试数据存在（幂等）——至少 1 个 Learner，否则看板/打卡/排行榜空态不渲染区域。
  * 创建后通过看板接口触发一次数据聚合，保证页面有内容。
+ *
+ * API_PORT 指向唯一后端 Baihua.Server（8788，三服务合一后家庭/AI/知识库同进程）。
  */
 export async function ensureTestData(page: Page) {
   const apiBase = process.env.API_PORT

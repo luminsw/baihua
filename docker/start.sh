@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # ============================================
-# Family Docker 一键启动脚本
-# 用法：./start.sh [--build]
+# 百花 Docker 一键启动脚本（容器全栈：postgres + server + webui + nginx）
+# 用法：./start.sh [--build] [--inference]
+#   --inference 额外启动 OVMS 容器（baihua 本地推理）
 # ============================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -12,50 +13,44 @@ cd "${SCRIPT_DIR}"
 # 检查 .env 文件
 if [[ ! -f .env ]]; then
     echo "警告：未找到 .env 文件，使用默认配置"
-    echo "提示：cp .env.example .env 并按需修改"
+    echo "提示：cp .env.example .env 并按需修改（PG_PASSWORD 为必填）"
 fi
 
 # 确保宿主机目录存在
 mkdir -p /opt/baihua/data /opt/baihua/logs \
-         /opt/baihua/config/family /opt/baihua/config/ai /opt/baihua/config/vault /opt/baihua/config/webui /opt/baihua/config/nginx \
-         /opt/baihua/data/openobserve \
-         /opt/baihua/models          # OpenVINO 模型仓库（OVMS 挂载，模型缺失则对应 servable 不加载） \
+         /opt/baihua/config/server /opt/baihua/config/webui /opt/baihua/config/nginx \
+         /opt/baihua/data/postgres /opt/baihua/data/openobserve \
          /opt/baihua/models          # OpenVINO 模型仓库（OVMS 挂载，模型缺失则对应 servable 不加载）
-
-# 如果 nginx 配置不存在，从项目复制默认配置
-if [[ ! -f /opt/baihua/config/nginx/nginx.conf ]]; then
-    if [[ -f "${SCRIPT_DIR}/nginx/nginx.conf" ]]; then
-        cp "${SCRIPT_DIR}/nginx/nginx.conf" /opt/baihua/config/nginx/nginx.conf
-        echo "已复制默认 Nginx 配置到 /opt/baihua/config/nginx/nginx.conf"
-    fi
-fi
 
 # 构建参数
 BUILD_FLAG=""
-if [[ "${1:-}" == "--build" ]]; then
-    BUILD_FLAG="--build"
-fi
+PROFILE_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --build)     BUILD_FLAG="--build" ;;
+        --inference) PROFILE_ARGS+=(--profile inference) ;;
+        --observability) PROFILE_ARGS+=(--profile observability) ;;
+    esac
+done
 
-echo "启动 Family Docker 服务（--profile docker-ai 含 ai + openvino 容器）..."
-docker compose --profile docker-ai up -d ${BUILD_FLAG} --remove-orphans
+echo "启动百花容器栈（postgres + server + webui + nginx）..."
+docker compose "${PROFILE_ARGS[@]}" up -d ${BUILD_FLAG} --remove-orphans
 
 echo ""
 echo "等待服务就绪..."
 sleep 5
 
-# 显示服务状态
 docker compose ps
 
 echo ""
 echo "========================================"
-echo "Family Docker 服务已启动"
-echo "  Baihua.Family: http://127.0.0.1:8788"
-echo "  Baihua.AI:     http://127.0.0.1:8791"
-echo "  Baihua.Vault:  http://127.0.0.1:8790"
+echo "百花服务已启动"
+echo "  后端（唯一）:      http://127.0.0.1:8788   （家庭 / AI / 知识库 三模块合一）"
 echo "  WebUI:             http://127.0.0.1:5177"
 echo "  Nginx (HTTP):      http://127.0.0.1:80"
-echo "  OpenObserve:       http://127.0.0.1:5082"
-echo "  OpenVINO (OVMS):   http://127.0.0.1:8000  (/v3 OpenAI 兼容推理)"
+echo "  PostgreSQL:        127.0.0.1:5432（库：${PG_DATABASE:-baihua}）"
+echo "  OpenVINO (OVMS):   http://127.0.0.1:8000   （--inference 时启动）"
+echo "  OpenObserve:       http://127.0.0.1:5082   （--observability 时启动）"
 echo ""
 echo "数据目录: /opt/baihua/data"
 echo "日志目录: /opt/baihua/logs"

@@ -5,6 +5,7 @@ import { authorize } from '../helpers';
  * 【旧套件迁移】原 tests/Baihua.Web.E2e/listening.spec.ts → tests/e2e/tests/legacy-e2e/
  * 迁移要点：登录方式改为共享 authorize() helper；describe 标题加 [legacy-e2e] 前缀。
  * 依赖 /browse 页存在「听」按钮（需知识库中有笔记，无则用例自动 skip）。
+ * 仅中文 UI：断言只保留中文分支（产品固定 zh-CN）。
  */
 
 test.describe('[legacy-e2e] 听知识库功能', () => {
@@ -14,9 +15,9 @@ test.describe('[legacy-e2e] 听知识库功能', () => {
     await page.goto('/browse');
     await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
 
-    await expect(page.locator('h2', { hasText: /知识库浏览|Vault Browser/ })).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('h2', { hasText: /知识库浏览/ })).toBeVisible({ timeout: 15000 });
 
-    const listenButtons = page.locator('button', { hasText: /听|Listen/ });
+    const listenButtons = page.locator('button', { hasText: /听/ });
     const buttonCount = await listenButtons.count();
     console.log(`找到 ${buttonCount} 个听按钮`);
 
@@ -53,9 +54,9 @@ test.describe('[legacy-e2e] 听知识库功能', () => {
     await page.goto('/browse');
     await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
 
-    await expect(page.locator('h2', { hasText: /知识库浏览|Vault Browser/ })).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('h2', { hasText: /知识库浏览/ })).toBeVisible({ timeout: 15000 });
 
-    const listenButtons = page.locator('button', { hasText: /听|Listen/ });
+    const listenButtons = page.locator('button', { hasText: /听/ });
     const buttonCount = await listenButtons.count();
 
     if (buttonCount === 0) {
@@ -88,9 +89,9 @@ test.describe('[legacy-e2e] 听知识库功能', () => {
     await page.goto('/browse');
     await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
 
-    await expect(page.locator('h2', { hasText: /知识库浏览|Vault Browser/ })).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('h2', { hasText: /知识库浏览/ })).toBeVisible({ timeout: 15000 });
 
-    const listenButtons = page.locator('button', { hasText: /听|Listen/ });
+    const listenButtons = page.locator('button', { hasText: /听/ });
     const buttonCount = await listenButtons.count();
 
     if (buttonCount === 0) {
@@ -104,7 +105,7 @@ test.describe('[legacy-e2e] 听知识库功能', () => {
     const modal = page.locator('.modal.show, .modal-overlay');
     await expect(modal).toBeVisible({ timeout: 10000 });
 
-    const playButton = page.locator('button', { hasText: /播放|Play/ });
+    const playButton = page.locator('button', { hasText: /播放/ });
     const playButtonVisible = await playButton.isVisible().catch(() => false);
     console.log('播放按钮可见:', playButtonVisible);
 

@@ -12,6 +12,7 @@ namespace Baihua.Core.Services;
 /// </summary>
 public class AiMetricsService : IDisposable
 {
+    // 指标名沿用合并前的 "Baihua.AI"：OpenObserve 既有看板按此过滤，改名会让历史与现网指标断档
     public static readonly string MeterName = "Baihua.AI";
 
     private readonly Meter _meter;

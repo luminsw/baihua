@@ -1,6 +1,6 @@
-# bh-family (K8s 轻量版): 不含 OpenVINO/Python
-# OpenVINO 推理已拆分到 bh-openvino 独立容器
-# Family 通过 K8s Service DNS (http://bh-openvino:8000) 调用 OpenVINO API
+# bh-server: 百花唯一后端（家庭 / AI / 知识库 三模块同一进程）
+# 合并前这里是三个独立后端各一份 Dockerfile（家庭 / AI / 知识库），
+# 现在只有一个后端进程与一个数据库，因此只有一份后端镜像。
 #
 # 源码构建（多阶段）：build 阶段在离线 SDK 镜像（bh/sdk-offline，含 nuget-local 包源）内现场 publish，
 # 宿主/发布机无需安装 .NET SDK，也无需维护 prebuilt 产物；restore 全程离线。
@@ -8,7 +8,7 @@
 # 构建上下文 = 仓库根（services/ + libs/ 源码；nuget-local 已沉底在 sdk-offline 镜像，无需携带）。
 #
 # 构建命令（nerdctl/docker 通用，context=仓库根）：
-#   nerdctl build -f k8s/images/Dockerfile.family -t bh-family:latest .
+#   nerdctl build -f k8s/images/Dockerfile.server -t bh-server:latest .
 
 FROM bh/sdk-offline:latest AS build
 WORKDIR /src
@@ -18,15 +18,18 @@ COPY services/Baihua.Data/Baihua.Data.csproj services/Baihua.Data/
 COPY services/Baihua.Core/Baihua.Core.csproj services/Baihua.Core/
 COPY services/Baihua.AI.Provider/Baihua.AI.Provider.csproj services/Baihua.AI.Provider/
 COPY services/Baihua.AI.Provider.OpenVino/Baihua.AI.Provider.OpenVino.csproj services/Baihua.AI.Provider.OpenVino/
-COPY services/Baihua.Family/Baihua.Family.csproj services/Baihua.Family/
+COPY services/Baihua.Modules.Family/Baihua.Modules.Family.csproj services/Baihua.Modules.Family/
+COPY services/Baihua.Modules.Ai/Baihua.Modules.Ai.csproj services/Baihua.Modules.Ai/
+COPY services/Baihua.Modules.Vault/Baihua.Modules.Vault.csproj services/Baihua.Modules.Vault/
+COPY services/Baihua.Server/Baihua.Server.csproj services/Baihua.Server/
 COPY libs/MobileContract/MobileContract.csproj libs/MobileContract/
 RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
-    dotnet restore services/Baihua.Family/Baihua.Family.csproj -r linux-x64 --nologo
+    dotnet restore services/Baihua.Server/Baihua.Server.csproj -r linux-x64 --nologo
 # 再 COPY 源码（代码变更只影响编译层）
 COPY services/ services/
 COPY libs/ libs/
 RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
-    dotnet publish services/Baihua.Family/Baihua.Family.csproj \
+    dotnet publish services/Baihua.Server/Baihua.Server.csproj \
         -c Release -o /publish --no-restore --nologo
 
 FROM bh/base-runtime:latest AS runtime
@@ -36,11 +39,11 @@ COPY --from=build /publish .
 
 EXPOSE 8788
 
-ENV ASPNETCORE_URLS=http://0.0.0.0:8788
+ENV ASPNETCORE_URLS=http://+:8788
 ENV BAIHUA_HOME=/app/data
 ENV BAIHUA_SKIP_MUTEX=true
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8788/health || exit 1
 
-ENTRYPOINT ["dotnet", "bh-family.dll"]
+ENTRYPOINT ["dotnet", "bh-server.dll"]

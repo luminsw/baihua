@@ -30,6 +30,8 @@ spec:
                 name: baihua-config
             - secretRef:
                 name: baihua-secret
+          # 后端地址只有一个：BaihuaServer__BaseUrl（ConfigMap 注入 http://bh-server:8788/）。
+          # 合并前的 FamilyApi__BaseUrl / AiApi__BaseUrl / VaultApi__BaseUrl 三个键已删除。
           env:
             - name: ASPNETCORE_URLS
               value: "http://0.0.0.0:5177"
@@ -84,8 +86,7 @@ metadata:
 spec:
   selector:
     app: bh-webui
-  # 固定 ClusterIP：宿主机 DSH 直连（配合 webUrl 用固定 IP，跨部署不变）。
-  clusterIP: 10.43.70.19
+  # 不再固定 clusterIP：统一用 Service DNS（集群内 bh-webui:5177，入口走 Traefik）。
   ports:
     - name: http
       port: 5177

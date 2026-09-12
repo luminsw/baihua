@@ -2,9 +2,9 @@
 # 从本机 NuGet 缓存把项目依赖的 nupkg 复制到 nuget-local/，
 # 使 Docker 构建（restore --source ./nuget-local）完全离线、不受外网波动影响。
 #
-# 用法：pwsh scripts/sync-nuget-local.ps1 [-Project services/Baihua.AI/Baihua.AI.csproj] [-Verbose]
+# 用法：pwsh scripts/sync-nuget-local.ps1 [-Project services/Baihua.Server/Baihua.Server.csproj] [-Verbose]
 param(
-    [string]$Project = "services/Baihua.AI/Baihua.AI.csproj",
+    [string]$Project = "services/Baihua.Server/Baihua.Server.csproj",
     [switch]$Verbose
 )
 

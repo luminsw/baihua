@@ -13,7 +13,7 @@
 │   ├─ baihua-local-ai-dsh-plugin  LLM provider（本机 OVMS + 算力池网关）   │
 │   └─ lanListen 0.0.0.0:3081  仅 /dsh-bridge/* 的局域网桥（token 鉴权）    │
 │                                                                      │
-│  k3s：family/ai/vault/webui/openvino/postgres（ClusterIP 直连免签名）   │
+│  k3s：server/webui/openvino/postgres（ClusterIP 直连免签名）                │
 └───────────────────────────────────────────────────────────────────┘
         ▲ LAN :3081（token）                    ▲ 百花 Web(k8s) 经 DshApi__BaseUrl
 ```
@@ -67,10 +67,11 @@ dsh plugin --profile web add /home/lumin/src/mdyj/baihua-local-ai-dsh-plugin
 ```
 
 > `baihua-dsh-plugin` 不再消费 `vaultUrl` / `familyUrl` / `comfyUrl`：知识库/家庭数据
-> 由 `Baihua.Family` 内置 `/mcp` 端点提供（工具名 `mcp__baihua__*`），绘图统一经 `drawGatewayUrl` 网关。
+> 由 `Baihua.Server` 内置 `/mcp` 端点提供（工具名 `mcp__baihua__*`），绘图统一经 `drawGatewayUrl` 网关。
 > 插件行由各包 `dsh.bundle` 自动插入（`dsh plugin add` 后挂入 profile 组合层），
 > 用户级补丁里**不要重复 `insert` 同名行**，只按 id 覆盖 `config` 即可。
-> k8s ClusterIP 可用 `kubectl get svc -n baihua bh-vault bh-family -o jsonpath='{.items[*].spec.clusterIP}'` 查询；
+> k8s ClusterIP 可用 `kubectl get svc -n baihua bh-server -o jsonpath='{.spec.clusterIP}'` 查询
+> （合并前需分别查 `bh-family` / `bh-ai` / `bh-vault`，现在只有一个 `bh-server`）；
 > 服务重建后可能变化，需同步更新。
 
 ## 4. 百花 Web（k8s）对接
@@ -104,16 +105,18 @@ DshApi__Token: <与插件相同的 token>
 
 ## 6.5 百花能力 MCP server（标准对外通道，内置 /mcp 端点）
 
-百花在 `Baihua.Family` 内置了标准 MCP server（`ModelContextProtocol.AspNetCore` 2.2.0，
+百花在 `Baihua.Server`（单一后端进程，8788）内置了标准 MCP server（`ModelContextProtocol.AspNetCore` 2.2.0，
 streamable-http，`/mcp` 端点），把只读能力暴露给**任意** MCP 客户端（DSH / Claude Desktop /
-Cursor 等）。实现见 `services/Baihua.Family/Services/Mcp/BaihuaMcpTools.cs`，注册见
-`Program.cs` 的 `AddMcpServer().WithHttpTransport(Stateless).WithTools<...>()` 与 `app.MapMcp("/mcp")`。
+Cursor 等）。实现见 `services/Baihua.Modules.Family/Services/Mcp/BaihuaMcpTools.cs`，注册见
+`services/Baihua.Server/Program.cs` 的 `AddMcpServer().WithHttpTransport(Stateless).WithTools<...>()`
+与 `app.MapMcp("/mcp")`。
 
 - 工具（DSH 侧 `mcp__baihua__*` 前缀，与原独立 MCP server 名称一致无缝切换）：
   `baihua_vault_search` / `baihua_vault_list` / `baihua_vault_read_note` / `baihua_budget_summary` / `baihua_tasks_list`
 - 调用路径：`vault_list` / `budget_summary` / `tasks_list` 直接调 `Baihua.Core` 服务层（零 HTTP 跳，强类型契约）；
-  `vault_search` / `vault_read_note` 走 HTTP 调 Vault（k8s 下 Family/Vault 不同 pod，文件系统不共享，
-  且搜索逻辑含 obsidian-cli/语义/FTS5/重排，复用 `SearchController` 单一来源）
+  `vault_search` / `vault_read_note` 走 `Baihua.Core.Modules.IVaultQueryService`（知识库模块实现）
+  ——**合并后是同进程直调，不再有 k8s 跨 pod HTTP**；检索逻辑（语义 / FTS5 / obsidian-cli / 文件扫描）与
+  WebUI、移动端共用同一实现，单一来源。
 - 鉴权：复用 `DshController` 模式——回环 + `BAIHUA_ADMIN_ALLOWED_NETS` 免鉴权；
   否则要求 `BAIHUA_AI_EXTERNAL_TOKEN`（Bearer / X-Server-Token / ?token=）
 - 会话模式：`Stateless`（工具无状态，无需 session 亲和性，水平扩展友好）
@@ -127,7 +130,7 @@ DSH 接入（profile patch，需先 `dsh plugin --profile web add @deepseek-ai/d
       config:
         serverName: baihua
         transport: streamable-http
-        url: 'http://<family-clusterip>:8788/mcp'
+        url: 'http://<server-clusterip>:8788/mcp'
         # headers:                # 远端部署启用 BAIHUA_AI_EXTERNAL_TOKEN 时填写
         #   Authorization: 'Bearer <token>'
 ```
@@ -140,7 +143,9 @@ DSH 里工具名带 `mcp__baihua__` 前缀（如 `mcp__baihua__baihua_vault_sear
 
 AI 对话（/messages）、编程 Agent（/code-agent）、图片识别（/image-recognition）、AI 绘图（/ai-drawing）
 ——菜单隐藏后，其 Web 页面、API 客户端方法、后端控制器/服务与相关 DTO 已作为死代码整体删除
-（AI 对话的 `/api/ai/chat/*` 后端保留：移动端花记客户端仍经 Family HMAC 代理使用）。
+（AI 对话的 `/api/ai/chat/*` 后端保留：移动端花记客户端仍经 `Baihua.Server` 的移动端签名 +
+设备授权中间件使用。另：单进程后助手域路由已由 `api/AI/*` 改名为 `api/assistant/*`，
+`api/ai/chat/*` 属 AI 模块、路径不变）。
 AI 实验室场景首页改指 `/dsh`。
 
 ## 8. 插件更新后的重启
@@ -175,7 +180,7 @@ pkill -f "dsh web"; npx @deepseek-ai/dsh web
 | `~/.dsh/cordis.patch.yml` | DSH 侧插件 config（桥接 token / drawToken），用户目录、非 git 仓库 |
 | `services/Baihua.Web/appsettings.json`（本地工作区） | `DshApi__Token` 本地值；该文件带 **skip-worktree** 标记，本地改动不进入 git（git 内版本恒为 `""`） |
 | `out/native/webui/appsettings.json` | 构建产物注入，`out/` 已被 .gitignore 忽略 |
-| `k8s/02-secret.yaml` → `baihua-secret` → `BAIHUA_AI_EXTERNAL_TOKEN` | **跨机**算力池/绘图/AI shim 鉴权；设置后跨机需 token，本机(10.0.0.0/8)仍免鉴权；留空=局域网信任。经 family/ai 的 `envFrom` 自动注入 |
+| `k8s/02-secret.yaml` → `baihua-secret` → `BAIHUA_AI_EXTERNAL_TOKEN` | **跨机**算力池/绘图/AI shim 鉴权；设置后跨机需 token，本机(10.0.0.0/8)仍免鉴权；留空=局域网信任。经 `bh-server` 的 `envFrom` 自动注入 |
 
 > 本机 DSH 零配置：三个插件 apply/启动时调用 `/api/dsh/config` 自举拓扑（本机免鉴权），`/api/dsh/pool`
 > 返回 peer 能力目录，`baihua_draw(target=节点名)` 即可跨机按名调用。若要启用「跨机需 token」，在
@@ -194,6 +199,6 @@ pkill -f "dsh web"; npx @deepseek-ai/dsh web
    `node --test`（见各仓库 `.github/workflows/ci.yml`）。
 
 轮换：改 `BAIHUA_AI_EXTERNAL_TOKEN`（后端）→ 同步 `~/.dsh/cordis.patch.yml` 的
-`drawToken` → 同步 `DshApi__Token`/桥接 `token` → 重启 family 与 DSH。
+`drawToken` → 同步 `DshApi__Token`/桥接 `token` → 重启 server 与 DSH。
 
 百花侧改动（Web 页面/后端）走 `bh build <svc> && bh restart <svc>`（或 /dsh 页「🧰 运维」）。

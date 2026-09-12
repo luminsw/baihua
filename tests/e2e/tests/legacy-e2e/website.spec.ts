@@ -13,7 +13,7 @@ import { test, expect } from '@playwright/test';
 
 const NGINX_BASE = 'http://localhost:80';
 
-test.describe.skip('[legacy-e2e] Family 版 Docker 部署测试（nginx 入口专用，迁移后跳过）', () => {
+test.describe.skip('[legacy-e2e] 百花 Docker 部署测试（nginx 入口专用，迁移后跳过）', () => {
 
   test('根路径经 nginx 重定向到登录（非 200 直出）', async ({ request }) => {
     // nginx 当前设计：根路径转发到 WebUI，未登录时 302 → /login

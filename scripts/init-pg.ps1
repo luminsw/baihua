@@ -40,26 +40,26 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[ok] 已连接 PostgreSQL（$AdminUser）"
 
-# ---- 2. 幂等建库（一服务一库）----
-$dbs = @("family", "vault", "ai")
-foreach ($db in $dbs) {
-    $exists = & $PSQL -h localhost -U $AdminUser -d postgres -t -A -c "SELECT 1 FROM pg_database WHERE datname='$db';" 2>&1
-    if ($LASTEXITCODE -ne 0 -or "$exists".Trim() -ne "1") {
-        & $PSQL -h localhost -U $AdminUser -d postgres -c "CREATE DATABASE $db;" 2>&1 | Out-Null
-        Write-Host "[ok] 已创建库 $db"
-    } else {
-        Write-Host "[ok] 库 $db 已存在"
-    }
+# ---- 2. 幂等建库（单一数据库：整个百花只有一个库）----
+$db = if ($env:PG_DATABASE) { $env:PG_DATABASE } else { "baihua" }
+$exists = & $PSQL -h localhost -U $AdminUser -d postgres -t -A -c "SELECT 1 FROM pg_database WHERE datname='$db';" 2>&1
+if ($LASTEXITCODE -ne 0 -or "$exists".Trim() -ne "1") {
+    & $PSQL -h localhost -U $AdminUser -d postgres -c "CREATE DATABASE $db;" 2>&1 | Out-Null
+    Write-Host "[ok] 已创建库 $db"
+} else {
+    Write-Host "[ok] 库 $db 已存在"
 }
+Write-Host "     注意：旧部署的 family / vault / ai 三库如需保留数据，先跑 scripts/migrate-to-single-db.ps1"
 
 # ---- 3. 设置用户级环境变量（新进程生效）----
 setx PG_USER $AdminUser | Out-Null
 setx PG_PASSWORD $AdminPassword | Out-Null
-Write-Host "[ok] 已设置用户级环境变量 PG_USER=$AdminUser / PG_PASSWORD=***（PG_HOST 本机可省略）"
+setx PG_DATABASE $db | Out-Null
+Write-Host "[ok] 已设置用户级环境变量 PG_USER=$AdminUser / PG_PASSWORD=*** / PG_DATABASE=$db（PG_HOST 本机可省略）"
 
 # ---- 4. 提示 ----
 Write-Host ""
 Write-Host "完成。下一步："
 Write-Host "  1) 新开一个终端（或注销重登）让环境变量生效"
-Write-Host "  2) 运行 bh restart —— 服务会自动连 PG 并建表（EnsureCreated）"
+Write-Host "  2) bh deploy（k3s）或 bh restart（容器栈）—— 后端会自动连 PG 并建表"
 Write-Host "  3) 验证: bh status / 打开 http://localhost:5177"

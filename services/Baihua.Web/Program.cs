@@ -288,35 +288,38 @@ var retryPolicy = HttpPolicyExtensions
     .HandleTransientHttpError()
     .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(1.5, retryAttempt - 1)));
 
-var familyBaseUrl = builder.Configuration["FamilyApi:BaseUrl"] ?? "http://127.0.0.1:8788/";
+// 后端已合并为单一服务（Baihua.Server，默认 8788）：所有客户端指向同一个基地址。
+// 保留三个客户端名字（FamilyApi / AiApi / VaultApi）只是历史命名——它们代表不同的调用语义
+// （家庭域 / AI 域 / 知识库域），便于按域设置超时与重试；地址只有一个。
+var baihuaServerBaseUrl = builder.Configuration["BaihuaServer:BaseUrl"]
+    ?? builder.Configuration["FamilyApi:BaseUrl"]
+    ?? "http://127.0.0.1:8788/";
 builder.Services.AddTransient<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
 builder.Services.AddHttpClient("FamilyApi", client =>
 {
-    client.BaseAddress = new Uri(familyBaseUrl);
+    client.BaseAddress = new Uri(baihuaServerBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
 }).AddPolicyHandler(retryPolicy)
  .AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
-// 长耗时接口（AI 分析类，如股票建议）：避开 FamilyApi 的 30s 硬超时
+// 长耗时接口（AI 分析类，如股票建议）：避开 30s 硬超时
 builder.Services.AddHttpClient("FamilyApiLong", client =>
 {
-    client.BaseAddress = new Uri(familyBaseUrl);
+    client.BaseAddress = new Uri(baihuaServerBaseUrl);
     client.Timeout = TimeSpan.FromMinutes(5);
 }).AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
-var aiBaseUrl = builder.Configuration["AiApi:BaseUrl"] ?? "http://127.0.0.1:8791/";
 builder.Services.AddHttpClient("AiApi", client =>
 {
-    client.BaseAddress = new Uri(aiBaseUrl);
+    client.BaseAddress = new Uri(baihuaServerBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
 }).AddPolicyHandler(retryPolicy)
  .AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
-var vaultBaseUrl = builder.Configuration["VaultApi:BaseUrl"] ?? "http://127.0.0.1:8790/";
 builder.Services.AddHttpClient("VaultApi", client =>
 {
-    client.BaseAddress = new Uri(vaultBaseUrl);
+    client.BaseAddress = new Uri(baihuaServerBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
 }).AddPolicyHandler(retryPolicy)
  .AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();

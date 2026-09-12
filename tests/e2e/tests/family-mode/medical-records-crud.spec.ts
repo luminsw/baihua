@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { navigateTo, waitForBlazor, authorize } from '../helpers';
 
 // 病历本全面功能测试：成员 CRUD + 病历记录 CRUD（含用药）+ 级联删除
-// 依赖：Family 8788 + WebUI 5177 运行中；AI 诊断不在此文件覆盖（见 medical-diagnosis.spec.ts）
+// 依赖：Baihua.Server 8788（家庭 + AI 同进程）+ WebUI 5177 运行中；AI 诊断不在此文件覆盖（见 medical-diagnosis.spec.ts）
 
 const API_BASE = `http://127.0.0.1:${process.env.API_PORT || '8788'}`;
 
