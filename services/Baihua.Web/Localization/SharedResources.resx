@@ -6480,4 +6480,31 @@ Shift+Enter 换行，Enter 发送</value>
   <data name="Messages_SystemPromptPlaceholder" xml:space="preserve">
     <value>输入系统提示词引导模型角色，如：你是一位专业中医师，请从中医辨证论治角度回答，使用少阳头痛、太阳头痛等专业术语</value>
   </data>
+  <data name="Nav_OpenWebUi" xml:space="preserve">
+    <value>AI 对话</value>
+  </data>
+  <data name="OpenWebUi_PageTitle" xml:space="preserve">
+    <value>AI 对话 - Open WebUI</value>
+  </data>
+  <data name="OpenWebUi_Title" xml:space="preserve">
+    <value>AI 对话</value>
+  </data>
+  <data name="OpenWebUi_Checking" xml:space="preserve">
+    <value>检查中…</value>
+  </data>
+  <data name="OpenWebUi_Online" xml:space="preserve">
+    <value>在线</value>
+  </data>
+  <data name="OpenWebUi_Offline" xml:space="preserve">
+    <value>离线</value>
+  </data>
+  <data name="OpenWebUi_OpenExternal" xml:space="preserve">
+    <value>新窗口打开</value>
+  </data>
+  <data name="OpenWebUi_Refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="OpenWebUi_OfflineHint" xml:space="preserve">
+    <value>Open WebUI 未运行。请在 WSL 中启动：bash /tmp/start-open-webui.sh</value>
+  </data>
 </root>
