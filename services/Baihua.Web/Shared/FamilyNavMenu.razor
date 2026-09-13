@@ -108,7 +108,7 @@ else if (_activeScene == 0)
         new("dashboard", "Nav_ParentDashboard", "bi bi-bar-chart-line", 1),
 
         // 🤖 AI 实验室（场景 2）
-        // AI 对话/绘图/评测等消费型页面已删，统一走 DSH 智能体（外部）
+        new("open-webui", "Nav_OpenWebUi", "bi bi-chat-dots", 2, Group: "Nav_ChatLabel"),
         new("master-chat", "Nav_VirtualMaster", "bi bi-mortarboard", 2, Group: "Nav_ChatLabel"),
         new("local-models", "Nav_LocalModels", "bi bi-cpu", 2, Group: "Nav_ResearchLabel", RequiredFeature: "LocalModelsPage"),
         new("stock-advisor", "Nav_StockAdvisor", "bi bi-graph-up", 2, Group: "Nav_ResearchLabel"),

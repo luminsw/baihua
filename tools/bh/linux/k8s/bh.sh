@@ -18,6 +18,9 @@
 #   prune       清空 buildkit 构建缓存（释放磁盘，修复 nuget 包缓存损坏导致的构建失败）
 #   status      pods / svc / pvc overview
 #   logs <svc> [n]   tail pod logs (default 50)
+#   start <svc>     scale deployment to 1
+#   stop <svc>      scale deployment to 0
+#   restart <svc>   rollout restart deployment
 #   destroy     delete namespace baihua
 #   dashboard   open browser with cli-token auto-login
 #   openvino <on|off|status>   按需启停 Intel GPU 相关服务（10-intel-gpu-plugin + bh-openvino）
