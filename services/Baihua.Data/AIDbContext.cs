@@ -24,7 +24,10 @@ public class AIDbContext : DbContext
     {
         if (!optionsBuilder.IsConfigured)
         {
-            optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.Baihua);
+            if (DbConnections.IsSqlite)
+                optionsBuilder.UseSqlite(DbConnections.Baihua);
+            else
+                optionsBuilder.UseNpgsql(DbConnections.Baihua);
         }
     }
 
@@ -48,8 +51,8 @@ public class AIDbContext : DbContext
             entity.Property(e => e.IsEnabled).HasDefaultValue(true);
             entity.Property(e => e.IsMain).HasDefaultValue(false);
             entity.Property(e => e.Tier).HasDefaultValue(0);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
         modelBuilder.Entity<AiUsageMetric>(entity =>
@@ -66,7 +69,7 @@ public class AIDbContext : DbContext
             entity.Property(e => e.ModelId).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Operation).HasMaxLength(50).IsRequired();
             entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
-            entity.Property(e => e.CalledAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CalledAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
         modelBuilder.Entity<EmbeddingConfig>(entity =>
@@ -80,8 +83,8 @@ public class AIDbContext : DbContext
             entity.Property(e => e.BaseUrl).HasMaxLength(500).IsRequired();
             entity.Property(e => e.EncryptedApiKey).HasMaxLength(2000);
             entity.Property(e => e.IsEnabled).HasDefaultValue(true);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
         modelBuilder.Entity<ComfyArtworkEntity>(entity =>
@@ -101,7 +104,7 @@ public class AIDbContext : DbContext
             entity.Property(e => e.FileType).HasMaxLength(20).HasDefaultValue("output");
             entity.Property(e => e.PromptId).HasMaxLength(64).IsRequired();
             entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
 

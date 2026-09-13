@@ -20,7 +20,10 @@ public class VaultDbContext : DbContext
     {
         if (!optionsBuilder.IsConfigured)
         {
-            optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.Baihua);
+            if (DbConnections.IsSqlite)
+                optionsBuilder.UseSqlite(DbConnections.Baihua);
+            else
+                optionsBuilder.UseNpgsql(DbConnections.Baihua);
         }
     }
 
@@ -47,8 +50,8 @@ public class VaultDbContext : DbContext
             entity.Property(e => e.PushedAt).IsRequired(false);
             entity.Property(e => e.IsDeleted).HasDefaultValue(false);
             entity.Property(e => e.DeletedAt).IsRequired(false);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
         modelBuilder.Entity<NoteEmbedding>(entity =>
@@ -59,8 +62,8 @@ public class VaultDbContext : DbContext
 
             entity.Property(e => e.VaultId).HasMaxLength(50).IsRequired();
             entity.Property(e => e.NotePath).HasMaxLength(500).IsRequired();
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
     }
 

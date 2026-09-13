@@ -111,38 +111,24 @@ builder.Services.AddSignalR()
 
 // ---------------- 单一数据库：三个模块各自的 DbContext ----------------
 // 表结构由 Baihua.Data.DatabaseInitializer 统一初始化（一个库，多上下文）
-builder.Services.AddDbContext<FamilyDbContext>(options =>
+// provider 由 BAIHUA_DB_PROVIDER 环境变量切换（postgres 默认 / sqlite 嵌入式）
+void ConfigureDbContext(DbContextOptionsBuilder o)
 {
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-}, ServiceLifetime.Scoped, ServiceLifetime.Singleton);
-builder.Services.AddDbContextFactory<FamilyDbContext>(options =>
-{
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-}, ServiceLifetime.Singleton);
+    if (DbConnections.IsSqlite)
+        o.UseSqlite(DbConnections.Baihua);
+    else
+        o.UseNpgsql(DbConnections.Baihua);
+    o.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+}
 
-builder.Services.AddDbContext<VaultDbContext>(options =>
-{
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-}, ServiceLifetime.Scoped, ServiceLifetime.Singleton);
-builder.Services.AddDbContextFactory<VaultDbContext>(options =>
-{
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-}, ServiceLifetime.Singleton);
+builder.Services.AddDbContext<FamilyDbContext>(options => ConfigureDbContext(options), ServiceLifetime.Scoped, ServiceLifetime.Singleton);
+builder.Services.AddDbContextFactory<FamilyDbContext>(options => ConfigureDbContext(options), ServiceLifetime.Singleton);
 
-builder.Services.AddDbContext<AIDbContext>(options =>
-{
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-}, ServiceLifetime.Scoped, ServiceLifetime.Singleton);
-builder.Services.AddDbContextFactory<AIDbContext>(options =>
-{
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-}, ServiceLifetime.Singleton);
+builder.Services.AddDbContext<VaultDbContext>(options => ConfigureDbContext(options), ServiceLifetime.Scoped, ServiceLifetime.Singleton);
+builder.Services.AddDbContextFactory<VaultDbContext>(options => ConfigureDbContext(options), ServiceLifetime.Singleton);
+
+builder.Services.AddDbContext<AIDbContext>(options => ConfigureDbContext(options), ServiceLifetime.Scoped, ServiceLifetime.Singleton);
+builder.Services.AddDbContextFactory<AIDbContext>(options => ConfigureDbContext(options), ServiceLifetime.Singleton);
 
 // ---------------- 共享服务（Core，各模块均可注入） ----------------
 builder.Services.AddMemoryCache();
