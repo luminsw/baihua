@@ -32,11 +32,20 @@ dotnet publish "$ROOT/services/Baihua.Web/Baihua.Web.csproj" \
     -p:EnableCompressionInSingleFile=true \
     -o "$OUT/webui"
 
+# 桌面 App（Photino 窗口包 WebUI，输出到 $OUT 与 server/ webui/ 同级）
+dotnet publish "$ROOT/clients/BaihuaDesktop/BaihuaDesktop.csproj" \
+    -c Release -r "$RID" --self-contained \
+    -p:PublishSingleFile=true \
+    -p:IncludeAllContentForSelfExtract=true \
+    -p:EnableCompressionInSingleFile=true \
+    -o "$OUT"
+
 # 启动脚本
 cp "$ROOT/scripts/run-baihua.sh" "$OUT/run-baihua.sh"
 chmod +x "$OUT/run-baihua.sh"
 
 echo ""
 echo "[ok] 打包完成: $OUT"
-echo "     启动: bash $OUT/run-baihua.sh"
+echo "     桌面 App: $OUT/baihua-desktop（双击打开窗口）"
+echo "     命令行:   bash $OUT/run-baihua.sh"
 echo "     WebUI: http://localhost:5177  后端: http://localhost:8788"
