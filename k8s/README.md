@@ -5,6 +5,21 @@
 > WebUI(`bh-webui` 5177) 与推理(`bh-openvino` OVMS :8000) 不变。
 > 本文中出现的 `bh-family`/`bh-ai`/`bh-vault`/8790/8791 只作为**合并前的历史**说明保留。
 
+## 一键安装（WSL2 / 原生 Linux）
+
+无需手动装 k3s / clone 仓库 / bh install，一行命令搞定全流程（自动装 k3s → clone → bh install → bh up）：
+
+```bash
+# 跟 main 分支（推荐）
+curl -fsSL https://raw.githubusercontent.com/luminsw/baihua/main/scripts/install-baihua.sh | bash
+
+# 或从 GitHub Release 下载脚本
+curl -fsSL https://github.com/luminsw/baihua/releases/latest/download/install-baihua.sh | bash
+```
+
+选项：`--release <tag>` 指定分支/tag、`--dir <path>` 改目标目录、`--skip-k3s` 跳过 k3s 安装、`--no-up` 只装不部署。
+Windows 用户：先开 WSL 终端（`wsl`）再执行上面命令。详见 `scripts/install-baihua.sh --help`。
+
 ## 架构概览
 
 ```
