@@ -375,7 +375,7 @@ StaticWebAssetsLoader.UseStaticWebAssets(app.Environment, app.Configuration);
 StaticWebAssetsLoader.UseStaticWebAssets(app.Environment, app.Configuration);
 
 app.UseStaticFiles();
-app.MapStaticAssets();
+try { app.MapStaticAssets(); } catch { /* self-contained 单文件下 manifest 不可用，UseStaticFiles 已覆盖 */ }
 app.UseAntiforgery();
 
 // 请求关联ID中间件（最早阶段添加，确保所有日志都有 CorrelationId）
