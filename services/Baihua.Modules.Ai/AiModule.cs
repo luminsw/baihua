@@ -33,45 +33,90 @@ public sealed class AiModule : IBaihuaModule
 
         // 恢复备份带来的编程 Agent / 绘图表可能不存在于已有数据库，幂等建表。
         // 注意：EF 的 ExecuteSqlRaw 会把 {} 当作格式占位符，字面量必须写成 {{}}
-        await db.Database.ExecuteSqlRawAsync("""
-            CREATE TABLE IF NOT EXISTS "CodeAgentSessions" (
-                "Id" SERIAL PRIMARY KEY,
-                "CreatedAt" TIMESTAMP NOT NULL DEFAULT now(),
-                "Prompt" VARCHAR(8000) NOT NULL,
-                "Language" VARCHAR(100),
-                "ProviderId" VARCHAR(50),
-                "Model" VARCHAR(100),
-                "ToolMode" VARCHAR(20) NOT NULL DEFAULT 'All',
-                "IsPipeline" BOOLEAN NOT NULL DEFAULT FALSE,
-                "PlanPro" BOOLEAN NOT NULL DEFAULT FALSE,
-                "Output" TEXT,
-                "Research" TEXT,
-                "Code" TEXT,
-                "Review" TEXT,
-                "FileName" VARCHAR(300),
-                "SessionStateJson" TEXT
-            );
-            CREATE INDEX IF NOT EXISTS "IX_CodeAgentSessions_CreatedAt" ON "CodeAgentSessions" ("CreatedAt");
-            CREATE INDEX IF NOT EXISTS "IX_CodeAgentSessions_IsPipeline" ON "CodeAgentSessions" ("IsPipeline");
-            CREATE TABLE IF NOT EXISTS "ComfyArtworks" (
-                "Id" SERIAL PRIMARY KEY,
-                "CreatedAt" TIMESTAMP NOT NULL DEFAULT now(),
-                "Kind" VARCHAR(10) NOT NULL,
-                "Prompt" VARCHAR(2000) NOT NULL,
-                "Model" VARCHAR(200) NOT NULL,
-                "ParamsJson" TEXT NOT NULL DEFAULT '{{}}',
-                "FileName" VARCHAR(300) NOT NULL,
-                "Subfolder" VARCHAR(300) DEFAULT '',
-                "FileType" VARCHAR(20) DEFAULT 'output',
-                "PromptId" VARCHAR(64) NOT NULL,
-                "IsSuccess" BOOLEAN NOT NULL DEFAULT TRUE,
-                "ErrorMessage" VARCHAR(2000),
-                "DurationSeconds" DOUBLE PRECISION NOT NULL DEFAULT 0
-            );
-            CREATE INDEX IF NOT EXISTS "IX_ComfyArtworks_CreatedAt" ON "ComfyArtworks" ("CreatedAt");
-            CREATE INDEX IF NOT EXISTS "IX_ComfyArtworks_Kind" ON "ComfyArtworks" ("Kind");
-            CREATE UNIQUE INDEX IF NOT EXISTS "IX_ComfyArtworks_PromptId" ON "ComfyArtworks" ("PromptId");
-            """, cancellationToken);
+        if (Baihua.Data.DbConnections.IsSqlite)
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE TABLE IF NOT EXISTS "CodeAgentSessions" (
+                    "Id" INTEGER PRIMARY KEY AUTOINCREMENT,
+                    "CreatedAt" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    "Prompt" TEXT NOT NULL,
+                    "Language" TEXT,
+                    "ProviderId" TEXT,
+                    "Model" TEXT,
+                    "ToolMode" TEXT NOT NULL DEFAULT 'All',
+                    "IsPipeline" INTEGER NOT NULL DEFAULT 0,
+                    "PlanPro" INTEGER NOT NULL DEFAULT 0,
+                    "Output" TEXT,
+                    "Research" TEXT,
+                    "Code" TEXT,
+                    "Review" TEXT,
+                    "FileName" TEXT,
+                    "SessionStateJson" TEXT
+                );
+                CREATE INDEX IF NOT EXISTS "IX_CodeAgentSessions_CreatedAt" ON "CodeAgentSessions" ("CreatedAt");
+                CREATE INDEX IF NOT EXISTS "IX_CodeAgentSessions_IsPipeline" ON "CodeAgentSessions" ("IsPipeline");
+                CREATE TABLE IF NOT EXISTS "ComfyArtworks" (
+                    "Id" INTEGER PRIMARY KEY AUTOINCREMENT,
+                    "CreatedAt" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    "Kind" TEXT NOT NULL,
+                    "Prompt" TEXT NOT NULL,
+                    "Model" TEXT NOT NULL,
+                    "ParamsJson" TEXT NOT NULL DEFAULT '{{}}',
+                    "FileName" TEXT NOT NULL,
+                    "Subfolder" TEXT DEFAULT '',
+                    "FileType" TEXT DEFAULT 'output',
+                    "PromptId" TEXT NOT NULL,
+                    "IsSuccess" INTEGER NOT NULL DEFAULT 1,
+                    "ErrorMessage" TEXT,
+                    "DurationSeconds" REAL NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS "IX_ComfyArtworks_CreatedAt" ON "ComfyArtworks" ("CreatedAt");
+                CREATE INDEX IF NOT EXISTS "IX_ComfyArtworks_Kind" ON "ComfyArtworks" ("Kind");
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_ComfyArtworks_PromptId" ON "ComfyArtworks" ("PromptId");
+                """, cancellationToken);
+        }
+        else
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE TABLE IF NOT EXISTS "CodeAgentSessions" (
+                    "Id" SERIAL PRIMARY KEY,
+                    "CreatedAt" TIMESTAMP NOT NULL DEFAULT now(),
+                    "Prompt" VARCHAR(8000) NOT NULL,
+                    "Language" VARCHAR(100),
+                    "ProviderId" VARCHAR(50),
+                    "Model" VARCHAR(100),
+                    "ToolMode" VARCHAR(20) NOT NULL DEFAULT 'All',
+                    "IsPipeline" BOOLEAN NOT NULL DEFAULT FALSE,
+                    "PlanPro" BOOLEAN NOT NULL DEFAULT FALSE,
+                    "Output" TEXT,
+                    "Research" TEXT,
+                    "Code" TEXT,
+                    "Review" TEXT,
+                    "FileName" VARCHAR(300),
+                    "SessionStateJson" TEXT
+                );
+                CREATE INDEX IF NOT EXISTS "IX_CodeAgentSessions_CreatedAt" ON "CodeAgentSessions" ("CreatedAt");
+                CREATE INDEX IF NOT EXISTS "IX_CodeAgentSessions_IsPipeline" ON "CodeAgentSessions" ("IsPipeline");
+                CREATE TABLE IF NOT EXISTS "ComfyArtworks" (
+                    "Id" SERIAL PRIMARY KEY,
+                    "CreatedAt" TIMESTAMP NOT NULL DEFAULT now(),
+                    "Kind" VARCHAR(10) NOT NULL,
+                    "Prompt" VARCHAR(2000) NOT NULL,
+                    "Model" VARCHAR(200) NOT NULL,
+                    "ParamsJson" TEXT NOT NULL DEFAULT '{{}}',
+                    "FileName" VARCHAR(300) NOT NULL,
+                    "Subfolder" VARCHAR(300) DEFAULT '',
+                    "FileType" VARCHAR(20) DEFAULT 'output',
+                    "PromptId" VARCHAR(64) NOT NULL,
+                    "IsSuccess" BOOLEAN NOT NULL DEFAULT TRUE,
+                    "ErrorMessage" VARCHAR(2000),
+                    "DurationSeconds" DOUBLE PRECISION NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS "IX_ComfyArtworks_CreatedAt" ON "ComfyArtworks" ("CreatedAt");
+                CREATE INDEX IF NOT EXISTS "IX_ComfyArtworks_Kind" ON "ComfyArtworks" ("Kind");
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_ComfyArtworks_PromptId" ON "ComfyArtworks" ("PromptId");
+                """, cancellationToken);
+        }
 
         logger.LogInformation("AI 模块附加表结构就绪（CodeAgentSessions / ComfyArtworks）");
     }

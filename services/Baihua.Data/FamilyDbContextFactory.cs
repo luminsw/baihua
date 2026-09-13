@@ -11,9 +11,11 @@ public class FamilyDbContextFactory : IDesignTimeDbContextFactory<FamilyDbContex
 {
     public FamilyDbContext CreateDbContext(string[] args)
     {
-        var options = new DbContextOptionsBuilder<FamilyDbContext>()
-            .UseNpgsql(DbConnections.Baihua)
-            .Options;
-        return new FamilyDbContext(options);
+        var optionsBuilder = new DbContextOptionsBuilder<FamilyDbContext>();
+        if (DbConnections.IsSqlite)
+            optionsBuilder.UseSqlite(DbConnections.Baihua);
+        else
+            optionsBuilder.UseNpgsql(DbConnections.Baihua);
+        return new FamilyDbContext(optionsBuilder.Options);
     }
 }
