@@ -253,3 +253,6 @@ nuget-local/*.nupkg
 # CodeGraph 本机代码图谱索引（工具生成的本地缓存，不提交）
 /.codegraph/
 .webui_secret_key
+
+# self-contained publish 产出（实验分支 publish-baihua.sh 生成）
+dist/
