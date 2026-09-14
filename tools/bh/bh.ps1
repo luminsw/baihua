@@ -37,6 +37,7 @@ function Show-Help {
     Write-Host 'bh - baihua 统一 CLI（Windows）'
     Write-Host ''
     Write-Host '用法:'
+    Write-Host '  bh                           打开管理面板（= bh dashboard）'
     Write-Host '  bh <command> [args]           执行命令（默认 native cell）'
     Write-Host '  bh native <command> [args]    显式用 native cell（dotnet 进程）'
     Write-Host '  bh k8s <command> [args]       显式用 k8s cell（经 WSL）'
@@ -144,6 +145,9 @@ if ($Cells.ContainsKey($cell)) {
     $activeCell = $DefaultCell
     $cmdArgs = @($All)
 }
+
+# 无参数默认打开管理面板（提升易用性）
+if ($cmdArgs.Count -eq 0) { $cmdArgs = @('dashboard') }
 
 # ==================== native cell ====================
 # Windows dotnet 进程，不经 WSL/k3s
