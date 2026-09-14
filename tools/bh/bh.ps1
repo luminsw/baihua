@@ -1,13 +1,12 @@
 ﻿#requires -Version 5.1
 <#
   bh - baihua 统一 CLI 入口（Windows）
-  在 Windows 上经 WSL 调用 Linux k3s cell（tools/bh/linux/k8s/bh.sh）。
-
-  部署形态只有一种：Linux k3s（含 PostgreSQL / 后端 / WebUI / OVMS 全部容器化）。
-  合并为单进程 + 单库后不再需要 native / docker 两套 cell 脚本。
+  默认用 native cell（tools/bh/win/native/bh.ps1，dotnet 进程，不依赖 WSL/k3s）。
+  可选 k8s cell（tools/bh/linux/k8s/bh.sh，经 WSL 调用 Linux k3s）。
 
   用法:
-    bh <command> [args]          执行命令（可选写 bh k8s <command> 兼容旧习惯）
+    bh <command> [args]          执行命令（默认 native cell）
+    bh k8s <command> [args]      显式用 k8s cell（经 WSL）
     bh install                   复制自包含定位器到 %USERPROFILE%\.local\bin（含 bh.cmd shim，加入用户 PATH）
     bh uninstall                 移除定位器与 PATH 项
 #>
@@ -29,22 +28,24 @@ $Arg1 = if ($All.Count -gt 0) { $All[0] } else { '' }
 $Rest = @($All | Select-Object -Skip 1)
 
 $Cells = @{
-    'k8s' = @{ Script = 'linux\k8s\bh.sh'; Desc = 'Linux k3s（经 WSL，root）——唯一部署形态' }
+    'native' = @{ Script = 'win\native\bh.ps1'; Desc = 'Windows native（dotnet 进程，不依赖 WSL/k3s）' }
+    'k8s'    = @{ Script = 'linux\k8s\bh.sh';    Desc = 'Linux k3s（经 WSL，root）' }
 }
+$DefaultCell = 'native'
 
 function Show-Help {
-    Write-Host 'bh - baihua 统一 CLI（Windows，经 WSL 调 Linux k3s）'
+    Write-Host 'bh - baihua 统一 CLI（Windows）'
     Write-Host ''
     Write-Host '用法:'
-    Write-Host '  bh <command> [args]           执行命令'
-    Write-Host '  bh k8s <command> [args]       同上（显式写 cell，兼容旧习惯）'
-    Write-Host '  bh lan [on|off|status]        局域网入口（宿主 :80 -> WSL k3s），status 为默认'
+    Write-Host '  bh <command> [args]           执行命令（默认 native cell）'
+    Write-Host '  bh native <command> [args]    显式用 native cell（dotnet 进程）'
+    Write-Host '  bh k8s <command> [args]       显式用 k8s cell（经 WSL）'
+    Write-Host '  bh lan [on|off|status]        局域网入口（仅 k8s cell，宿主 :80 -> WSL k3s）'
     Write-Host '  bh install / uninstall        加入 / 移出用户 PATH'
     Write-Host ''
-    Write-Host '说明: start/deploy/up/update/restart/dashboard 会自动确保局域网入口（首次弹一次 UAC；已就绪则静默）'
-    Write-Host '      start/deploy/up/update/restart 还会把配对地址（Baihua__PublicBaseUrl）校正为当前宿主 LAN IP'
-    Write-Host ''
-    Write-Host '部署形态: Linux k3s（PostgreSQL + 后端 + WebUI + OVMS 全部容器化）'
+    Write-Host '部署形态:'
+    Write-Host '  native（默认）— Windows dotnet 进程，不依赖 WSL/k3s（需本机 PostgreSQL）'
+    Write-Host '  k8s           — Linux k3s（PostgreSQL + 后端 + WebUI + OVMS 全部容器化）'
     Write-Host ''
     Write-Host '可用命令: bh help（详情见 tools/bh/README.md）'
 }
@@ -96,47 +97,7 @@ function Invoke-Uninstall {
     Write-Host '[uninstall] 已移除 %USERPROFILE%\.local\bin\bh.ps1 / bh.cmd'
 }
 
-$cell = $Arg1.ToLower()
-if ($cell -in @('install', 'uninstall')) {
-    if ($cell -eq 'install') { Invoke-Install } else { Invoke-Uninstall }
-    exit 0
-}
-
-if ($cell -in @('help', '-h', '--help')) {
-    Show-Help
-    exit 0
-}
-
-# 统一入口：Windows 上一律经 WSL 调用 Linux k3s cell
-# （可选显式写 bh k8s <command>，与旧用法兼容）
-$Rest = if ($Cells.ContainsKey($cell)) { @($All | Select-Object -Skip 1) } else { @($All) }
-$wslRepo = (wsl wslpath -u ($Repo -replace '\\', '/') 2>$null | Out-String).Trim()
-if (-not $wslRepo) { Write-Error '[k8s] wslpath 不可用，请确认已安装 WSL 且可执行 wsl 命令'; exit 1 }
-
-function Invoke-Cell([string[]]$CellArgs, [string]$EnvPrefix = '') {
-    $inner = ($CellArgs | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
-    # 必须经管道逐行转发：wsl.exe 是原生子进程，直接把输出写到控制台句柄，
-    # 当本脚本的 stdout 不是控制台（CI / agent harness / 被其它程序捕获）时，
-    # 紧跟着的 `exit` 会在这些输出被刷出之前终止进程 —— 表现为"命令明明成功却没有任何输出"。
-    wsl -u root -e bash -lc "cd '$wslRepo' && $EnvPrefix tools/bh/linux/k8s/bh.sh $inner" 2>&1 |
-        ForEach-Object { Write-Host $_ }
-    return $LASTEXITCODE
-}
-
-# ---------------- 局域网入口（宿主 -> WSL k3s :80）----------------
-# 背景：k3s 跑在 WSL 里，Traefik 绑的是 WSL 的 :80（172.30.x.x）。Windows 本机能访问，
-# 但手机/局域网设备访问不到，需要在宿主做一次 netsh portproxy 转发（管理员）。
-# 为了不让用户记脚本，这里把它变成 bh 的自动行为：
-#   - 用**连通性**判断（不解析 netsh 输出，避免中文系统/格式差异）：宿主 LAN IP 的 /health 通 = 已就绪
-#   - 不通且后端在跑 → 自动以管理员身份执行 scripts\expose-k3s-lan.ps1（弹一次 UAC），做完复检
-#   - WSL 重启导致 WSL IP 变化时，同一个检测会发现"过期"并自动重做（幂等）
-#   - 若 WSL 已是 mirrored 网络模式，宿主 IP 直接就有 :80，检测直接通过，永远不会弹 UAC
-
-function Get-WslIp {
-    $ip = (wsl -e bash -lc "hostname -I | awk '{print `$1}'" 2>$null | Out-String).Trim()
-    if ($ip -match '^\d+\.\d+\.\d+\.\d+$') { return $ip }
-    return ''
-}
+# ---- 共享工具函数（native / k8s cell 都用）----
 
 function Get-HostLanIp {
     # 取"默认路由所在网卡"的 IPv4 —— 手机/局域网设备要访问的是这个地址。
@@ -163,10 +124,104 @@ function Test-Http([string]$Url) {
         $r = Invoke-WebRequest -Uri $Url -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
         return ($r.StatusCode -ge 200 -and $r.StatusCode -lt 400)
     } catch {
-        # 302 之类会抛异常，但响应码本身说明服务在
         $code = $_.Exception.Response.StatusCode.value__
         return ($code -ge 200 -and $code -lt 400)
     }
+}
+
+# ---- 确定 cell 与命令 ----
+$cell = $Arg1.ToLower()
+if ($cell -in @('install', 'uninstall')) {
+    if ($cell -eq 'install') { Invoke-Install } else { Invoke-Uninstall }
+    exit 0
+}
+if ($cell -in @('help', '-h', '--help')) { Show-Help; exit 0 }
+
+if ($Cells.ContainsKey($cell)) {
+    $activeCell = $cell
+    $cmdArgs = @($All | Select-Object -Skip 1)
+} else {
+    $activeCell = $DefaultCell
+    $cmdArgs = @($All)
+}
+
+# ==================== native cell ====================
+# Windows dotnet 进程，不经 WSL/k3s
+if ($activeCell -eq 'native') {
+    $nativeScript = Join-Path $Root 'win\native\bh.ps1'
+    if (-not (Test-Path $nativeScript)) { Write-Error "[native] 缺少 $nativeScript"; exit 1 }
+
+    # lan 命令：native cell 下做宿主 :80 -> :8788 portproxy（移动端默认无端口访问）
+    $cmd0 = if ($cmdArgs.Count -gt 0) { $cmdArgs[0] } else { '' }
+    if ($cmd0 -eq 'lan') {
+        $sub = if ($cmdArgs.Count -gt 1) { $cmdArgs[1] } else { 'status' }
+        switch ($sub) {
+            'on' {
+                $lanIp = Get-HostLanIp
+                if (-not $lanIp) { Write-Host '[lan] 未识别到宿主局域网 IP'; exit 0 }
+                Write-Host '[lan] 设置宿主 :80 -> :8788 转发（需要管理员授权）...'
+                try {
+                    $p = Start-Process -FilePath 'pwsh' -Verb RunAs -PassThru -ArgumentList @(
+                        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+                        'netsh interface portproxy add v4tov4 listenport=80 connectport=8788 connectaddress=127.0.0.1; netsh advfirewall firewall add rule name="Baihua LAN 80" dir=in action=allow protocol=TCP localport=80'
+                    ) -ErrorAction Stop
+                    $null = Wait-Process -Id $p.Id -Timeout 30 -ErrorAction SilentlyContinue
+                    Write-Host "[lan] 局域网入口就绪：http://$lanIp/  （-> 127.0.0.1:8788）"
+                } catch { Write-Warning '[lan] 提权失败或被取消' }
+            }
+            'off' {
+                Write-Host '[lan] 撤销宿主 :80 转发（需要管理员授权）...'
+                try {
+                    $p = Start-Process -FilePath 'pwsh' -Verb RunAs -PassThru -ArgumentList @(
+                        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
+                        'netsh interface portproxy delete v4tov4 listenport=80; netsh advfirewall firewall delete rule name="Baihua LAN 80"'
+                    ) -ErrorAction Stop
+                    $null = Wait-Process -Id $p.Id -Timeout 30 -ErrorAction SilentlyContinue
+                    Write-Host '[lan] 已撤销'
+                } catch { Write-Warning '[lan] 提权失败或被取消' }
+            }
+            default {
+                $lanIp = Get-HostLanIp
+                $proxy = (netsh interface portproxy show v4tov4 2>$null | Out-String)
+                $has80 = $proxy -match '\b80\b'
+                Write-Host "[lan] 宿主 IP: $lanIp"
+                Write-Host "[lan] 后端端口: 8788（server 绑 0.0.0.0）"
+                if ($has80) {
+                    Write-Host "[lan] 局域网入口: 已就绪 http://$lanIp/  （:80 -> :8788）"
+                } else {
+                    Write-Host "[lan] 局域网入口: 未就绪（bh lan on 配置 :80 转发）"
+                    Write-Host "[lan] 备选: 直接用 http://$lanIp`:8788/ （需放行防火墙 TCP 8788）"
+                }
+            }
+        }
+        exit 0
+    }
+
+    # 其余命令直接委托给 native 脚本
+    & $nativeScript @cmdArgs
+    exit $LASTEXITCODE
+}
+
+# ==================== k8s cell ====================
+# 经 WSL 调用 Linux k3s（PostgreSQL + 后端 + WebUI + OVMS 全部容器化）
+$wslRepo = (wsl wslpath -u ($Repo -replace '\\', '/') 2>$null | Out-String).Trim()
+if (-not $wslRepo) { Write-Error '[k8s] wslpath 不可用，请确认已安装 WSL 且可执行 wsl 命令'; exit 1 }
+
+function Invoke-Cell([string[]]$CellArgs, [string]$EnvPrefix = '') {
+    $inner = ($CellArgs | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join ' '
+    # 必须经管道逐行转发：wsl.exe 是原生子进程，直接把输出写到控制台句柄，
+    # 当本脚本的 stdout 不是控制台（CI / agent harness / 被其它程序捕获）时，
+    # 紧跟着的 `exit` 会在这些输出被刷出之前终止进程 —— 表现为"命令明明成功却没有任何输出"。
+    wsl -u root -e bash -lc "cd '$wslRepo' && $EnvPrefix tools/bh/linux/k8s/bh.sh $inner" 2>&1 |
+        ForEach-Object { Write-Host $_ }
+    return $LASTEXITCODE
+}
+
+# ---------------- 局域网入口（宿主 -> WSL k3s :80）----------------
+function Get-WslIp {
+    $ip = (wsl -e bash -lc "hostname -I | awk '{print `$1}'" 2>$null | Out-String).Trim()
+    if ($ip -match '^\d+\.\d+\.\d+\.\d+$') { return $ip }
+    return ''
 }
 
 function Get-LanExposureState {
@@ -199,7 +254,6 @@ function Ensure-LanExposure {
         return
     }
 
-    # 需要（重新）转发：自动提权执行
     $script = Join-Path $Repo 'scripts\expose-k3s-lan.ps1'
     if (-not (Test-Path $script)) { Write-Warning "[lan] 缺少 $script"; return }
     if (-not $Quiet) { Write-Host "[lan] 局域网入口未就绪 → 需要一次管理员授权（UAC）来做宿主 :80 转发 ..." }
@@ -232,12 +286,6 @@ function Show-LanStatus {
 }
 
 # ---------------- 配对地址（Baihua__PublicBaseUrl）自动校正 ----------------
-# 背景：移动端配对二维码 / 服务器互联广播里的地址取自 ConfigMap 的 Baihua__PublicBaseUrl。
-# 容器里探测到的是 Pod IP，没法自动得出宿主地址；而宿主 LAN IP 是 DHCP 的，会变。
-# 因此由 Windows 侧（唯一知道真实宿主 IP 的地方）在 start/deploy/up/restart 后校正一次：
-#   值已一致 → 静默；不一致 → patch ConfigMap + 滚动重启 bh-server（env 是启动时读入的）
-# k8s/01-configmap.yaml 里保留该键（值仅作占位），以免 kubectl apply 时把键删掉导致回退到 Pod IP。
-
 function Get-ClusterPublicBaseUrl {
     $v = (wsl -u root -e bash -lc "k3s kubectl -n baihua get configmap baihua-config -o jsonpath='{.data.Baihua__PublicBaseUrl}'" 2>$null | Out-String).Trim()
     return $v
@@ -269,10 +317,8 @@ function Sync-PublicBaseUrl {
         ForEach-Object { if ($_ -notmatch '^\s*$') { Write-Host "  $_" } }
 }
 
-# dashboard 特殊处理：CLI 在 WSL 里跑，打不开 Windows 的浏览器 —— 由本包装层代开。
-if ($cell -eq 'dashboard' -or ($Rest.Count -gt 0 -and $Rest[0] -eq 'dashboard')) {
-    # 公开地址：默认用 WSL 的 IP；做过宿主转发（或 mirrored）后用宿主 IP，手机也能打开
-    $st0 = Get-LanExposureState
+# dashboard：CLI 在 WSL 里跑，打不开 Windows 的浏览器 —— 由本包装层代开。
+if ($cmdArgs.Count -gt 0 -and $cmdArgs[0] -eq 'dashboard') {
     Ensure-LanExposure -Quiet
     $st0 = Get-LanExposureState
     $publicHost = $env:BAIHUA_PUBLIC_HOST
@@ -293,9 +339,9 @@ if ($cell -eq 'dashboard' -or ($Rest.Count -gt 0 -and $Rest[0] -eq 'dashboard'))
     exit 0
 }
 
-# 局域网入口是 Windows 宿主侧的概念，只有这几个命令需要顺带确保
-if ($cell -eq 'lan' -or ($Rest.Count -gt 0 -and $Rest[0] -eq 'lan')) {
-    $sub = if ($cell -eq 'lan') { if ($Rest.Count -gt 0) { $Rest[0] } else { 'status' } } else { if ($Rest.Count -gt 1) { $Rest[1] } else { 'status' } }
+# 局域网入口
+if ($cmdArgs.Count -gt 0 -and $cmdArgs[0] -eq 'lan') {
+    $sub = if ($cmdArgs.Count -gt 1) { $cmdArgs[1] } else { 'status' }
     switch ($sub) {
         'on'     { Ensure-LanExposure }
         'off'    {
@@ -313,12 +359,12 @@ if ($cell -eq 'lan' -or ($Rest.Count -gt 0 -and $Rest[0] -eq 'lan')) {
     exit 0
 }
 
-$code = Invoke-Cell $Rest
+$code = Invoke-Cell $cmdArgs
 
 # 后端类命令执行完顺带做两件事（都已就绪则静默）：
 #   1) 校正配对地址（宿主 LAN IP 可能变过）
 #   2) 确保局域网入口（未就绪才弹一次 UAC）
-if ($Rest.Count -gt 0 -and $Rest[0] -in @('start', 'deploy', 'up', 'update', 'restart') -and $code -eq 0) {
+if ($cmdArgs.Count -gt 0 -and $cmdArgs[0] -in @('start', 'deploy', 'up', 'update', 'restart') -and $code -eq 0) {
     Sync-PublicBaseUrl
     Ensure-LanExposure
 }

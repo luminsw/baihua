@@ -1,52 +1,63 @@
 # bh - 百花统一 CLI
 
-百花只有**一种部署形态**：Linux k3s（PostgreSQL + 后端 + WebUI + OVMS 全部容器化）。
-合并为单进程 + 单库后，原先的 native / docker cell 已删除；Windows 上经 WSL 调用同一套 k3s cell。
+两种部署形态：**native（默认，Windows dotnet 进程）** 和 **k8s（可选，Linux k3s 全容器化）**。
+native cell 不依赖 WSL/k3s，直接用 `dotnet publish` 产物跑在 Windows 上；k8s cell 经 WSL 调用 Linux k3s。
 
 ```
 tools/bh/
-├── bh.ps1          Windows 入口（经 WSL 路由到 Linux k3s cell）
+├── bh.ps1          Windows 入口（默认路由到 native cell；bh k8s <cmd> 走 WSL）
 ├── bh.cmd          Windows cmd shim（让 cmd/PowerShell 都能直接 `bh`）
 ├── bh.sh           Linux 入口
 ├── locator.ps1/.sh 自包含定位器（安装到 PATH 用）
-└── linux/k8s/      Linux k3s（containerd，nerdctl 构建）bh.sh —— 唯一 cell
+├── win/native/     Windows native cell（dotnet 进程）bh.ps1
+└── linux/k8s/      Linux k3s（containerd，nerdctl 构建）bh.sh
 ```
 
 ## 用法
 
 ```
-bh <command> [args]           执行命令
-bh k8s <command> [args]       同上（显式写 cell，兼容旧习惯）
-bh lan [on|off|status]        局域网入口（宿主 :80 → WSL k3s），默认 status
+bh <command> [args]           执行命令（默认 native cell）
+bh native <command> [args]    显式用 native cell
+bh k8s <command> [args]       显式用 k8s cell（经 WSL）
+bh lan [on|off|status]        局域网入口（native: 宿主 :80→:8788 portproxy；k8s: 宿主 :80→WSL）
 bh install / uninstall        安装到 PATH / 移除
 ```
 
-> **Windows 侧的两个自动动作**（都在 `bh.ps1`，只读命令不动）：
-> 1. **局域网入口**：`start`/`deploy`/`up`/`restart`/`dashboard` 后自动确保宿主 :80 → WSL 转发，
->    用「连通性」判断而非解析 `netsh` 输出；未就绪才弹一次 UAC（幂等，WSL 重启后自动重做）。
-> 2. **配对地址校正**：`start`/`deploy`/`up`/`restart` 后把 ConfigMap 的 `Baihua__PublicBaseUrl`
->    校正为当前宿主 LAN IP（值变了才 patch + 滚动重启 `bh-server`），免得二维码扫出旧地址。
+### native cell 命令速查（默认）
 
-- Windows 上 `bh ...` 自动经 `wsl -u root` 路由到 Linux k3s cell（路径经 `wslpath` 转换）。
-- Linux 上 `build`/`deploy`/`update` 需 root（containerd socket / k3s.yaml 仅 root 可读），
-  `status`/`logs`/`dashboard` 等只读命令检测到配置不可读时自动提权，无需手动 sudo。
-- 完整命令清单：`bh help`。
+| 命令 | 说明 |
+|------|------|
+| `bh build [svc...]` | dotnet publish 到 out/native/（默认全部，可指定 server/webui） |
+| `bh build-restart [svc...]` | build + restart |
+| `bh start [svc...]` | 启动服务（默认全部，按依赖顺序 server→webui） |
+| `bh stop [svc...]` | 停止服务 |
+| `bh restart [svc...]` | stop + start |
+| `bh update` | git pull + build + start + 防火墙放行 |
+| `bh status` | 端口/进程状态 |
+| `bh status --json` | JSON 格式（供 DSH 插件） |
+| `bh logs <svc> [n]` | tail 日志，默认 50 行 |
+| `bh dashboard` | 打开 WebUI（cli-token 自动登录） |
+| `bh lan [on\|off\|status]` | 局域网入口（宿主 :80 → :8788 portproxy） |
+
+> native cell 不管 PostgreSQL 安装（用户自行安装 Windows 服务 `postgresql-x64-18`），
+> OpenVINO 用 `ovms` 进程/系统服务（REST :8000，`scripts/install-openvino-ovms-service.ps1` 安装）。
+> 环境变量：`PG_HOST`（默认 127.0.0.1）、`PG_USER`（默认 postgres）、`PG_PASSWORD`、`PG_DATABASE`（默认 baihua）。
 
 ### k8s cell 命令速查
 
 | 命令 | 说明 |
 |------|------|
-| `bh build [img...]` | 构建镜像进 k3s containerd；默认全部，可指定部分（如 `bh build server webui`） |
-| `bh deploy` | `kubectl apply` k8s/ 清单（含 postgres）+ 滚动重启应用 |
-| `bh up` | 按 git 变更只构建受影响镜像 + deploy（未变更镜像跳过）；`bh up --all` 强制全量 |
-| `bh update` | `git pull` + `up` |
-| `bh status` | pods / svc / pvc 总览（免 sudo） |
-| `bh logs <svc> [n]` | tail pod 日志，默认 50 行（免 sudo）；svc: server / webui / openvino / postgres |
-| `bh prune` | 清空 buildkit 构建缓存（释放磁盘、修复 nuget 缓存损坏导致的构建失败） |
-| `bh dashboard` | 打开 WebUI（cli-token 自动登录）；Windows 侧自动用默认浏览器打开 |
-| `bh lan [on\|off\|status]` | 局域网入口（宿主 :80 → WSL k3s Traefik）：查看 / 配置 / 撤销 |
-| `bh openvino <on\|off\|status>` | Intel GPU 相关服务按需启停 |
-| `bh destroy` | 删除 baihua 命名空间 |
+| `bh k8s build [img...]` | 构建镜像进 k3s containerd；默认全部，可指定部分（如 `bh k8s build server webui`） |
+| `bh k8s deploy` | `kubectl apply` k8s/ 清单（含 postgres）+ 滚动重启应用 |
+| `bh k8s up` | 按 git 变更只构建受影响镜像 + deploy（未变更镜像跳过）；`bh k8s up --all` 强制全量 |
+| `bh k8s update` | `git pull` + `up` |
+| `bh k8s status` | pods / svc / pvc 总览（免 sudo） |
+| `bh k8s logs <svc> [n]` | tail pod 日志，默认 50 行（免 sudo）；svc: server / webui / openvino / postgres |
+| `bh k8s prune` | 清空 buildkit 构建缓存 |
+| `bh k8s dashboard` | 打开 WebUI（cli-token 自动登录）；Windows 侧自动用默认浏览器打开 |
+| `bh k8s lan [on\|off\|status]` | 局域网入口（宿主 :80 → WSL k3s Traefik） |
+| `bh k8s openvino <on\|off\|status>` | Intel GPU 相关服务按需启停 |
+| `bh k8s destroy` | 删除 baihua 命名空间 |
 
 > 镜像与工作负载：`bh-server`（唯一后端，8788）、`bh-webui`（5177）、`bh-openvino`（8000）、`bh-postgres`。
 > 合并前的 `bh-family` / `bh-ai` / `bh-vault` 已不存在。
