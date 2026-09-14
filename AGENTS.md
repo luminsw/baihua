@@ -52,7 +52,7 @@ C:\Users\lumin\src\
 
 | 项目 | Linux/Mac | Windows |
 |------|-----------|---------|
-| 百花 | `./tools/bh/bh.sh`（或显式 `./tools/bh/linux/k8s/bh.sh`） | `tools\bh\bh.ps1`（cmd 下 `bh.cmd`；经 WSL 路由到同一 k3s cell） |
+| 百花 | `./tools/bh/bh.sh`（或显式 `./tools/bh/linux/k8s/bh.sh`） | `tools\bh\bh.ps1`（cmd 下 `bh.cmd`；默认 native cell，`bh k8s <cmd>` 显式走 WSL k3s） |
 | 花阁 | `./hg` | `.\hg.ps1` |
 
 > 当前架构为**单一后端进程**：`Baihua.Server`（8788）承载家庭 / AI / 知识库三个模块，
@@ -73,7 +73,7 @@ C:\Users\lumin\src\
 
 - **执行任务时先检查当前是 Windows 还是 Linux**，再选用对应平台的命令与路径写法（PowerShell vs bash、反斜杠 vs 正斜杠、bh 的 win 与 linux 版本等），以免用错命令。
 - **服务运行由用户手动按需启停**，助手不自动拉起/保持后台进程：
-  - Baihua.Server **8788**（单一后端）、Baihua.Web **5177**（OpenVINO 推理跑在 k3s 里的 `bh-openvino`（OVMS）工作负载；Windows 原生 `ovms` 服务已退役，安装脚本仅留作回退）
+  - Baihua.Server **8788**（单一后端）、Baihua.Web **5177**（OpenVINO 推理跑在 Windows `ovms` 进程/系统服务（REST :8000），k8s cell 用 `bh-openvino` 工作负载）
   - 启停统一用 `bh start` / `bh stop`；开发调试可单独 `dotnet watch run`
   - 若某服务未监听，先询问用户是否需要启动，不要擅自拉起
 - **WebUI 与后端之间的共享数据类型和 API 接口定义必须放在 `Baihua.Contracts`**，两边禁止各自重复定义。新增或修改 API 契约时，先更新 Contracts，再让两边引用同一版本。
@@ -138,7 +138,7 @@ C:\Users\lumin\src\
 - `services/Baihua.Core/`：共享服务层（含 VaultSettingsService、DeviceService 等；跨模块接口在 `Baihua.Core/Modules/`）
 - `services/Baihua.Data/`：共享 EF Core 数据层（单库多 DbContext + `DatabaseInitializer`）
 - `services/BaiHua.slnx`：服务端解决方案（包含所有 services/ 项目及 libs/MobileContract）
-- `tools/bh/`：极简 CLI 工具（唯一 cell = `linux/k8s`，Windows 经 WSL 复用同一 cell；命令名统一 `bh`）
+- `tools/bh/`：极简 CLI 工具（默认 cell = `win/native`，Windows dotnet 进程；`k8s` cell 经 WSL 可选；命令名统一 `bh`）
 - `libs/BaihuaSdk/`：跨平台移动端 SDK（net9.0;net10.0，零 MAUI 依赖，主要 target net10.0）
 - `libs/MobileContract/`：移动端契约（DTO、接口定义）
 - `clients/Huapu/`：花圃（BaiHua.Nursery）— 移动端技术实验与验证工具（非正式发布 App，详见下方说明）
@@ -210,21 +210,24 @@ dotnet build services/BaiHua.slnx -c Release
 > `FamilyApi:BaseUrl` / `AiApi:BaseUrl` / `VaultApi:BaseUrl` 三个配置键（源码里 `FamilyApi`/`AiApi`/`VaultApi`
 > 仅作为 HttpClient 名字保留兼容别名，实际都指向唯一的 `BaihuaServer:BaseUrl`）。
 
-**部署形态**（合并后只有**一种** cell：Linux k3s；原 native / docker cell 已随三服务合一删除，Windows 经 WSL 调用同一 cell）：
-- **k3s（唯一形态）**：`server`（8788）+ `webui`（5177）+ `postgres` + `openvino`（OVMS，profile 可选）等工作负载；
+**部署形态**（两种 cell：native 为默认，k8s 可选）：
+- **native（默认）**：`bh-server.exe`（8788）+ `bh-webui.exe`（5177）以 dotnet 进程直接跑在 Windows 上，
+  不依赖 WSL/k3s；PostgreSQL 由用户自行安装（Windows 服务 `postgresql-x64-18`），OpenVINO 用 `ovms` 进程/系统服务（REST :8000）。
+  `bh build` → `bh start`（详见 `tools/bh/README.md`）。
+- **k8s（可选）**：`server`（8788）+ `webui`（5177）+ `postgres` + `openvino`（OVMS，profile 可选）等工作负载全部容器化；
   k8s 清单见 `k8s/20-server.yaml` / `23-webui.yaml` / `25-postgres.yaml` / `22a-openvino.yaml`，
-  `bh build server webui` → `bh deploy` / `bh up`（详见 `tools/bh/README.md`）。
+  `bh k8s build server webui` → `bh k8s deploy` / `bh k8s up`。WSL2 + k3s 在部分环境下不稳定（init 系统反复 poweroff），故 native 为默认。
 - **compose 对应关系**（`docker/docker-compose.yml`，供本地/参考）：服务名 `server` / `webui` / `nginx` / `postgres` /
   `openvino`（profile `inference`）/ `openobserve`（profile `observability`）。
 - 已退役：合并前 `family`/`ai`/`vault` 三容器、`docker-ai` profile、`host.docker.internal:8791` 跨进程访问，
-  以及 `tools/bh` 的 native / docker cell（`win/native`、`win/docker`、`linux/native`）。
-- **OpenVINO 推理**仍与后端进程分离：k8s 工作负载 `bh-openvino`（OVMS，REST :8000）——Windows native 的 `ovms` 系统服务已退役（`scripts/install-openvino-ovms-service.ps1 -Remove`），
-  后端经 `OpenVinoOms__BaseUrl` 访问（`bh openvino on|off|status` 按需启停）。
+  以及 `tools/bh` 的 docker cell（`win/docker`、`linux/native`）。
+- **OpenVINO 推理**仍与后端进程分离：native cell 用 Windows `ovms` 进程/系统服务（REST :8000，`scripts/install-openvino-ovms-service.ps1` 安装），
+  k8s cell 用工作负载 `bh-openvino`（OVMS，REST :8000）；后端经 `OpenVinoOms__BaseUrl` 访问。
 
 **OpenObserve 凭据约定**（默认口令 `Complexpass#123` 已废弃，appsettings 中不再有默认值）：
 - `openobserve` 为可选观测栈（compose profile `observability` / k8s 可选清单）；
   `OPENOBSERVE_PASSWORD` **必填**（缺失时 compose 直接报错、不启动该服务），由 `docker/.env` / k8s Secret 提供。
-- 历史：native cell 曾由 `bh.ps1(win/native)` 从 `$BAIHUA_HOME\openobserve-password.txt` 注入 —— 该 cell 已删除，此机制退役。
+- 历史：native cell 曾由 `bh.ps1(win/native)` 从 `$BAIHUA_HOME\openobserve-password.txt` 注入 —— 该机制已随 native cell 恢复而重新启用。
 
 **例外（名实相符，保留原名）**：
 - `TaskRunner.Cloud` — 官网版（mdyj-cloud 仓库）的真实项目名，与本仓库无关
@@ -233,9 +236,10 @@ dotnet build services/BaiHua.slnx -c Release
 ## 移动端兼容
 
 移动端（鸿蒙/安卓）通过 `http://<server>/`（**默认 80 端口，无显式端口号**）发现服务器并调用 API。
+native 部署下 `bh lan on` 设置宿主 `:80 -> :8788` portproxy（netsh）作为统一入口；
 k8s 部署下 **Traefik**（IngressRoute，svclb 绑定宿主 :80）作为统一入口，`/mg/*`、`/pair` 等路径由
 Traefik 转发到 `Baihua.Server`（8788）；配对二维码的 `baseUrl` 由 `Baihua:PublicBaseUrl` 决定
-（k8s 已注入 `http://<节点IP>`，无端口）。
+（k8s 已注入 `http://<节点IP>`，无端口；native 由 `bh lan on` 自动设置）。
 合并后**不再有跨服务转发**：原 family→vault / family→ai 两个转发中间件已删除，改为 `Baihua.Server`
 内的**一个设备授权中间件**（见 `services/Baihua.Server/Program.cs`）——
 先做 HMAC 签名校验，再要求"必须是已配对设备"：携带 `X-Device-Id` 且 `DeviceService` 中该设备已授权
