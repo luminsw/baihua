@@ -65,29 +65,52 @@ spec:
             # 首次使用需在 open-webui 内创建管理员账号，之后可按需放开
             - name: WEBUI_AUTH
               value: "true"
+            # 禁用 Ollama（本环境无 Ollama，指向不存在的端口避免 open-webui 反重试）
+            - name: ENABLE_OLLAMA_API
+              value: "false"
+            - name: OLLAMA_BASE_URL
+              value: "http://localhost:1"
+            # OpenAI 兼容 API → 集群内 OVMS（qwen3-4b 对话 + qwen3-embedding-0.6b 嵌入）
+            - name: ENABLE_OPENAI_API
+              value: "true"
+            - name: OPENAI_API_BASE_URL
+              value: "http://bh-openvino:8000/v1"
+            - name: OPENAI_API_KEY
+              value: "dummy"
+            # embedding 走 OVMS 的 qwen3-embedding-0.6b，绕过 HuggingFace 下载（WSL 不通 HF）
+            - name: RAG_EMBEDDING_ENGINE
+              value: "openai"
+            - name: RAG_OPENAI_EMBEDDING_MODEL
+              value: "qwen3-embedding-0.6b"
+            # 禁用 HuggingFace/sentence-transformers 网络请求（WSL 不通 HF，避免启动卡死）
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: SENTENCE_TRANSFORMERS_HOME
+              value: "/app/backend/data/sentence_transformers"
           volumeMounts:
             - name: data
               mountPath: /app/backend/data
-          readinessProbe:
+          startupProbe:
             httpGet:
               path: /
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
-            failureThreshold: 6
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /
               port: 8080
-            initialDelaySeconds: 30
             periodSeconds: 30
-            failureThreshold: 3
+            failureThreshold: 5
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 512Mi
             limits:
-              memory: 1Gi
+              memory: 2Gi
       volumes:
         - name: data
           persistentVolumeClaim:
