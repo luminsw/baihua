@@ -417,7 +417,7 @@ deploy_all() {
     # 基础清单（与 GPU 无关，始终部署）
     # 25-postgres 必须在这里：此前它被本列表遗漏（清单从未被任何部署路径应用）。
     for m in 00-namespace.yaml 01-configmap.yaml 02-secret.yaml 03-pvc.yaml \
-             25-postgres.yaml 20-server.yaml 23-webui.yaml; do
+             25-postgres.yaml 20-server.yaml 23-webui.yaml 26-open-webui.yaml; do
         echo "[deploy] $m"
         k apply -f "$K8S_DIR/$m" >/dev/null || exit 1
     done
@@ -446,7 +446,7 @@ deploy_all() {
     # 给 deployment 打上 git commit 标注（供 bh status --json 判断运行代码是否最新）。
     # 标注语义是「这个工作负载最后一次是在哪个 commit 部署的」，不是「镜像由本仓库构建」，
     # 所以 postgres 这类上游镜像也一起打 —— 否则它永远是 upToDate:false，看着像待处理问题。
-    for svc in bh-server bh-webui bh-openvino bh-postgres; do
+    for svc in bh-server bh-webui bh-openvino bh-postgres bh-open-webui; do
         k -n "$NAMESPACE" annotate deploy "$svc" "baihua.git-commit=$git_commit" --overwrite >/dev/null 2>&1 || true
     done
     echo "[deploy] 记录源码 commit: $git_commit"
@@ -584,6 +584,8 @@ service_affected() {
         webui)    paths=("services/Baihua.Web/" "services/Baihua.Contracts/");;
         openvino) paths=("k8s/images/Dockerfile.openvino-server" "services/Baihua.AI.Provider.OpenVino/");;
         postgres) paths=("k8s/25-postgres.yaml");;
+        # open-webui 用上游镜像（ghcr.io/open-webui/open-webui），源码不在本仓库，任何 commit 变化都不影响它
+        open-webui) echo false; return;;
     esac
     local pat=""; for p in "${paths[@]}"; do pat="${pat:+"$pat|"}$p"; done
     if git -C "$ROOT" diff --name-only "$from".."$to" 2>/dev/null | grep -E "^(${pat})" | grep -q .; then
@@ -606,7 +608,7 @@ status_json() {
             git_dirty="true"
         fi
     fi
-    local services="bh-server bh-webui bh-openvino bh-postgres"
+    local services="bh-server bh-webui bh-openvino bh-postgres bh-open-webui"
     local entries=""
     local first=1
     local ready_total=0 total=0
@@ -648,7 +650,7 @@ status_json() {
 # 单个服务启停/重启（操作 deployment 副本数/滚动重启；服务名可不带 bh- 前缀）
 scale_service() {
     local svc="${2:-}"
-    [ -z "$svc" ] && { echo "[${1}] 用法: bh ${1} <svc>（server/webui/openvino/postgres）" >&2; return 1; }
+    [ -z "$svc" ] && { echo "[${1}] 用法: bh ${1} <svc>（server/webui/openvino/postgres/open-webui）" >&2; return 1; }
     case "$svc" in bh-*) ;; *) svc="bh-$svc" ;; esac
     if [ "$(id -u)" != "0" ]; then
         echo "[${1}] 需要 root 权限（k3s.yaml 仅 root 可读），自动提权..." >&2
