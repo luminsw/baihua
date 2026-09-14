@@ -15,6 +15,7 @@
     logs <svc> [n]      tail service log (default 50 lines)
     dashboard           open browser with cli-token auto-login
     open                open browser to http://localhost:5177
+    open-webui start|stop|status   manage Open WebUI (Python venv, port 8080)
     help                this help
 #>
 [CmdletBinding()]
@@ -307,6 +308,9 @@ function Show-Status {
     $ovState = if ($ovSvc) { $ovSvc.Status.ToString() } else { 'not installed' }
     if (Test-PortOpen $OpenVinoPort) { $ovState = 'RUNNING (port 8000)' }
     Write-Host ("{0,-8} port={1,-5} {2}" -f 'openvino', $OpenVinoPort, $ovState)
+    $owui = Get-OpenWebUIStatus
+    $owuiState = if ($owui.portOpen) { 'RUNNING' } else { 'stopped' }
+    Write-Host ("{0,-8} port={1,-5} {2}" -f 'open-webui', $owui.port, $owuiState)
 }
 
 function Show-StatusJson {
@@ -358,6 +362,18 @@ function Show-StatusJson {
         imageCommit = $gitHead
         upToDate = $true
     }
+    $owui = Get-OpenWebUIStatus
+    $entries += [pscustomobject]@{
+        name = $owui.name
+        ready = $owui.ready
+        replicas = 1
+        image = $owui.image
+        age = ''
+        restarts = 0
+        phase = $owui.phase
+        imageCommit = $gitHead
+        upToDate = $true
+    }
     $readyTotal = @($entries | Where-Object { $_.ready -eq 1 }).Count
     [pscustomobject]@{
         cell = 'native'
@@ -394,6 +410,46 @@ function Open-Dashboard {
     } catch {
         Write-Host "[dashboard] cli-token failed ($($_.Exception.Message)), opening plain URL"
         Start-Process 'http://127.0.0.1:5177'
+    }
+}
+
+# ---- Open WebUI（Python venv，端口 8080）----
+function Invoke-OpenWebUI {
+    param([string]$SubCmd = 'start')
+    $script = Join-Path $Root 'scripts\start-open-webui.ps1'
+    if (-not (Test-Path $script)) { Write-Error "缺少 $script"; return }
+    switch ($SubCmd.ToLower()) {
+        'stop'    { & $script -Stop }
+        'status'  { & $script -Status }
+        'install' { & $script -Install }
+        default   { & $script }
+    }
+}
+
+function Get-OpenWebUIStatus {
+    $port = 8080
+    $portOpen = Test-PortOpen $port
+    $dataHome = if ($env:BAIHUA_HOME) { $env:BAIHUA_HOME } else { Join-Path $HOME '.baihua' }
+    $pidFile = Join-Path $dataHome 'open-webui.pid'
+    $pidAlive = $false
+    if (Test-Path $pidFile) {
+        $pid2 = [int](Get-Content $pidFile)
+        $pidAlive = [bool](Get-Process -Id $pid2 -ErrorAction SilentlyContinue)
+    }
+    $running = $portOpen -and $pidAlive
+    $phase = if ($running) { 'Running' } elseif ($portOpen) { 'PortOpen' } elseif ($pidAlive) { 'ProcAlive' } else { 'Stopped' }
+    return [pscustomobject]@{
+        name = 'open-webui'
+        ready = if ($running) { 1 } else { 0 }
+        replicas = 1
+        image = 'venv'
+        age = ''
+        restarts = 0
+        phase = $phase
+        imageCommit = ''
+        upToDate = $true
+        port = $port
+        portOpen = $portOpen
     }
 }
 
@@ -452,6 +508,7 @@ switch ($Command.ToLower()) {
     'logs'      { $count = 50; if ($Arg2) { $count = [int]$Arg2 }; Show-Logs $Arg1 $count }
     'dashboard' { Open-Dashboard }
     'open'      { Start-Process 'http://127.0.0.1:5177' }
+    'open-webui' { Invoke-OpenWebUI $Arg1 }
     'help'      { Help-Text }
     default     { Help-Text }
 }
