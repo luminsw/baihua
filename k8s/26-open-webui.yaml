@@ -1,0 +1,112 @@
+# bh-open-webui: Open WebUI（AI 对话前端）
+# 宿主机浏览器经 iframe（Baihua.Web /open-webui 页）访问 http://localhost:8080
+# Service 用 LoadBalancer 类型，k3s svclb 自动绑宿主 :8080（不走 Traefik，避免 SPA 路径前缀问题）
+# 镜像为上游 ghcr.io/open-webui/open-webui:main，不由本仓库构建
+# LLM 后端在 open-webui 设置页里配（云端 OpenAI 兼容端点，如 DeepSeek），不在此硬编码
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: baihua-openwebui-pv
+  labels:
+    app.kubernetes.io/part-of: baihua
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /opt/baihua/open-webui-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: baihua-openwebui-pvc
+  namespace: baihua
+  labels:
+    app.kubernetes.io/part-of: baihua
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: baihua-openwebui-pv
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bh-open-webui
+  namespace: baihua
+  labels:
+    app: bh-open-webui
+    app.kubernetes.io/part-of: baihua
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bh-open-webui
+  template:
+    metadata:
+      labels:
+        app: bh-open-webui
+    spec:
+      containers:
+        - name: bh-open-webui
+          image: ghcr.io/open-webui/open-webui:main
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            # 集群内 WebUI 经 iframe 嵌入，关闭 open-webui 自带的注册页
+            # 首次使用需在 open-webui 内创建管理员账号，之后可按需放开
+            - name: WEBUI_AUTH
+              value: "true"
+          volumeMounts:
+            - name: data
+              mountPath: /app/backend/data
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: baihua-openwebui-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bh-open-webui
+  namespace: baihua
+  labels:
+    app: bh-open-webui
+    app.kubernetes.io/part-of: baihua
+spec:
+  type: LoadBalancer
+  selector:
+    app: bh-open-webui
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
