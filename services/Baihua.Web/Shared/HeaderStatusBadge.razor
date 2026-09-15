@@ -3,7 +3,7 @@
 @using Baihua.Web.Services
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject GlobalStateService GlobalStateService
-@inject NavigationManager Navigation
+@inject IConfiguration Configuration
 @implements IDisposable
 
 <div class="ai-status-container">
@@ -33,7 +33,10 @@
     {
         aiStatus = GlobalStateService.GetAIStatus();
         GlobalStateService.StateChanged += OnGlobalStateChanged;
-        GlobalStateService.Initialize(Navigation.ToAbsoluteUri("/hubs/status").ToString());
+        // StatusHub 由 WebUI 自己提供，且本客户端跑在服务端进程内：
+        // 必须用自身监听地址，不能用 NavigationManager.BaseUri（那是浏览器看到的外部地址，
+        // k8s 下为 http://<入口>/，在 Pod 内指向 :80 无监听 → Connection refused）。
+        GlobalStateService.Initialize($"{WebUiSelfUrl.Resolve(Configuration)}/hubs/status");
     }
 
     private void OnGlobalStateChanged(object? sender, EventArgs e)

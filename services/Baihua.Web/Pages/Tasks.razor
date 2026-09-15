@@ -404,19 +404,23 @@ else
             return InvokeAsync(StateHasChanged);
         };
 
+        Logger.LogInformation("任务页 Hub 连接目标 hubUrl={HubUrl}", hubUrl);
+
         try
         {
             using var hubBudget = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             await _hubConnection.StartAsync(hubBudget.Token);
             isHubConnected = true;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
             isHubConnected = false;
+            Logger.LogWarning(ex, "任务页 Hub 连接超时（{Seconds}s）hubUrl={HubUrl}", 8, hubUrl);
         }
-        catch
+        catch (Exception ex)
         {
             isHubConnected = false;
+            Logger.LogWarning(ex, "任务页 Hub 连接失败 hubUrl={HubUrl}", hubUrl);
         }
 
         await InvokeAsync(StateHasChanged);

@@ -45,7 +45,7 @@ public class SettingsService
         }
     }
 
-    public SettingsService(ILogger<SettingsService> logger)
+    public SettingsService(ILogger<SettingsService> logger, IConfiguration configuration)
     {
         _logger = logger;
         var configDir = Environment.GetEnvironmentVariable("WEBUI_CONFIG_DIR")
@@ -53,6 +53,27 @@ public class SettingsService
         Directory.CreateDirectory(configDir);
         _configPath = Path.Combine(configDir, "webui.settings.json");
         _data = Load() ?? new SettingsData();
+
+        // 后端地址以部署配置为准（k8s ConfigMap 的 BaihuaServer__BaseUrl、compose/native 同名键）。
+        // 原先这里只有硬编码默认值 http://127.0.0.1:8788：k8s 下 WebUI 跑在 Pod 里，
+        // 服务端的 SignalR / HttpClient 去连 Pod 自己的 127.0.0.1:8788 必然 Connection refused，
+        // 表现为任务页「WebSocket 未连接」、家庭页 DeviceHub 连接失败、头部状态徽标刷不到。
+        // 用户若在设置页显式改过后端地址，则尊重已持久化的值（仅当仍是默认回环时才采用配置）。
+        var configured = configuration?["BaihuaServer:BaseUrl"]
+            ?? configuration?["FamilyApi:BaseUrl"];
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            var normalized = BaihuaEndpointHelper.NormalizeOutboundBaseUrl(configured);
+            var isDefaultLoopback = string.IsNullOrWhiteSpace(_data.BackendUrl)
+                || string.Equals(_data.BackendUrl, "http://127.0.0.1:8788", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(_data.BackendUrl, "http://localhost:8788", StringComparison.OrdinalIgnoreCase);
+            if (isDefaultLoopback && !string.Equals(_data.BackendUrl, normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                _data.BackendUrl = normalized;
+                Save();
+            }
+        }
+
         PersistBackendUrlIfLoopbackNormalized();
     }
 

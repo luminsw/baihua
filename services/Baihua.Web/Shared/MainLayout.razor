@@ -7,6 +7,7 @@
 @inject IJSRuntime JSRuntime
 @inject OnboardingService OnboardingService
 @inject GlobalStateService GlobalStateService
+@inject IConfiguration Configuration
 @inject IHttpClientFactory HttpClientFactory
 @inject ILogger<MainLayout> Logger
 @implements IDisposable
@@ -462,8 +463,11 @@
     {
         if (firstRender)
         {
-            // 只在交互式渲染后初始化 SignalR，避免 circuit 失败
-            GlobalStateService.Initialize(Navigation.ToAbsoluteUri("/hubs/status").ToString());
+            // 只在交互式渲染后初始化 SignalR，避免 circuit 失败。
+            // StatusHub 由 WebUI 自己提供、且本客户端跑在服务端进程内，
+            // 必须用自身监听地址（NavigationManager.BaseUri 是浏览器看到的外部地址，
+            // k8s 入口下 Pod 内指向 :80 无监听 → Connection refused）。
+            GlobalStateService.Initialize($"{WebUiSelfUrl.Resolve(Configuration)}/hubs/status");
 
             await InvokeAsync(StateHasChanged);
         }
