@@ -15,6 +15,14 @@ namespace Baihua.Core.Services
         private readonly ILogger<ServerAddressService> _logger;
         private readonly IConfiguration _configuration;
 
+        /// <summary>
+        /// 首次初始化（生成服务器身份 + 共享密钥）必须串行。
+        /// 启动期并发调用时，无锁的 check-then-insert 会插入两条身份记录、
+        /// 生成两个不同的共享密钥 —— 移动端按其中一个配对、服务端按另一个验签，
+        /// 表现为配对成功但所有带签名请求全部 401（花记看不到知识库列表）。
+        /// </summary>
+        private static readonly object _initLock = new();
+
         public ServerAddressService(
             IDbContextFactory<FamilyDbContext> dbContextFactory,
             ILogger<ServerAddressService> logger,
@@ -33,42 +41,50 @@ namespace Baihua.Core.Services
             using var dbContext = _dbContextFactory.CreateDbContext();
             try
             {
-                var setting = dbContext.ServerAddressSettings.OrderBy(s => s.Id).FirstOrDefault();
-                if (setting == null)
+                lock (_initLock)
                 {
-                    setting = new ServerAddressSetting
-                    {
-                        Domain = "",
-                        Url = "",
-                        ServerInstanceId = GenerateServerInstanceId(),
-                        DisplayName = GenerateCulturalDisplayName()
-                    };
-                    dbContext.ServerAddressSettings.Add(setting);
-                    dbContext.SaveChanges();
+                    return GetOrCreateSettings(dbContext);
                 }
-                else if (string.IsNullOrWhiteSpace(setting.ServerInstanceId))
-                {
-                    setting.ServerInstanceId = GenerateServerInstanceId();
-                    dbContext.SaveChanges();
-                }
-                else if (string.IsNullOrWhiteSpace(setting.DisplayName))
-                {
-                    setting.DisplayName = GenerateCulturalDisplayName();
-                    dbContext.SaveChanges();
-                }
-
-                if (string.IsNullOrWhiteSpace(setting.SharedSecret))
-                {
-                    setting.SharedSecret = GenerateSharedSecret();
-                    dbContext.SaveChanges();
-                }
-                return setting;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "获取服务器地址配置失败，返回默认配置");
                 return new ServerAddressSetting { Domain = "", Url = "" };
             }
+        }
+
+        private ServerAddressSetting GetOrCreateSettings(FamilyDbContext dbContext)
+        {
+            var setting = dbContext.ServerAddressSettings.OrderBy(s => s.Id).FirstOrDefault();
+            if (setting == null)
+            {
+                setting = new ServerAddressSetting
+                {
+                    Domain = "",
+                    Url = "",
+                    ServerInstanceId = GenerateServerInstanceId(),
+                    DisplayName = GenerateCulturalDisplayName()
+                };
+                dbContext.ServerAddressSettings.Add(setting);
+                dbContext.SaveChanges();
+            }
+            else if (string.IsNullOrWhiteSpace(setting.ServerInstanceId))
+            {
+                setting.ServerInstanceId = GenerateServerInstanceId();
+                dbContext.SaveChanges();
+            }
+            else if (string.IsNullOrWhiteSpace(setting.DisplayName))
+            {
+                setting.DisplayName = GenerateCulturalDisplayName();
+                dbContext.SaveChanges();
+            }
+
+            if (string.IsNullOrWhiteSpace(setting.SharedSecret))
+            {
+                setting.SharedSecret = GenerateSharedSecret();
+                dbContext.SaveChanges();
+            }
+            return setting;
         }
 
         /// <summary>

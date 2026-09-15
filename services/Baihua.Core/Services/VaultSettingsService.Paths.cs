@@ -42,7 +42,23 @@ public partial class VaultSettingsService
         }
     }
 
+    /// <summary>
+    /// 扫描串行锁：启动编排与 /vault-settings/vaults/sync 会并发进入本方法，
+    /// 而「查 dbVaults 快照 → 逐个 AddVault」是无锁的 check-then-insert，
+    /// 并发时会重复登记同一路径（界面出现重复卡片）。数据库侧另有条件唯一索引兜底。
+    /// 静态锁保证同一进程内的扫描串行（服务为单例）。
+    /// </summary>
+    private static readonly object SyncScanLock = new();
+
     public (int added, int removed) SyncVaultsWithFilesystem(string rootPath)
+    {
+        lock (SyncScanLock)
+        {
+            return SyncVaultsWithFilesystemCore(rootPath);
+        }
+    }
+
+    private (int added, int removed) SyncVaultsWithFilesystemCore(string rootPath)
     {
         int added = 0, removed = 0;
 
@@ -57,6 +73,14 @@ public partial class VaultSettingsService
         {
             foreach (var dir in Directory.EnumerateDirectories(currentDir))
             {
+                var dirName = Path.GetFileName(dir);
+                // 跳过遗留/内部目录：
+                //  - mobile-uploads：旧版移动端上传目录（目录名即 vault id），
+                //    当前约定是 <root>/mobile/<名称>，登记它只会得到一串 id 当名字；
+                //  - 32 位 id 命名：内部 vault id，不是用户知识库名。
+                if (string.Equals(dirName, "mobile-uploads", StringComparison.OrdinalIgnoreCase)) continue;
+                if (System.Text.RegularExpressions.Regex.IsMatch(dirName, "^[0-9a-fA-F]{32}$")) continue;
+
                 var notesDir = Path.Combine(dir, "notes");
                 var cardsDir = Path.Combine(dir, "cards");
                 if (Directory.Exists(notesDir) || Directory.Exists(cardsDir))
