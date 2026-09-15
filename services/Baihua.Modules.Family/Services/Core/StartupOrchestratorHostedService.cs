@@ -55,12 +55,18 @@ public class StartupOrchestratorHostedService : IHostedService
             // 家庭病历本的表用幂等 DDL 补齐（与 EF 模型保持一致，重复执行安全）。
             EnsureMedicalTables(familyDb);
             EnsureLocalModelRegistryTable(familyDb);
+            // 并发初始化会插入重复的服务器身份（各自生成不同共享密钥）：
+            // 去重后加唯一索引，避免移动端按 A 密钥配对、服务端按 B 密钥验签。
+            EnsureSingleServerIdentity(familyDb);
         });
 
         TryEnsureCreated("Vault", () =>
         {
             using var vaultDb = _vaultDbContextFactory.CreateDbContext();
             vaultDb.Database.EnsureCreated();
+            // 并发扫描会重复登记同一知识库（界面出现重复卡片）：
+            // 去重 + 迁移 id 命名的历史知识库 + 加条件唯一索引。
+            EnsureVaultsUniqueAndMigrateLegacy(vaultDb);
         });
 
         // AI 库 schema 与 API Key 加密密钥迁移完全归 AI 服务独占（一服务一数据库）：
@@ -160,6 +166,183 @@ public class StartupOrchestratorHostedService : IHostedService
                 ON "LocalModelRegistries" ("Tool", "ModelId");
             """;
         db.Database.ExecuteSqlRaw(ddl);
+    }
+
+    /// <summary>
+    /// 保证「整个百花只有一份服务器身份」。启动期并发调用 GetSettings 会各插一条
+    /// （带各自的共享密钥），移动端可能按其中一条配对、服务端按另一条验签，
+    /// 结果是配对成功但所有签名请求 401（花记看不到知识库列表）。
+    /// 幂等：仅保留 Id 最小的一条，其余并入后删除，再建唯一索引防复发。
+    /// </summary>
+    private void EnsureSingleServerIdentity(FamilyDbContext db)
+    {
+        const string ddl = """
+            WITH ranked AS (
+                SELECT "Id", ROW_NUMBER() OVER (ORDER BY "Id") AS rn
+                FROM "ServerAddressSettings"
+            )
+            DELETE FROM "ServerAddressSettings" s
+            USING ranked r
+            WHERE s."Id" = r."Id" AND r.rn > 1;
+            CREATE UNIQUE INDEX IF NOT EXISTS "UX_ServerAddressSettings_ServerInstanceId"
+                ON "ServerAddressSettings" ("ServerInstanceId")
+                WHERE "ServerInstanceId" IS NOT NULL AND "ServerInstanceId" <> '';
+            """;
+        db.Database.ExecuteSqlRaw(ddl);
+    }
+
+    /// <summary>
+    /// 知识库去重 + 历史遗留目录迁移 + 加条件唯一索引。
+    ///
+    /// 背景：`SyncVaultsWithFilesystem` 是 check-then-insert，无唯一约束；
+    /// 并发的两次扫描会重复登记同一路径，界面上同一条知识库出现两张卡片。
+    /// 另：旧版移动端上传目录 `mobile-uploads/{id}` 会被扫描器当成本地知识库，
+    /// 名字取目录名（一串 id），需要迁移到当前的 &lt;root&gt;/mobile/&lt;名称&gt; 约定。
+    ///
+    /// 幂等：重复执行无副作用。删除重复行前先把引用它的子表指到保留行，避免丢数据。
+    /// </summary>
+    private void EnsureVaultsUniqueAndMigrateLegacy(VaultDbContext db)
+    {
+        // 1) 迁移 id 命名 / 旧 mobile-uploads 结构的知识库（改名 + 移动目录）
+        MigrateLegacyVaultNames(db);
+
+        // 2) 去重：每个 Path 保留 Id 最小的一条，其余子表改指后删除
+        const string dedupeDdl = """
+            CREATE TEMP TABLE _dup_vaults ON COMMIT DROP AS
+            SELECT "Id" AS dup_id, MIN("Id") OVER (PARTITION BY "Path") AS keep_id
+            FROM "Vaults" WHERE "IsDeleted" = false;
+
+            DELETE FROM _dup_vaults WHERE dup_id = keep_id;
+
+            DO $$
+            DECLARE r RECORD; c RECORD;
+            BEGIN
+                FOR r IN SELECT dup_id, keep_id FROM _dup_vaults LOOP
+                    FOR c IN
+                        SELECT table_name FROM information_schema.columns
+                        WHERE table_schema = 'public' AND column_name = 'VaultId'
+                          AND table_name <> 'Vaults'
+                    LOOP
+                        EXECUTE format(
+                            'UPDATE %I SET "VaultId" = $1::text WHERE "VaultId" = $2::text',
+                            c.table_name) USING r.keep_id, r.dup_id;
+                    END LOOP;
+                END LOOP;
+            END $$;
+
+            DELETE FROM "Vaults" v USING _dup_vaults d WHERE v."Id" = d.dup_id;
+            """;
+        db.Database.ExecuteSqlRaw(dedupeDdl);
+
+        // 3) 条件唯一索引：未删除的知识库，路径与名称都唯一（回收站不受限）。
+        // 单独 try：索引建不上（存量脏数据）不应连累启动，只需记警告。
+        // 数据侧由 SyncVaultsWithFilesystem 串行锁 + 扫描跳过遗留目录保证不再产生重复。
+        try
+        {
+            const string indexDdl = """
+                CREATE UNIQUE INDEX IF NOT EXISTS "UX_Vaults_Path_Active"
+                    ON "Vaults" ("Path") WHERE "IsDeleted" = false;
+                CREATE UNIQUE INDEX IF NOT EXISTS "UX_Vaults_Name_Active"
+                    ON "Vaults" ("Name") WHERE "IsDeleted" = false;
+                """;
+            db.Database.ExecuteSqlRaw(indexDdl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Vaults 唯一索引创建失败（存量重复数据），已跳过");
+        }
+    }
+
+    /// <summary>
+    /// 把「名字是 32 位 id」的历史知识库改成可读名称，并迁移到当前移动端目录约定。
+    /// 旧版移动端上传落在 <c>&lt;root&gt;/mobile-uploads/&lt;id&gt;</c>，目录名即 vault id。
+    ///
+    /// 关键点：同一个 Path 往往有重复行，必须整组一起处理，否则只改了其中一行、
+    /// 分组被拆开，后续按 Path 去重就失效了（会出现一行新路径 + 一行旧路径）。
+    /// 只更新 Id 最小的那一行为目标名/新路径，其余重复行由去重步骤删除，
+    /// 这样也不会触碰「未删除名称唯一」索引。
+    /// </summary>
+    private void MigrateLegacyVaultNames(VaultDbContext db)
+    {
+        var legacy = db.Vaults
+            .Where(v => !v.IsDeleted)
+            .ToList()
+            .Where(v => System.Text.RegularExpressions.Regex.IsMatch(v.Name ?? "", "^[0-9a-fA-F]{32}$"))
+            .ToList();
+        if (legacy.Count == 0) return;
+
+        var root = Baihua.Contracts.BaihuaPaths.Vaults;
+        var changed = false;
+
+        foreach (var group in legacy.GroupBy(v => v.Path))
+        {
+            var canonical = group.OrderBy(v => v.Id).First();
+            var parentName = Path.GetFileName(Path.GetDirectoryName(canonical.Path) ?? "") ?? "";
+            var isLegacyUpload = parentName.Equals("mobile-uploads", StringComparison.OrdinalIgnoreCase);
+            var baseName = isLegacyUpload ? "移动上传" : "移动端知识库";
+
+            // 目标名需在未删除集合内唯一（排除本组自身的重复行）
+            var groupIds = group.Select(v => v.Id).ToHashSet();
+            var name = baseName;
+            var suffix = 2;
+            while (db.Vaults.Any(v => !v.IsDeleted && !groupIds.Contains(v.Id) && v.Name == name))
+            {
+                name = $"{baseName}{suffix++}";
+            }
+
+            var newPath = canonical.Path;
+            if (isLegacyUpload)
+            {
+                // 简化显示：按备注取一个可读名字（取自「某症的常见病因」这类标题）
+                var note = Directory.Exists(Path.Combine(canonical.Path, "notes"))
+                    ? Directory.EnumerateFiles(Path.Combine(canonical.Path, "notes"), "*.md", SearchOption.AllDirectories).FirstOrDefault()
+                    : null;
+                if (note != null)
+                {
+                    var m = System.Text.RegularExpressions.Regex.Match(
+                        Path.GetFileNameWithoutExtension(note), @"^(.+?)的(常见病因|辨证分型|病因病机|治则治法|诊断方法|养生调护|外治法|方剂与药物|基础概念|关联与区别|预防调护)");
+                    if (m.Success && m.Groups[1].Value.Length is > 0 and <= 12)
+                    {
+                        name = m.Groups[1].Value;
+                    }
+                }
+
+                var targetDir = Path.Combine(root, "mobile", name.Length > 80 ? name[..80] : name);
+                try
+                {
+                    if (Directory.Exists(canonical.Path) && !Directory.Exists(targetDir))
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(targetDir)!);
+                        Directory.Move(canonical.Path, targetDir);
+                        newPath = targetDir;
+                    }
+                    else if (Directory.Exists(targetDir))
+                    {
+                        newPath = targetDir;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "迁移历史移动端知识库目录失败，仅改数据库名称: {Path}", canonical.Path);
+                }
+            }
+
+            _logger.LogInformation("迁移历史知识库: \"{OldName}\" -> \"{NewName}\" ({OldPath} -> {NewPath})",
+                canonical.Name, name, canonical.Path, newPath);
+
+            canonical.Name = name;
+            canonical.Path = newPath;
+            if (isLegacyUpload)
+            {
+                canonical.Source = "mobile";
+                canonical.Industry = "mobile";
+                canonical.IsActive = true;
+            }
+            canonical.UpdatedAt = DateTime.UtcNow;
+            changed = true;
+        }
+
+        if (changed) db.SaveChanges();
     }
 
     private void TryEnsureCreated(string domainName, Action action)

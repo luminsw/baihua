@@ -34,6 +34,18 @@ public class VaultDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.VaultId).IsUnique();
             entity.HasIndex(e => e.IsActive);
+            // 未删除的知识库：路径与名称都必须唯一。
+            // 没有这两个约束时，并发的「扫描磁盘登记知识库」（启动编排 + /vault-settings/vaults/sync）
+            // 会各自读到空快照后重复插入，界面上同一条知识库出现两张卡片。
+            // 部分唯一索引（PostgreSQL）只约束未删除行，回收站允许多条同名/同路径。
+            entity.HasIndex(e => e.Path)
+                .IsUnique()
+                .HasDatabaseName("UX_Vaults_Path_Active")
+                .HasFilter("\"IsDeleted\" = false");
+            entity.HasIndex(e => e.Name)
+                .IsUnique()
+                .HasDatabaseName("UX_Vaults_Name_Active")
+                .HasFilter("\"IsDeleted\" = false");
 
             entity.Property(e => e.VaultId).HasMaxLength(50).IsRequired();
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
