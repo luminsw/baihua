@@ -50,7 +50,12 @@
                 else
                 {
                     <div class="server-qr-compact">
-                        <div class="qr-code-wrapper qr-compact" id="server-qr-container" @ref="_serverQrContainer"></div>
+                        <div class="qr-zoom" role="button" tabindex="0" title="点击放大二维码"
+                             @onclick="() => ShowFullscreenQrAsync(_serverQRCode?.QrCodeData)"
+                             @onkeydown="e => OnQrZoomKeydownAsync(e, _serverQRCode?.QrCodeData)">
+                            <div class="qr-code-wrapper qr-compact" id="server-qr-container" @ref="_serverQrContainer"></div>
+                            <div class="qr-zoom-hint">🔍 点击放大</div>
+                        </div>
                         <div class="server-info-compact">
                             <div class="info-row info-row-editable">
                                 <span class="info-label">名称</span>
@@ -121,7 +126,12 @@
             @if (_aiKeyQRCode != null)
             {
                 <div class="server-qr-compact">
-                    <div class="qr-code-wrapper qr-compact" id="aikey-qr-container" @ref="_aiKeyQrContainer"></div>
+                    <div class="qr-zoom" role="button" tabindex="0" title="点击放大二维码"
+                         @onclick="() => ShowFullscreenQrAsync(_aiKeyQRCode?.ApiKey)"
+                         @onkeydown="e => OnQrZoomKeydownAsync(e, _aiKeyQRCode?.ApiKey)">
+                        <div class="qr-code-wrapper qr-compact" id="aikey-qr-container" @ref="_aiKeyQrContainer"></div>
+                        <div class="qr-zoom-hint">🔍 点击放大</div>
+                    </div>
                     <div class="server-info-compact">
                         <div class="info-row">
                             <span class="info-label">提供商</span>
@@ -162,7 +172,12 @@
                     }
                 </div>
                 <div class="qr-result-compact @(_showQR ? "" : "d-none")">
-                    <div class="qr-code-wrapper qr-compact" id="general-qr-container" @ref="_qrContainer"></div>
+                    <div class="qr-zoom" role="button" tabindex="0" title="点击放大二维码"
+                         @onclick="() => ShowFullscreenQrAsync(_inputText)"
+                         @onkeydown="e => OnQrZoomKeydownAsync(e, _inputText)">
+                        <div class="qr-code-wrapper qr-compact" id="general-qr-container" @ref="_qrContainer"></div>
+                        <div class="qr-zoom-hint">🔍 点击放大</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -381,6 +396,32 @@
         }
     }
 
+    /// <summary>
+    /// 点击二维码全屏放大：交给 JS 按视口尺寸重绘一张大二维码（实现见 wwwroot/js/qr-tool.js）。
+    /// 只传内容文本过去，覆盖层由 JS 挂在 body 上，不参与 Blazor 渲染。
+    /// </summary>
+    private async Task ShowFullscreenQrAsync(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("openQrFullscreen", text);
+        }
+        catch (Exception)
+        {
+            // 电路已断开等场景：静默忽略，不影响页面其它功能
+        }
+    }
+
+    /// <summary>键盘可达：Enter / 空格 等同于点击放大。</summary>
+    private async Task OnQrZoomKeydownAsync(KeyboardEventArgs e, string? text)
+    {
+        if (e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar")
+        {
+            await ShowFullscreenQrAsync(text);
+        }
+    }
+
     private void StartEditName()
     {
         _editingName = _serverQRCode?.HostName ?? "";
@@ -590,6 +631,27 @@
         flex: 1;
         min-width: 0;
         font-size: 0.85rem;
+    }
+
+    /* 点击放大：二维码 + 提示整体作为可点区域，全屏覆盖层样式在 wwwroot/app.css */
+    .qr-zoom {
+        flex-shrink: 0;
+        text-align: center;
+        border-radius: 8px;
+        cursor: zoom-in;
+    }
+    .qr-zoom:focus-visible {
+        outline: 2px solid #2e8baf;
+        outline-offset: 3px;
+    }
+    .qr-zoom:hover .qr-code-wrapper.qr-compact {
+        box-shadow: 0 4px 14px rgba(46,139,175,0.35);
+    }
+    .qr-zoom-hint {
+        margin-top: 0.15rem;
+        font-size: 0.72rem;
+        color: #2e8baf;
+        white-space: nowrap;
     }
     .info-row {
         display: flex;
