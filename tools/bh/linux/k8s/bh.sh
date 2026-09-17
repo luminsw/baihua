@@ -5,18 +5,18 @@
 # 镜像构建用 nerdctl 直连 k3s 的 containerd socket（/run/k3s/containerd/containerd.sock），
 # 构建完镜像直接落在 k3s 的 containerd 存储里，无需 docker build / docker save / ctr import。
 # 前置：k3s 已安装运行（k3s 无法自动安装，见 k8s/README.md 前提条件）。
-# 权限：containerd socket 与 k3s.yaml 仅 root 可访问——build/deploy 需 sudo（sudo bh build）；
+# 权限：containerd socket 与 k3s.yaml 仅 root 可访问——build/deploy 需 sudo（sudo bh-k3s build）；
 #       status/logs/dashboard 等只读命令检测到 k3s 配置不可读时自动提权，无需手动 sudo。
 #       脚本内部对 /usr/local/bin 与 /etc 的写入会自动用 sudo，非 root 直接跑也会尽量完成。
 # nerdctl / buildkit（buildkitd+buildctl）缺失时 build 会自动下载安装（GitHub release → /usr/local/bin）。
 #
-# Usage: ./tools/bh/linux/k8s/bh.sh <command> [args]
+# Usage: ./tools/bh/linux/k8s/bh.sh <command> [args]     （命令行名：bh-k3s；Linux 上 bh 同义）
 #   build [img...]  nerdctl 构建镜像进 k3s containerd（默认 3 个；可指定部分，如: server webui）
 #   deploy      kubectl apply k8s/ manifests + wait ready
-#   up          仅构建 git 变更涉及的镜像 + deploy（未变更镜像跳过；bh up --all 强制全量重建）
+#   up          全量重建 .NET 应用镜像 + deploy（openvino 镜像不在其中，需时单独 build openvino）
 #   update      git pull + up（pull 以真实用户执行，build/deploy 自动提权，sudo 与否均可）
 #   prune       清空 buildkit 构建缓存（释放磁盘，修复 nuget 包缓存损坏导致的构建失败）
-#   status      pods / svc / pvc overview
+#   status      pods / svc / pvc overview（--json 供 DSH 插件消费）
 #   logs <svc> [n]   tail pod logs (default 50)
 #   start <svc>     scale deployment to 1
 #   stop <svc>      scale deployment to 0
@@ -381,7 +381,7 @@ build_all() {
         n build --build-context "nuget=$ROOT/nuget-local" -o type=image -f "$IMAGE_DIR/Dockerfile.sdk-offline" -t bh/sdk-offline:latest "$ROOT" >/dev/null || exit 1
         echo "[build] bh/sdk-offline"
     fi
-    # 目标镜像：默认全部 3 个；可传参指定（bh build server webui）
+    # 目标镜像：默认全部 3 个；可传参指定（bh-k3s build server webui）
     local targets
     if [ $# -gt 0 ]; then
         targets=""
@@ -409,7 +409,7 @@ deploy_all() {
         echo "[deploy] 需要 root 权限（/etc/rancher/k3s/k3s.yaml 仅 root 可读），自动提权..." >&2
         exec sudo "$(readlink -f "$0")" deploy
     fi
-    # 记录本次部署对应的源码 commit（供 bh status --json 判断运行代码是否最新）
+    # 记录本次部署对应的源码 commit（供 bh-k3s status --json 判断运行代码是否最新）
     local git_commit="unknown"
     if command -v git >/dev/null 2>&1 && [ -d "$ROOT/.git" ]; then
         git_commit="$(cd "$ROOT" && git rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -443,7 +443,7 @@ deploy_all() {
                 && echo "[deploy] traefik Service externalTrafficPolicy: $etp -> Local（保留客户端源 IP）"
         fi
     fi
-    # 给 deployment 打上 git commit 标注（供 bh status --json 判断运行代码是否最新）。
+    # 给 deployment 打上 git commit 标注（供 bh-k3s status --json 判断运行代码是否最新）。
     # 标注语义是「这个工作负载最后一次是在哪个 commit 部署的」，不是「镜像由本仓库构建」，
     # 所以 postgres 这类上游镜像也一起打 —— 否则它永远是 upToDate:false，看着像待处理问题。
     for svc in bh-server bh-webui bh-openvino bh-postgres bh-open-webui; do
@@ -470,7 +470,7 @@ deploy_all() {
     k -n "$NAMESPACE" rollout restart deployment bh-server bh-webui bh-openvino >/dev/null 2>&1 || true
     echo "[deploy] 等待应用滚动完成（rollout status，确保新 pod 全部就绪）..."
     k -n "$NAMESPACE" rollout status deployment bh-server bh-webui bh-openvino --timeout=300s \
-        || echo "[deploy] 部分 deployment 未在 300s 内就绪（可稍后 bh status 复查，或 bh logs <svc> 查看原因）"
+        || echo "[deploy] 部分 deployment 未在 300s 内就绪（可稍后 bh-k3s status 复查，或 bh-k3s logs <svc> 查看原因）"
     status_all
 }
 
@@ -485,7 +485,7 @@ deploy_all() {
 # 全量重建 + buildkit 缓存未变更层（开销可控）始终把.NET 应用带到当前 HEAD，稳定可靠。
 # 注：openvino 的 FROM 是外部 registry 镜像（openvino/model_server:latest-gpu），构建依赖代理/网络，
 #     纳入自动更新会让一键更新随代理抖动而失败（如 hysteria 未运行→ connection refused），故不在此重建；
-#     需要更新 openvino 时单独 bh build openvino。
+#     需要更新 openvino 时单独 bh-k3s build openvino。
 up_all() {
     if [ "$(id -u)" != "0" ]; then
         echo "[up] 需要 root 权限（build/deploy），自动提权..." >&2
@@ -503,7 +503,7 @@ prune_cache() {
         exec sudo "$(readlink -f "$0")" prune
     fi
     if ! command -v buildctl >/dev/null 2>&1; then
-        echo "[prune] 未找到 buildctl（请先运行 bh build 自动安装）" >&2
+        echo "[prune] 未找到 buildctl（请先运行 bh-k3s build 自动安装）" >&2
         exit 1
     fi
     echo "[prune] 清空 buildkit 构建缓存（下次构建将重新 restore，可修复 nuget 缓存损坏）..."
@@ -650,7 +650,7 @@ status_json() {
 # 单个服务启停/重启（操作 deployment 副本数/滚动重启；服务名可不带 bh- 前缀）
 scale_service() {
     local svc="${2:-}"
-    [ -z "$svc" ] && { echo "[${1}] 用法: bh ${1} <svc>（server/webui/openvino/postgres/open-webui）" >&2; return 1; }
+    [ -z "$svc" ] && { echo "[${1}] 用法: bh-k3s ${1} <svc>（server/webui/openvino/postgres/open-webui）" >&2; return 1; }
     case "$svc" in bh-*) ;; *) svc="bh-$svc" ;; esac
     if [ "$(id -u)" != "0" ]; then
         echo "[${1}] 需要 root 权限（k3s.yaml 仅 root 可读），自动提权..." >&2
@@ -767,13 +767,13 @@ find_ssh_auth_sock() {
 # update：git pull + build + deploy
 # 关键：git pull 必须以真实用户身份执行（root 的 SSH 密钥通常无 GitHub 权限，会 Permission denied）；
 #       build/deploy 需要 root（k3s containerd socket / k3s.yaml 仅 root 可读），非 root 自动提权。
-# 因此 update 无论 sudo 与否都能跑通：sudo bh update / bh update 均可。
+# 因此 update 无论 sudo 与否都能跑通：sudo bh-k3s update / bh-k3s update 均可。
 update_all() {
     if [ "$(id -u)" = "0" ] && [ -n "${SUDO_USER:-}" ]; then
         local sock
         sock="$(find_ssh_auth_sock)" || {
             echo "[update] 找不到 $SUDO_USER 的 ssh-agent socket，git pull 无法认证" >&2
-            echo "        请改用: bh update（不带 sudo，脚本会自动提权 build/deploy）" >&2
+            echo "        请改用: bh-k3s update（不带 sudo，脚本会自动提权 build/deploy）" >&2
             return 1
         }
         echo "[update] git pull 以 $SUDO_USER 身份执行（agent: $sock）"
@@ -793,12 +793,12 @@ update_all() {
 }
 
 # annotate：把应用 deployment 的 baihua.git-commit 标注更新为当前仓库 HEAD。
-# 场景：build-restart 走 bh build + bh restart（不经 deploy_all），deploy_all 只在 deploy/update 时打标注，
-#       导致"镜像已重建为新 commit、但标注仍滞后"，bh status 会误报"落后"。此处单独补一次标注，
+# 场景：build-restart 走 bh-k3s build + bh-k3s restart（不经 deploy_all），deploy_all 只在 deploy/update 时打标注，
+#       导致"镜像已重建为新 commit、但标注仍滞后"，bh-k3s status 会误报"落后"。此处单独补一次标注，
 #       仅供"镜像重建并已滚动重启成功"后调用（见 DSH 插件 build-restart 流程）。
 annotate_commit() {
     local svc="${1:-}"
-    [ -z "$svc" ] && { echo "[annotate] 用法: bh annotate <svc>（server/webui/openvino/postgres）" >&2; return 1; }
+    [ -z "$svc" ] && { echo "[annotate] 用法: bh-k3s annotate <svc>（server/webui/openvino/postgres）" >&2; return 1; }
     case "$svc" in bh-*) ;; *) svc="bh-$svc" ;; esac
     if [ "$(id -u)" != "0" ]; then
         echo "[annotate] 需要 root 权限（k3s.yaml 仅 root 可读），自动提权..." >&2
@@ -812,7 +812,7 @@ annotate_commit() {
     if k -n "$NAMESPACE" annotate deploy "$svc" "baihua.git-commit=$git_commit" --overwrite >/dev/null 2>&1; then
         echo "[annotate] $svc -> baihua.git-commit=$git_commit"
     else
-        echo "[annotate] 更新 $svc 标注失败（可稍后 bh status 复查）" >&2
+        echo "[annotate] 更新 $svc 标注失败（可稍后 bh-k3s status 复查）" >&2
         return 1
     fi
 }
@@ -830,6 +830,12 @@ case "${1:-help}" in
     logs)      show_logs "${2:-bh-server}" "${3:-50}" ;;
     destroy)   k delete namespace "$NAMESPACE"; echo "[destroy] done" ;;
     dashboard) open_dashboard ;;
+    k8s|native)
+        # 旧的 cell 子命令写法（bh k8s <cmd> / bh native <cmd>）已移除：形态现在由命令名表达
+        echo "[bh-k3s] '$1' 不再是子命令：k3s 部署请直接用 bh-k3s <cmd>（Linux 上 bh <cmd> 同义）。" >&2
+        echo "         例: bh-k3s ${*:2}" >&2
+        exit 1
+        ;;
     help)      help_text ;;
     *)         help_text ;;
 esac

@@ -35,7 +35,7 @@ clients/
   Huapu/            # 花圃（BaiHua.Nursery）— MAUI 技术验证客户端
 scripts/            # 开发、发布、部署脚本
 docker/             # Docker compose 配置（nginx / server / webui 镜像）
-tools/bh/           # 极简 CLI（Windows/Linux，native/docker/k8s）
+tools/bh/           # 极简 CLI（Windows：bh=native / bh-k3s=k3s；Linux：两者同义）
 tests/              # 后端/ SDK / 花圃单元测试 + E2E
 ```
 
@@ -59,7 +59,8 @@ cd services/Baihua.Server && dotnet run
 cd services/Baihua.Web && dotnet run
 ```
 
-Windows 下用 `bh.ps1`（推荐 PowerShell 7，UTF-8 中文正常）；完整命令见 `tools/bh/README.md`。
+Windows 下用 `bh`（native，dotnet 进程）或 `bh-k3s`（k3s，经 WSL）——推荐 PowerShell 7，UTF-8 中文正常；
+首次运行（WSL 前置 / PostgreSQL 与口令 / k3s 一键脚本）与完整命令见 `tools/bh/README.md`。
 
 ## DSH 插件生态（DeepSeek Harness × 百花）
 

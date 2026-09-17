@@ -1,13 +1,14 @@
 #!/bin/bash
-# bh - baihua 统一 CLI 入口（Linux）
+# bh - baihua CLI 入口（Linux）—— k3s（全容器化）形态
 #
-# 部署形态只有一种：Linux k3s（containerd + nerdctl 构建）——tools/bh/linux/k8s/bh.sh。
-# 合并为单进程 + 单库后不再需要 native / docker 两套 cell 脚本。
+# Linux 上部署形态只有一种：k3s（containerd + nerdctl 构建）→ tools/bh/linux/k8s/bh.sh。
+# 命令名与 Windows 侧对齐：k3s = bh-k3s，native = bh（仅 Windows 有）。
+# 本脚本与 bh-k3s.sh 完全等价（同一实现的两个名字），保留 bh 以兼容既有文档与习惯。
 #
 # 用法:
-#   bh <command> [args]          直接执行（可选写 bh k8s <command> 兼容旧习惯）
-#   bh install                   复制自包含定位器到 PATH（~/.local/bin/bh 或 /usr/local/bin/bh）
-#   bh uninstall                 移除定位器
+#   bh <command> [args]          执行 k3s 命令（= bh-k3s <command>）
+#   bh install                   复制自包含定位器到 PATH（装 bh 与 bh-k3s）
+#   bh uninstall                 移除两个定位器
 set -u
 
 # 用 readlink -f 解析软链，确保通过 ~/.local/bin/bh 软链调用时 ROOT 指向真实目录
@@ -15,15 +16,17 @@ ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 case "${1:-}" in
     k8s)
-        shift
-        exec "$ROOT/linux/k8s/bh.sh" "$@"
+        echo "[bh] 'k8s' 不再是子命令：Linux 上 bh 本身就是 k3s 形态。" >&2
+        echo "     请改用: bh ${*:2}   （Windows 侧请用: bh-k3s ${*:2}）" >&2
+        exit 1
         ;;
     install)
+        # 两个命令名装同一份自包含定位器（locator.sh 按调用名转发），装哪个入口都会装齐两个
         if [ "$(id -u)" = "0" ]; then
-            # root 安装：复制自包含定位器到 /usr/local/bin（sudo secure_path 默认包含，sudo bh 与普通用户 bh 都可用）
             install -m 0755 "$ROOT/locator.sh" /usr/local/bin/bh && \
-                echo "[install] 已安装: /usr/local/bin/bh（自包含定位器，目录改名/移动后无需重装）"
-            echo "[install] /usr/local/bin 在 sudo secure_path 内，bh 与 sudo bh 均直接可用"
+                install -m 0755 "$ROOT/locator.sh" /usr/local/bin/bh-k3s && \
+                echo "[install] 已安装: /usr/local/bin/bh 与 /usr/local/bin/bh-k3s（自包含定位器，目录改名/移动后无需重装）"
+            echo "[install] /usr/local/bin 在 sudo secure_path 内，bh/bh-k3s 与 sudo 调用均直接可用"
         else
             bin="${HOME}/.local/bin"
             if ! mkdir -p "$bin" 2>/dev/null; then
@@ -31,9 +34,11 @@ case "${1:-}" in
                 echo "         请用 root 执行: sudo bash $ROOT/bh.sh install  （或 WSL: wsl -u root）"
                 exit 1
             fi
-            install -m 0755 "$ROOT/locator.sh" "$bin/bh" && echo "[install] 已安装: $bin/bh（自包含定位器，目录改名/移动后无需重装）"
+            install -m 0755 "$ROOT/locator.sh" "$bin/bh" && \
+                install -m 0755 "$ROOT/locator.sh" "$bin/bh-k3s" && \
+                echo "[install] 已安装: $bin/bh 与 $bin/bh-k3s（自包含定位器，目录改名/移动后无需重装）"
             case ":$PATH:" in
-                *":$bin:"*) echo "[install] ~/.local/bin 已在 PATH，直接可用: bh <command>" ;;
+                *":$bin:"*) echo "[install] ~/.local/bin 已在 PATH，直接可用: bh <command> / bh-k3s <command>" ;;
                 *)
                     if grep -q 'local/bin' "${HOME}/.bashrc" 2>/dev/null; then
                         echo "[install] ~/.local/bin 已配置在 ~/.bashrc（重新登录或 source ~/.bashrc 后生效）"
@@ -47,21 +52,21 @@ case "${1:-}" in
         fi
         ;;
     uninstall)
-        rm -f "${HOME}/.local/bin/bh" 2>/dev/null
-        rm -f /usr/local/bin/bh 2>/dev/null
-        echo "[uninstall] 已移除 bh（~/.local/bin/bh、/usr/local/bin/bh；无权限删除的请用 root）"
+        rm -f "${HOME}/.local/bin/bh" "${HOME}/.local/bin/bh-k3s" 2>/dev/null
+        rm -f /usr/local/bin/bh /usr/local/bin/bh-k3s 2>/dev/null
+        echo "[uninstall] 已移除 bh / bh-k3s（~/.local/bin、/usr/local/bin；无权限删除的请用 root）"
         ;;
     help|-h|--help|"")
-        echo "bh - baihua 统一 CLI（Linux）"
+        echo "bh - baihua CLI（Linux，k3s 形态；等价命令: bh-k3s）"
         echo ""
         echo "用法:"
-        echo "  bh <command> [args]           执行命令（k8s 部署形态）"
-        echo "  bh k8s <command> [args]       同上（显式写 cell，兼容旧习惯）"
-        echo "  bh install / uninstall        安装到 PATH（root→/usr/local/bin，普通用户→~/.local/bin）/ 移除"
+        echo "  bh <command> [args]           执行 k3s 命令（无参数 = status）"
+        echo "  bh install / uninstall        安装（bh + bh-k3s）到 PATH / 移除"
         echo "                                安装的是自包含定位器（非软链），仓库改名/移动后无需重装"
         echo ""
-        echo "提示: k8s cell 需要 root（k3s 配置 /etc/rancher/k3s/k3s.yaml 仅 root 可读），WSL 下用 wsl -u root"
-        echo "cell 内可用命令: bh <cell> help"
+        echo "常用: status / build / up / update / deploy / logs <svc> / openvino / destroy"
+        echo "提示: k3s 需要 root（k3s 配置 /etc/rancher/k3s/k3s.yaml 仅 root 可读），WSL 下用 wsl -u root"
+        echo "命令详情: bh help"
         ;;
     *)
         exec "$ROOT/linux/k8s/bh.sh" "$@"

@@ -12,7 +12,7 @@
 #   2) 本机可免密 ssh 到目标机
 #   3) docker/.env 中已填 PG_PASSWORD（compose 必填），该文件会随源码一并同步
 #
-# 说明：k8s 部署请改用 `bh deploy`（tools/bh/linux/k8s/bh.sh）——那是当前主推形态。
+# 说明：k8s 部署请改用 `bh-k3s deploy`（tools/bh/linux/k8s/bh.sh）——那是当前主推形态。
 set -euo pipefail
 
 SERVER="${1:-}"
