@@ -105,6 +105,19 @@ function Update-Services {
             Write-Warning '[update] 放行防火墙 TCP 8788 失败（需要管理员权限），局域网算力池/互联可能不可达'
         }
     }
+    # open-webui（Python venv，:8080）不在 $Services 里，一键更新不会自动带上它。
+    # 已安装才自动拉起（避免更新时意外触发几分钟的 pip install）；未安装只提示。
+    $owuiExe = Join-Path $DataHome 'open-webui-venv\Scripts\open-webui.exe'
+    if (Test-Path $owuiExe) {
+        if (Test-PortOpen 8080) {
+            Write-Host '[update] open-webui 已在运行（:8080）'
+        } else {
+            Write-Host '[update] 启动 open-webui ...'
+            Invoke-OpenWebUI 'start'
+        }
+    } else {
+        Write-Warning '[update] 未安装 open-webui，跳过（需要时执行: bh open-webui install）'
+    }
     $LASTEXITCODE = 0
     Write-Host '[update] done'
 }

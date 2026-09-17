@@ -165,9 +165,11 @@ if ($activeCell -eq 'native') {
                 if (-not $lanIp) { Write-Host '[lan] 未识别到宿主局域网 IP'; exit 0 }
                 Write-Host '[lan] 设置宿主 :80 -> :8788 转发（需要管理员授权）...'
                 try {
+                    # 先删掉 :80 上的旧规则（含 k8s cell 遗留的 :80 -> <WSL IP>:80——它指向
+                    # 已消失的 WSL IP，只 add 不 delete 会与之并存）；再重建 :80 -> 127.0.0.1:8788。
                     $p = Start-Process -FilePath 'pwsh' -Verb RunAs -PassThru -ArgumentList @(
                         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
-                        'netsh interface portproxy add v4tov4 listenport=80 connectport=8788 connectaddress=127.0.0.1; netsh advfirewall firewall add rule name="Baihua LAN 80" dir=in action=allow protocol=TCP localport=80'
+                        'netsh interface portproxy delete v4tov4 listenport=80 listenaddress=0.0.0.0 | Out-Null; netsh interface portproxy delete v4tov4 listenport=80 listenaddress=* | Out-Null; netsh interface portproxy add v4tov4 listenport=80 connectport=8788 connectaddress=127.0.0.1; netsh advfirewall firewall add rule name="Baihua LAN 80" dir=in action=allow protocol=TCP localport=80'
                     ) -ErrorAction Stop
                     $null = Wait-Process -Id $p.Id -Timeout 30 -ErrorAction SilentlyContinue
                     Write-Host "[lan] 局域网入口就绪：http://$lanIp/  （-> 127.0.0.1:8788）"
@@ -187,14 +189,27 @@ if ($activeCell -eq 'native') {
             default {
                 $lanIp = Get-HostLanIp
                 $proxy = (netsh interface portproxy show v4tov4 2>$null | Out-String)
-                $has80 = $proxy -match '\b80\b'
+                # 只认 “listenport=80 → connectaddress=127.0.0.1 connectport=8788” 的规则：
+                # k8s cell 会留下 :80 -> <WSL IP>:80 的规则，仅凭端口号 80 判断会误报“已就绪”，
+                # 而那条规则指向已消失的 WSL IP —— 连接被接受但永不响应（表现为 HTTP 挂死超时）。
+                $rows = @($proxy -split "`r?`n" | Where-Object { $_ -match '^\s*\S+\s+80\s+\S+\s+\d+' })
+                $good = @($rows | Where-Object { $_ -match '127\.0\.0\.1\s+8788' })
+                $bad = @($rows | Where-Object { $_ -notmatch '127\.0\.0\.1\s+8788' })
                 Write-Host "[lan] 宿主 IP: $lanIp"
                 Write-Host "[lan] 后端端口: 8788（server 绑 0.0.0.0）"
-                if ($has80) {
-                    Write-Host "[lan] 局域网入口: 已就绪 http://$lanIp/  （:80 -> :8788）"
+                if ($good.Count -gt 0) {
+                    Write-Host "[lan] 局域网入口: 已就绪 http://$lanIp/  （:80 -> 127.0.0.1:8788）"
+                } elseif ($rows.Count -gt 0) {
+                    Write-Host "[lan] 局域网入口: 规则指向错误 → $($rows[0].Trim())"
+                    Write-Host "[lan] 该转发会挂死（目标不可达）：执行 bh lan on 重建为 :80 -> 127.0.0.1:8788"
                 } else {
                     Write-Host "[lan] 局域网入口: 未就绪（bh lan on 配置 :80 转发）"
                     Write-Host "[lan] 备选: 直接用 http://$lanIp`:8788/ （需放行防火墙 TCP 8788）"
+                }
+                if ($bad.Count -gt 0) {
+                    Write-Host "[lan] 残留 :80 规则（会挂死/可能抢占）："
+                    $bad | ForEach-Object { Write-Host "[lan]   $($_.Trim())" }
+                    Write-Host "[lan] 建议执行 bh lan on 清理并重建"
                 }
             }
         }
