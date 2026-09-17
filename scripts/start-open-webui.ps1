@@ -13,7 +13,9 @@
 param(
     [switch]$Stop,
     [switch]$Status,
-    [switch]$Install
+    [switch]$Install,
+    # 仅供计划任务内部自调用（见文件头说明）：真正的启动实例，不再二次脱离
+    [switch]$Detached
 )
 
 $ErrorActionPreference = 'Stop'
@@ -99,6 +101,43 @@ function Start-OpenWebUI {
     Write-Warning "[open-webui] 端口 $Port 90s 内未就绪，查看日志: $LogFile"
 }
 
+# 脱离调用者进程树的启动：经一次性计划任务在独立上下文里再跑一次自己（-Detached）。
+# 直接 Start-Process 会把服务留在调用者的 job object 里——卡片「一键更新」/bh update
+# 的调用方就是 DSH，DSH 一重启整棵树被关闭，服务静默消失（2026-09-17 实测）。
+# 做法与 dsh-baihua-bridge 重启 DSH 相同：任务由 Task Scheduler 持有，父进程不是调用者。
+function Start-OpenWebUIDetached {
+    if (Test-PortOpen $Port) {
+        Write-Warning "[open-webui] 端口 $Port 已被占用，跳过"
+        return
+    }
+    $taskName = 'baihua-open-webui-start'
+    $self = $PSCommandPath
+    $register = @(
+        "`$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$self`" -Detached'"
+        "`$t = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(2)"
+        "Register-ScheduledTask -TaskName '$taskName' -Action `$a -Trigger `$t -Force | Out-Null"
+        "Start-ScheduledTask -TaskName '$taskName'"
+    ) -join '; '
+    Write-Host '[open-webui] 经计划任务启动（脱离调用者进程树）...'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $register
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error '[open-webui] 计划任务注册/启动失败'
+        return
+    }
+    Write-Host '[open-webui] waiting for health ...'
+    $deadline = (Get-Date).AddSeconds(90)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-PortOpen $Port) {
+            Write-Host "[open-webui] ready on $Port"
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+            return
+        }
+        Start-Sleep -Milliseconds 1000
+    }
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Warning "[open-webui] 端口 $Port 90s 内未就绪，查看日志: $LogFile"
+}
+
 function Stop-OpenWebUI {
     if (Test-Path $PidFile) {
         $pid2 = [int](Get-Content $PidFile)
@@ -133,4 +172,6 @@ function Show-OpenWebUIStatus {
 if ($Status) { Show-OpenWebUIStatus; exit 0 }
 if ($Stop) { Stop-OpenWebUI; exit 0 }
 if ($Install) { Install-OpenWebUI; exit 0 }
+# 默认（无开关）：先经计划任务脱离调用者进程树，再由 -Detached 实例真正启动
+if (-not $Detached) { Start-OpenWebUIDetached; exit 0 }
 Start-OpenWebUI
