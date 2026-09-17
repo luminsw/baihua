@@ -282,6 +282,56 @@ function Get-ServiceArgs {
     return @($Arg1) + @($Arg2) + $MoreArgs | Where-Object { $_ }
 }
 
+# ---- 特殊服务名 ----------------------------------------------------------------
+# status 会展示、卡片也会操作，但**不在 $Services 里**（它们不是 bh-server/bh-webui 那种
+# out/native 下的 dotnet 进程）：open-webui = Python venv（:8080，scripts/start-open-webui.ps1），
+# openvino = OVMS（:8000，装了 Windows 服务 ovms 才有启停手段，否则只是普通进程）。
+# 以前 `bh start|stop|restart open-webui` 会走 Resolve-ServiceList → 只打印
+# “unknown service: open-webui (server|webui)” 然后静默什么都不做，
+# 于是设置页卡片上这两个服务的按钮全是空操作（2026-09-17 实测）。
+$SpecialServices = @('open-webui', 'openvino')
+
+function Get-SpecialList {
+    param([string[]]$Names = @())
+    $found = @()
+    foreach ($n in $Names) {
+        if ([string]::IsNullOrWhiteSpace($n)) { continue }
+        $k = $n.ToLower()
+        if (($SpecialServices -contains $k) -and ($found -notcontains $k)) { $found += $k }
+    }
+    return @($found)
+}
+
+function Start-Special($name) {
+    switch ($name) {
+        'open-webui' { Invoke-OpenWebUI 'start' }
+        'openvino' {
+            $svc = Get-OpenVinoHostService
+            if ($svc) {
+                try { Start-Service -Name $OpenVinoServiceName -ErrorAction Stop; Write-Host "[openvino] 已启动系统服务 $OpenVinoServiceName" }
+                catch { Write-Warning "[openvino] 启动系统服务失败：$($_.Exception.Message)" }
+            } else {
+                Write-Warning "[openvino] 未安装 Windows 服务 $OpenVinoServiceName（当前 ovms 是普通进程，bh 无法启动）；可用 scripts/install-openvino-ovms-service.ps1 装成服务"
+            }
+        }
+    }
+}
+
+function Stop-Special($name) {
+    switch ($name) {
+        'open-webui' { Invoke-OpenWebUI 'stop' }
+        'openvino' {
+            $svc = Get-OpenVinoHostService
+            if ($svc) {
+                try { Stop-Service -Name $OpenVinoServiceName -Force -ErrorAction Stop; Write-Host "[openvino] 已停止系统服务 $OpenVinoServiceName" }
+                catch { Write-Warning "[openvino] 停止系统服务失败：$($_.Exception.Message)" }
+            } else {
+                Write-Warning "[openvino] 未安装 Windows 服务 $OpenVinoServiceName（当前 ovms 是普通进程），bh 不代为 kill；请手动结束该进程"
+            }
+        }
+    }
+}
+
 function Get-PortOwnerProcess($port) {
     $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $conn) { return $null }
@@ -469,7 +519,16 @@ function Get-OpenWebUIStatus {
 switch ($Command.ToLower()) {
     'build'     { Invoke-Build (Get-ServiceArgs) }
     'build-restart' {
-        $targets = Resolve-ServiceList (Get-ServiceArgs)
+        $names = Get-ServiceArgs
+        # open-webui / openvino 是本仓库之外的东西（Python venv / 外部 OVMS），没有编译目标，
+        # 明确提示而不是走 Resolve-ServiceList 打一句 unknown 就静默退出。
+        foreach ($s in Get-SpecialList $names) {
+            $why = if ($s -eq 'open-webui') { 'Python venv，非本仓库构建' } else { '外部 OVMS，非本仓库构建' }
+            Write-Warning "[build-restart] $s 没有编译目标（$why）；如需重启请用: bh restart $s"
+        }
+        $regular = if ($names.Count -eq 0) { @() } else { @($names | Where-Object { $SpecialServices -notcontains $_.ToLower() }) }
+        if ($names.Count -gt 0 -and $regular.Count -eq 0) { break }
+        $targets = Resolve-ServiceList $regular
         if ($targets.Count -eq 0) { break }
         Invoke-Build $targets.Name
         if ($targets.Count -eq $Services.Count) {
@@ -485,36 +544,56 @@ switch ($Command.ToLower()) {
         }
     }
     'start'     {
-        if ($Arg1) {
-            $targets = Resolve-ServiceList (Get-ServiceArgs)
-            if ($targets.Count -eq 0) { break }
-            foreach ($svc in $targets) { Start-One $svc; Write-Host "[start] $($svc.Name) starting..." }
-            Write-Host "[start] waiting for health ..."
-            foreach ($svc in $targets) {
-                if (-not (Wait-Port $svc.Port 60)) { Write-Warning "[$($svc.Name)] port $($svc.Port) not ready in 60s" }
-                else { Write-Host "[$($svc.Name)] ready on $($svc.Port)" }
+        $names = Get-ServiceArgs
+        if ($names.Count -eq 0) { Start-Services; break }
+        # 特殊服务（open-webui/openvino）先处理；其余交给 $Services。
+        # 注意：过滤后若为空不能再调 Resolve-ServiceList —— 它对空数组会返回**全部**
+        # $Services，那样 `bh start open-webui` 会误把 server+webui 一起拉起来。
+        foreach ($s in Get-SpecialList $names) { Start-Special $s }
+        $regular = @($names | Where-Object { $SpecialServices -notcontains $_.ToLower() })
+        if ($regular.Count -gt 0) {
+            $targets = Resolve-ServiceList $regular
+            if ($targets.Count -gt 0) {
+                foreach ($svc in $targets) { Start-One $svc; Write-Host "[start] $($svc.Name) starting..." }
+                Write-Host "[start] waiting for health ..."
+                foreach ($svc in $targets) {
+                    if (-not (Wait-Port $svc.Port 60)) { Write-Warning "[$($svc.Name)] port $($svc.Port) not ready in 60s" }
+                    else { Write-Host "[$($svc.Name)] ready on $($svc.Port)" }
+                }
             }
-        } else { Start-Services }
+        }
     }
     'stop'      {
-        if ($Arg1) {
-            $targets = Resolve-ServiceList (Get-ServiceArgs)
-            if ($targets.Count -eq 0) { break }
-            for ($i = $targets.Count - 1; $i -ge 0; $i--) { Stop-One $targets[$i] }
-            Write-Host "[stop] done: $($targets.Name -join ', ')"
-        } else { Stop-Services }
+        $names = Get-ServiceArgs
+        if ($names.Count -eq 0) { Stop-Services; break }
+        foreach ($s in Get-SpecialList $names) { Stop-Special $s }
+        $regular = @($names | Where-Object { $SpecialServices -notcontains $_.ToLower() })
+        if ($regular.Count -gt 0) {
+            $targets = Resolve-ServiceList $regular
+            if ($targets.Count -gt 0) {
+                for ($i = $targets.Count - 1; $i -ge 0; $i--) { Stop-One $targets[$i] }
+                Write-Host "[stop] done: $($targets.Name -join ', ')"
+            }
+        }
     }
     'restart'   {
-        if ($Arg1) {
-            $targets = Resolve-ServiceList (Get-ServiceArgs)
-            if ($targets.Count -eq 0) { break }
-            for ($i = $targets.Count - 1; $i -ge 0; $i--) { Stop-One $targets[$i] }
-            foreach ($svc in $targets) {
-                if (-not (Wait-PortClosed $svc.Port 15)) { Write-Warning "[$($svc.Name)] port $($svc.Port) 15s 内未释放" }
+        $names = Get-ServiceArgs
+        if ($names.Count -eq 0) { Stop-Services; Start-Services; break }
+        $specials = Get-SpecialList $names
+        foreach ($s in $specials) { Stop-Special $s }
+        foreach ($s in $specials) { Start-Special $s }
+        $regular = @($names | Where-Object { $SpecialServices -notcontains $_.ToLower() })
+        if ($regular.Count -gt 0) {
+            $targets = Resolve-ServiceList $regular
+            if ($targets.Count -gt 0) {
+                for ($i = $targets.Count - 1; $i -ge 0; $i--) { Stop-One $targets[$i] }
+                foreach ($svc in $targets) {
+                    if (-not (Wait-PortClosed $svc.Port 15)) { Write-Warning "[$($svc.Name)] port $($svc.Port) 15s 内未释放" }
+                }
+                foreach ($svc in $targets) { Start-One $svc }
+                Write-Host "[restart] restarting: $($targets.Name -join ', ')"
             }
-            foreach ($svc in $targets) { Start-One $svc }
-            Write-Host "[restart] restarting: $($targets.Name -join ', ')"
-        } else { Stop-Services; Start-Services }
+        }
     }
     'update'    { Update-Services }
     'status'    { if ($Arg1 -eq '--json') { Show-StatusJson } else { Show-Status } }

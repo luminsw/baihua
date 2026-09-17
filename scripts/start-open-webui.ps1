@@ -125,7 +125,9 @@ function Start-OpenWebUIDetached {
         return
     }
     Write-Host '[open-webui] waiting for health ...'
-    $deadline = (Get-Date).AddSeconds(90)
+    # 只用 45s：调用方可能是 DSH 卡片的快速操作（插件侧 spawnSync 上限 60s），
+    # 等太久会让卡片误报超时；超时也只提示“后台仍在启动”，不算失败。
+    $deadline = (Get-Date).AddSeconds(45)
     while ((Get-Date) -lt $deadline) {
         if (Test-PortOpen $Port) {
             Write-Host "[open-webui] ready on $Port"
@@ -135,7 +137,7 @@ function Start-OpenWebUIDetached {
         Start-Sleep -Milliseconds 1000
     }
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-    Write-Warning "[open-webui] 端口 $Port 90s 内未就绪，查看日志: $LogFile"
+    Write-Warning "[open-webui] 45s 内未就绪（启动仍在后台继续，稍后看状态）；日志: $LogFile"
 }
 
 function Stop-OpenWebUI {
