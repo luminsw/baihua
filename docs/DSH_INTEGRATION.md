@@ -54,7 +54,7 @@ dsh plugin --profile web add /home/lumin/src/mdyj/baihua-local-ai-dsh-plugin
   config:
     token: '<共享密钥>'                                    # 必须（对外暴露时；与百花 DshApi__Token 同值）
     lanListen: '0.0.0.0:3081'                             # 局域网桥（仅 /dsh-bridge/*）
-    bhCommand: '/home/lumin/src/mdyj/baihua/tools/bh/bh.sh'  # 运维 CLI（本机路径）
+    bhCommand: '/home/lumin/src/mdyj/baihua/tools/bh/bh.sh'  # 运维 CLI 入口（Linux/k3s；Windows 侧为 ~/.local/bin/bh.cmd）
     drawGatewayUrl: 'http://127.0.0.1:8788'               # 绘图网关（/mg/pool/v1/draw/*，可跨机）
     drawToken: '<BAIHUA_AI_EXTERNAL_TOKEN>'               # 网关鉴权（本机已启用时必填）
 
@@ -99,7 +99,7 @@ DshApi__Token: <与插件相同的 token>
 ## 6. 运维界面
 
 百花 → DSH 智能体（`/dsh`）→ 右上「🧰 运维」：服务状态表 + 启停/重启/编译并重启/编译/更新/部署/日志（打开后每 10s 自动刷新）。
-底层是 `bh status --json` / `bh start|stop|restart <svc>`（已并入 `tools/bh/linux/k8s/bh.sh`）。
+底层是 `bh status --json` / `bh start|stop|restart <svc>`（Linux/k3s 下 `bh` 与 `bh-k3s` 同义；实现见 `tools/bh/linux/k8s/bh.sh`）。
 
 **DSH 设置页卡片**：DSH Web UI → 设置 → 插件 →「百花服务状态」卡片，只读展示百花各服务状态并自动刷新（`baihua-dsh-plugin` 的浏览器侧客户端模块，数据源 `/dsh-bridge/bh/status-ui`）。
 

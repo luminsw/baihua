@@ -147,9 +147,12 @@ install_k3s() {
         if command -v systemctl >/dev/null 2>&1 && $SUDO systemctl list-unit-files k3s.service >/dev/null 2>&1; then
             $SUDO systemctl start k3s || die "k3s 启动失败（用 $SUDO systemctl status k3s 查原因）"
         else
-            # 无 systemd（WSL 未开 systemd）：后台启动
+            # 无 systemd（WSL 未开 systemd）：后台启动。
+            # ⚠️ 绝不能加 --disable=traefik：百花入口（k8s/24-traefik.yaml 的 IngressRoute/Middleware）
+            #    依赖 k3s 自带的 Traefik；禁用它会让 `bh-k3s deploy` 跳过入口清单，
+            #    集群看着起来了但 :80 不通（移动端/WebUI 全部不可达）。此处曾误加该参数，已修。
             warn "无 systemd，后台启动 k3s（nohup）"
-            $SUDO nohup k3s server --disable=traefik >/tmp/k3s.log 2>&1 &
+            $SUDO nohup k3s server >/tmp/k3s.log 2>&1 &
         fi
         wait_k3s
         return 0
@@ -244,12 +247,15 @@ echo ""
 ok "=== 百花部署完成 ==="
 echo ""
 printf '%s下一步：%s\n' "$C_CYAN" "$C_RESET"
-printf '  打开管理面板:  %sbh dashboard%s\n' "$C_GREEN" "$C_RESET"
+printf '  打开管理面板:  %sbh dashboard%s   （= bh-k3s dashboard，装了两个名字）\n' "$C_GREEN" "$C_RESET"
 printf '  查看服务状态:  %sbh status%s\n' "$C_RESET"
 printf '  查看后端日志:  %sbh logs server%s\n' "$C_RESET"
 printf '  更新并重部署:  %ssudo bh update%s\n' "$C_RESET"
 echo ""
 if [ "$PLATFORM" = "WSL2" ]; then
-    warn "WSL2 提示：Windows 浏览器访问需配置局域网入口（bh lan on），或直接用 bh dashboard 自动打开"
+    warn "WSL2 提示（重要）：Windows 侧还需两步，否则集群会被 WSL 空闲回收、服务表现为反复重启："
+    warn "  1) 在 Windows 终端执行：bh install                          # 装 bh / bh-k3s 定位器"
+    warn "  2) 在 Windows 管理员终端执行：bh-k3s autostart on          # WSL 保活 + 登录自启"
+    warn "  之后用 bh-k3s status 从 Windows 查看状态；详见 tools/bh/README.md"
 fi
 warn "首次部署：移动端配对密钥等 Secret 是占位值，需后续编辑 k8s/02-secret.yaml 并 sudo bh deploy 更新"

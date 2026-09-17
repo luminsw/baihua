@@ -11,7 +11,7 @@
 
 ## 1. 升级步骤（在 192.168.3.9 上执行）
 
-> 假设望月台为 k8s 部署（与本机一致）。若为 native/Windows，用对应的 `bh` 脚本（`tools/bh/linux/native/bh.sh` 或 `tools/bh/win/*`），命令 `bh` 同理。
+> 假设望月台为 k8s 部署（与本机一致），用 `bh-k3s`（Linux 上 `bh` 同义）；若为 Windows native 则用 `bh`（`tools/bh/bh.ps1`，文档里的 `bh-k3s <cmd>` 换成 `bh <cmd>`）。
 
 ### 1.1 更新百花后端源码并重建
 ```bash
