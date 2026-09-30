@@ -46,6 +46,37 @@ dsh plugin --profile web add /home/lumin/src/mdyj/baihua-local-ai-dsh-plugin
 > 在该目录跑 `pnpm install`；依赖解析经各仓库 `node_modules` junction 复用
 > `~/.dsh/profiles/node_modules`。改源码后重启 DSH 即生效。
 
+### 2.1 升级 DSH 后必做的两件事（否则插件被跳过）
+
+DSH 启动时用**运行时自身版本**校验每个插件的 `peerDependencies` 中所有
+`@deepseek-ai/dsh*` 项（`cordis` 等非 dsh 包不校验），不匹配就整包跳过
+（`skipping profile bundle`，插件行不加载）；profile 里的插件行同理
+（`disabling profile plugin row`）。升级 `@deepseek-ai/dsh` 后：
+
+1. **5 个自研插件仓库**（baihua-dsh-plugin / baihua-local-ai-dsh-plugin /
+   hysteria-dsh-plugin / dsh-dev-workbench / openvino-dsh-plugin）的
+   `package.json` → `peerDependencies` 中 `@deepseek-ai/dsh-*` 范围改成新版本
+   （当前 `^0.2.0-rc.2`；`^0.1.0-rc.x` 不匹配 `0.2.x`，因为 caret 在 0.x 下不跨 minor）。
+   注意 `workspace:^` 只在 workspace 成员内可用，link 安装的插件不能用。
+2. **`~/.dsh/profiles/web/package.json`** 里 `@deepseek-ai/dsh-mcp-client` 改成同一
+   版本（它承载 5 个 MCP 插件行：baihua / harmonyos / microsoft-learn /
+   android-docs / gitnexus），再在该目录
+   `pnpm install --no-frozen-lockfile`（版本变了必须放宽 frozen-lockfile）。
+
+验证：`dsh --profile web --port 3099 --no-open`（换个端口，别打断在跑的实例），
+输出里不应出现 `skipping profile bundle` / `disabling profile plugin row` /
+`warning: N entries did not activate`；再用
+`curl 127.0.0.1:3099/dsh-bridge/bh/status-ui`、`/dsh-openvino/status`、
+`/dsh-dev-workbench/status`、`/dsh-bridge/proxy/status-ui` 应均为 200。
+
+> **依赖解析机制**：link 安装的插件（真实路径在 `~/src/<repo>`）里 `import
+> '@deepseek-ai/dsh-*'` 由 DSH 自己的 loader 拦截并指向**运行时安装副本**
+> （`dsh-app-boot` 的 linked-root interception，按插件 `package.json` 的
+> `peerDependencies` 名字匹配）。因此 `~/.dsh/profiles/node_modules` 这层手工
+> junction 镜像只对**非 peer** 依赖（`ws`、`schemastery`）有意义；它随 dsh 安装
+> 布局变化会大面积失效（0.2.0-rc.2 起包装在 `_npx/<hash>/node_modules` 平铺，
+> 旧的 `.../dsh/node_modules/@deepseek-ai/*` 嵌套路径消失），但 peer 导入不受影响。
+
 ## 3. 插件配置（~/.dsh/profiles/web/cordis.patch.yml）
 
 ```yaml
