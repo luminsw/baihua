@@ -77,6 +77,31 @@ DSH 启动时用**运行时自身版本**校验每个插件的 `peerDependencies
 > 布局变化会大面积失效（0.2.0-rc.2 起包装在 `_npx/<hash>/node_modules` 平铺，
 > 旧的 `.../dsh/node_modules/@deepseek-ai/*` 嵌套路径消失），但 peer 导入不受影响。
 
+### 2.2 插件卡片/配置表单的客户端 API（0.2.x 迁移）
+
+DSH 0.2.x 重做了「插件」页与设置表单，0.1.x 的客户端 API **整体删除**，5 个自研插件的
+卡片在升级后一度全部不可见（注册到了已不存在的槽位）：
+
+| 0.1.x（已删除） | 0.2.x 替代 |
+|---|---|
+| 槽位 `settings.plugin.item` | `plugins.bundle.config`（key = **包名**，渲染在「插件」页该 bundle 自己的页面上） |
+| 同上（某个 Loader 条目/行的配置页） | `plugins.row.config`（key = **`<包名>#<条目 id>`**，该行出现「配置」控件，打开后渲染此槽位） |
+| 客户端服务 `settingsScope.bind({namespace})` | 宿主经槽位 ownerProps 下发 `form = { state, mutate }`：`state` 是 `{status,value,base,user,revision,writable,mode}` 快照，写回用 `mutate([{op:'set',path:[field],value}])` / `{op:'unset',path:[field]}`（成功即写 profile patch，Loader 重放条目 → 插件里的 `config` 即最新值） |
+| 宿主 `settings.installSection(ctx, ns, Schema, config, {setSource})` | 已删除；settings 服务改为**按 Loader 条目 id 自动投影** Config schema（`ctx.settings.configure({auto:true})` 只声明页面策略，默认 auto） |
+
+各插件当前注册的 key：
+
+| 插件 | bundle key | 行配置 key |
+|---|---|---|
+| baihua-dsh-plugin | `baihua-dsh-plugin` | `baihua-dsh-plugin#dsh-baihua-bridge` |
+| baihua-local-ai-dsh-plugin | `baihua-local-ai-dsh-plugin` | `baihua-local-ai-dsh-plugin#dsh-baihua-local-ai` |
+| hysteria-dsh-plugin | `hysteria-dsh-plugin` | `hysteria-dsh-plugin#dsh-hysteria-proxy` |
+| dsh-dev-workbench | `dsh-dev-workbench` | —（卡片无表单） |
+| openvino-dsh-plugin | `openvino-dsh-plugin` | —（卡片无表单） |
+
+> 改客户端 `client.js` 后必须**重启 DSH**（客户端 bundle 的 rev 在启动时登记，浏览器刷新
+> 才会拿到新 bundle）；服务端插件代码同样必须重启（见 §7 的 HMR 实测结论）。
+
 ## 3. 插件配置（~/.dsh/profiles/web/cordis.patch.yml）
 
 ```yaml
