@@ -256,3 +256,6 @@ nuget-local/*.nupkg
 
 # self-contained publish 产出（实验分支 publish-baihua.sh 生成）
 dist/
+
+# 拜师契约含个人进度：已移出仓库到 ~/.dsh/baishi/BAISHI_MASTER.md
+docs/BAISHI_MASTER.md

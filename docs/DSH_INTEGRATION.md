@@ -154,7 +154,8 @@ DSH 0.2.x 重做了「插件」页与设置表单，0.1.x 的客户端 API **整
   无告警。
 - 「百花拜师」preset（`preset-baihua-baishi`，order 51）同样随该 bundle 分发：
   persona = 师父（三条线定位 + 教学闭环 + 批改五步 + 落库 frontmatter + 更新进度 + 红线 +
-  **开工先读契约** `docs/BAISHI_MASTER.md`）；工具 = `tool-fs`（read/write/edit）+
+  **开工先读契约** `~/.dsh/baishi/BAISHI_MASTER.md` —— 契约含个人进度，**已移出仓库**
+  （仓库里那份的路径已写进 `.gitignore`，历史也已重写清除）；工具 = `tool-fs`（read/write/edit）+
   `tool-fs-search` + `skill-filesystem`(customSkillDirs) + `tool-skill` + `tool-ask-user` +
   `tool-web(fetch:false)` + compaction 组；不含 shell/子代理/工作流。桌面端照旧加本地副本。
 

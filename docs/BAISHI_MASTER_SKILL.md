@@ -17,7 +17,13 @@
 ⑤ 跨会话记忆锚点 → `dsh-tool-fs` 直接读写契约文件（比手贴唤醒词更硬）。
 
 > 用法：新会话在预设选择器里选「百花拜师」（或 设置 → Agent 预设 里设为默认）。
-> 契约文件与 skill 路径写死在 preset 里（本机路径 `C:\Users\lumin\src\baihua\...`），换机器要改。
+> 契约文件与 skill 路径写死在 preset 里（本机：契约 `C:\Users\lumin\.dsh\baishi\BAISHI_MASTER.md`、
+> skill `C:\Users\lumin\src\baihua\.dsh\skills`），换机器要改那两处。
+>
+> **给别人用 / 换领域**：契约**不要放进公开仓库**（里面有个人目标与进度）。本仓库的 skill 目录里
+> 带了一份**脱敏模板** —— [`.dsh/skills/baishi-master/templates/BAISHI_MASTER.template.md`](.dsh/skills/baishi-master/templates/BAISHI_MASTER.template.md)：
+> 逐节带填写说明（师父身份 / 你的几条线 / 进度快照 / 练习约定 / 落库与 frontmatter / 红线 /
+> 唤醒提示词），复制到私有位置填完即可用；用法三步写在模板头部与本 skill 的「新用户怎么用」一节。
 
 ## 一、这套东西的本质
 
@@ -92,7 +98,9 @@ date: 2026-08-30
 
 对话 AI 通常没有跨会话记忆。解决办法不是「记住」，而是「外部化」：
 
-1. 建一份**契约文件**（如 `docs/BAISHI_MASTER.md`），固化：师父身份、目标与定位、**进度快照**、练习格式约定、安全红线、唤醒提示词。
+1. 建一份**契约文件**（放**私有位置**，如 `~/.dsh/baishi/BAISHI_MASTER.md`；本 skill 目录里带脱敏模板
+   `templates/BAISHI_MASTER.template.md`），固化：师父身份、目标与定位、**进度快照**、练习格式约定、
+   落库位置、安全红线、唤醒提示词。
 2. 新会话发一句**唤醒提示词**，让 AI 先读契约文件恢复记忆：
 
 ```
