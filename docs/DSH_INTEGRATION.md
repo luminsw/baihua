@@ -130,15 +130,20 @@ DSH 0.2.x 重做了「插件」页与设置表单，0.1.x 的客户端 API **整
   而挂掉，`text` 要改写为 `prefix`；`suffix` 省略会「遮蔽」deployment 后缀（即不再出现
   “You are a coding agent...” 那类框架文案）。
 - **叠加顺序**：`bundle → profile → home → CLI`（见 `--dump-config-schema` 头注释），且
-  「A patch config replaces the whole config」。**preset 行要放在 profile patch**：
-  Web 端「Agent 预设」编辑器对某行的改动就是按 id 写进 profile patch 的，
-  若定义放在 home patch（`~/.dsh/cordis.patch.yml`）会因层序更靠后而把 UI 的改动压掉。
-- 「百花中医」preset 已从旧目录格式移植：行 id `preset-baihua-tcm`、`config.id: baihua-tcm`，
-  位于 `~/.dsh/profiles/web/cordis.patch.yml`，组合 = persona（原 `text` → `prefix`）+
+  「A patch config replaces the whole config」。preset 的**默认定义放 bundle**（随插件分发），
+  **按 id 的覆盖放 profile patch**：Web 端「Agent 预设」编辑器对某行的改动就是按 id 写进
+  profile patch 的（profile 层更晚 → 你的改动生效）；定义放 home patch
+  （`~/.dsh/cordis.patch.yml`）则会因层序更靠后把 UI 的改动压掉。
+  同一个 id **不能 insert 两次**（否则 `duplicate loader entry id`）。
+- 「百花中医」preset 已从旧目录格式移植，并**随 `baihua-dsh-plugin` 的 bundle 分发**：
+  文件 `baihua-dsh-plugin/presets/baihua-tcm.patch.yml`（已加入该包 `dsh.bundle.patch` 数组），
+  行 id `preset-baihua-tcm`、`config.id: baihua-tcm`；组合 = persona（原 `text` → `prefix`）+
   `tool-web(fetch:false)` + `tool-ask-user` + compaction 组（含 tool-result-pruner）。
+  **装了该插件就有这个预设**，profile patch 里不要再 insert 同名 id（只写覆盖）。
   旧目录 `~/.dsh/.agent-presets/baihua-tcm/` 保留为历史副本，**不再被读取**。
-- 找不到 preset 时先看合成结果：`dsh --profile web --dump-config | Select-String preset-`；
-  界面里的列表走 RPC（不在 HTML 里），改完 patch 需重启 DSH。
+- 找不到 preset 时先看合成结果：`dsh --profile web --dump-config | Select-String preset-`
+  （行上方会标注来自哪一层，如 `# == baihua-dsh-plugin`）；界面里的列表走 RPC（不在 HTML 里），
+  改完 patch 或 bundle 需重启 DSH。
 
 ## 3. 插件配置（~/.dsh/profiles/web/cordis.patch.yml）
 
