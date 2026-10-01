@@ -102,6 +102,44 @@ DSH 0.2.x 重做了「插件」页与设置表单，0.1.x 的客户端 API **整
 > 改客户端 `client.js` 后必须**重启 DSH**（客户端 bundle 的 rev 在启动时登记，浏览器刷新
 > 才会拿到新 bundle）；服务端插件代码同样必须重启（见 §7 的 HMR 实测结论）。
 
+### 2.3 Agent 预设（preset）：0.2.x 与 0.1.x 完全不同
+
+**0.1.x**：用户 preset 是**目录式**的，放在 `~/.dsh/.agent-presets/<id>/`，目录里
+`preset.yml`（name/description）+ `agent.cordis.yml`（组合条目列表），由运行时扫描该目录。
+
+**0.2.x**：**目录扫描机制已删除**（0.2.0-rc.2 全树搜不到 `.agent-presets`），preset 改为
+**声明式 Loader 行**：
+
+```yaml
+- insert:
+    - id: preset-<id>                       # 任意 id
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: <id>                            # 必填；preset 身份（会话里选中的就是它）
+        name: 百花中医                        # 可选的显示名
+        description: ...
+        order: 50
+        plugins: [ ... ]                    # 必填：内联的 Cordis 条目列表（原 agent.cordis.yml）
+```
+
+官方自带的 `standard` / `ptc` / `minimal` / `cordis` 就是这个形状，定义在
+`@deepseek-ai/dsh-web-app/presets/*.patch.yml`。注意：
+
+- **`@deepseek-ai/dsh-persona` 的配置键变了**：0.1.x 用 `config.text`，0.2.x 只有
+  `{ prefix(必填), suffix?, complete?, includeRuntimeContext? }` —— 直接搬旧组合会因未知键
+  而挂掉，`text` 要改写为 `prefix`；`suffix` 省略会「遮蔽」deployment 后缀（即不再出现
+  “You are a coding agent...” 那类框架文案）。
+- **叠加顺序**：`bundle → profile → home → CLI`（见 `--dump-config-schema` 头注释），且
+  「A patch config replaces the whole config」。**preset 行要放在 profile patch**：
+  Web 端「Agent 预设」编辑器对某行的改动就是按 id 写进 profile patch 的，
+  若定义放在 home patch（`~/.dsh/cordis.patch.yml`）会因层序更靠后而把 UI 的改动压掉。
+- 「百花中医」preset 已从旧目录格式移植：行 id `preset-baihua-tcm`、`config.id: baihua-tcm`，
+  位于 `~/.dsh/profiles/web/cordis.patch.yml`，组合 = persona（原 `text` → `prefix`）+
+  `tool-web(fetch:false)` + `tool-ask-user` + compaction 组（含 tool-result-pruner）。
+  旧目录 `~/.dsh/.agent-presets/baihua-tcm/` 保留为历史副本，**不再被读取**。
+- 找不到 preset 时先看合成结果：`dsh --profile web --dump-config | Select-String preset-`；
+  界面里的列表走 RPC（不在 HTML 里），改完 patch 需重启 DSH。
+
 ## 3. 插件配置（~/.dsh/profiles/web/cordis.patch.yml）
 
 ```yaml
