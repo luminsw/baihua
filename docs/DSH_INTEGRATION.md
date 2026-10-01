@@ -141,6 +141,17 @@ DSH 0.2.x 重做了「插件」页与设置表单，0.1.x 的客户端 API **整
   `tool-web(fetch:false)` + `tool-ask-user` + compaction 组（含 tool-result-pruner）。
   **装了该插件就有这个预设**，profile patch 里不要再 insert 同名 id（只写覆盖）。
   旧目录 `~/.dsh/.agent-presets/baihua-tcm/` 保留为历史副本，**不再被读取**。
+- **桌面端（desktop profile）另有一份同步副本**：该 profile 归 Electron 应用独占，CLI 不能
+  dump/启动它（`profile "desktop" is managed exclusively by the Electron application`），
+  而且桌面端没装 `baihua-dsh-plugin`，所以定义直接写在
+  `~/.dsh/profiles/desktop/cordis.patch.yml` 里（同一段 `- insert: preset-baihua-tcm`，
+  与官方 preset patch 同形）。**引用行不通**：profile 的 bundle 层读的是 patch 列表
+  （`dsh.bundle.patch`），而 native `cordis:include` 读的是条目列表（`config.path` + 带 `name`
+  的行），两种格式不通用。**改 preset 定义时这两处要同步**（源文件 =
+  `baihua-dsh-plugin/presets/baihua-tcm.patch.yml`）。
+- 想预验证 desktop profile 的改动（CLI 不让 dump 它）：把该 patch 复制到临时 home 的**别名
+  profile**（如 `desktop2`）再 `dsh --profile desktop2 --dump-config`，看是否恰好出现一次、
+  无告警。
 - 找不到 preset 时先看合成结果：`dsh --profile web --dump-config | Select-String preset-`
   （行上方会标注来自哪一层，如 `# == baihua-dsh-plugin`）；界面里的列表走 RPC（不在 HTML 里），
   改完 patch 或 bundle 需重启 DSH。
