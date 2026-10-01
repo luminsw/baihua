@@ -152,6 +152,41 @@ DSH 0.2.x 重做了「插件」页与设置表单，0.1.x 的客户端 API **整
 - 想预验证 desktop profile 的改动（CLI 不让 dump 它）：把该 patch 复制到临时 home 的**别名
   profile**（如 `desktop2`）再 `dsh --profile desktop2 --dump-config`，看是否恰好出现一次、
   无告警。
+- 「百花拜师」preset（`preset-baihua-baishi`，order 51）同样随该 bundle 分发：
+  persona = 师父（三条线定位 + 教学闭环 + 批改五步 + 落库 frontmatter + 更新进度 + 红线 +
+  **开工先读契约** `docs/BAISHI_MASTER.md`）；工具 = `tool-fs`（read/write/edit）+
+  `tool-fs-search` + `skill-filesystem`(customSkillDirs) + `tool-skill` + `tool-ask-user` +
+  `tool-web(fetch:false)` + compaction 组；不含 shell/子代理/工作流。桌面端照旧加本地副本。
+
+### 2.4 DSH skill（与 CodeArts skill 的对应）
+
+**skill = 一个目录 + `SKILL.md`**（YAML frontmatter 至少 `name` + `description`，正文即方法论）：
+
+```
+<root>/<skill-name>/SKILL.md          # 目录式；也支持根目录下的扁平 *.md
+```
+
+`dsh-skill-filesystem` 扫这些根（`includeDefaultRoots` 默认 **true**）：
+
+| 根 | source | 备注 |
+|---|---|---|
+| `<项目根>/.dsh/skills` | `project-dsh` | 百花仓库已在用（`baihua-coding`、`baishi-master`，均已入 git） |
+| `<项目根>/.agents/skills` | `project-agents` | |
+| `$DSH_HOME/skills`（`~/.dsh/skills`） | `user-dsh` | 跨项目可用 |
+| `~/.agents/skills` | `user-agents` | |
+| `config.customSkillDirs` | `custom` | **不需要 cwd**，最稳；preset 里用绝对路径挂 |
+| `config.bundledSkillDir` | `bundled` | 官方 `@deepseek-ai/dsh-agent-preset/skills` |
+
+> 注意两点（实测）：① **项目根只在 lookup 带 `cwd` 时才扫**（`roots(cwd)` 里判断
+> `cwd !== undefined`），而 `customSkillDirs` 无条件生效 —— 所以关键 skill 建议用
+> `customSkillDirs` 显式挂；② 根级 `skill-filesystem` / `tool-skill` 在 profile 层是
+> **`disabled: true`**，只有 preset 内嵌的行才生效（standard/ptc/cordis 有；minimal 没有）——
+> 即 **skill 能不能用取决于当前会话用的哪个 preset**。拜师 preset 因此自己显式挂载这两个行，
+> 不依赖默认。
+>
+> 另：桌面 app 当前会话里 skill 发现没生效（`skill` 工具在、但 `baihua-coding` 与两个探针都报
+> unknown），组合与任何内置 preset 都不一致，原因待查；拜师模式因显式挂载不受影响。
+
 - 找不到 preset 时先看合成结果：`dsh --profile web --dump-config | Select-String preset-`
   （行上方会标注来自哪一层，如 `# == baihua-dsh-plugin`）；界面里的列表走 RPC（不在 HTML 里），
   改完 patch 或 bundle 需重启 DSH。

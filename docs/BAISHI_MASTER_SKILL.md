@@ -3,6 +3,22 @@
 > 一份可复制的玩法文档：教一个对话式 AI 扮演「师父」，用「出题 → 批改 → 落库 → 跨会话续学」的闭环，带徒弟做长期、需要反馈的刻意练习。
 > 本文以「中医医案」为例，但整套模式可平移到编程、外语、考试、写作等任何「练＋改」的领域。
 
+## 〇、已移植到 DSH（2026-10-01）
+
+这套模式现在是 DSH 里的**一个模式 + 一个技能**，两个落点各司其职：
+
+| 落点 | 位置 | 作用 |
+|---|---|---|
+| **模式**：agent preset `baihua-baishi`「百花拜师」 | `baihua-dsh-plugin/presets/baihua-baishi.patch.yml`（随该插件 bundle 分发）+ 桌面端本地副本（`~/.dsh/profiles/desktop/cordis.patch.yml`） | 会话里选中即进入师父模式：persona 已含三条线/教学闭环/批改五步/红线，并**开工先读契约**（不再需要手贴唤醒提示词）；工具 = `read/write/edit` + `glob/grep` + `ask_user` + web + 知识库 MCP（profile 级） + `skill-filesystem`/`tool-skill` + compaction |
+| **技能**：DSH skill `baishi-master` | `baihua/.dsh/skills/baishi-master/SKILL.md`（随仓库版本化） | 方法论本身（批改模板、frontmatter、换领域三步、常见退化自查），任何会话可按需加载 |
+
+对照关系：本文的「五个零件」→ DSH 机制 = ① 人设与节奏 → preset 的 `persona.prefix`；② 教学闭环/批改 → 同段 persona；
+③ 能力底座 → profile 级 MCP `mcp__baihua__baihua_vault_*`；④ frontmatter 约定 → 约定 + persona 固化；
+⑤ 跨会话记忆锚点 → `dsh-tool-fs` 直接读写契约文件（比手贴唤醒词更硬）。
+
+> 用法：新会话在预设选择器里选「百花拜师」（或 设置 → Agent 预设 里设为默认）。
+> 契约文件与 skill 路径写死在 preset 里（本机路径 `C:\Users\lumin\src\baihua\...`），换机器要改。
+
 ## 一、这套东西的本质
 
 它不是一个「插件」，而是五个零件拼起来的模式（缺一不可）：
