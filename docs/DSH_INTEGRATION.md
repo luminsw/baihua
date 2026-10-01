@@ -191,6 +191,13 @@ DSH 0.2.x 重做了「插件」页与设置表单，0.1.x 的客户端 API **整
 - 找不到 preset 时先看合成结果：`dsh --profile web --dump-config | Select-String preset-`
   （行上方会标注来自哪一层，如 `# == baihua-dsh-plugin`）；界面里的列表走 RPC（不在 HTML 里），
   改完 patch 或 bundle 需重启 DSH。
+- **preset 挂载失败 = 界面里直接看不见**（不是显示成坏的）：客户端
+  `@deepseek-ai/dsh-client-ui-agent-preset` 里是 `presets.filter((p) => p.broken === void 0)`，
+  broken 项只出现在 设置 → Agent 预设 的红字里。典型成因：**行 config 的必填字段漏写**
+  （实例：`@deepseek-ai/dsh-tool-fs-search` 的 `sampleOverCapGlobResults` 必填无默认 →
+  整条「百花拜师」broken、picker 里消失）。自检：在 `baihua-dsh-plugin` 里跑
+  `node scripts/preset-roster.mjs [profile]` —— 进程内 boot（随机端口，不打断在跑的实例）后
+  直接读注册表，打印每个 preset 的 broken 原因，有 broken 时非 0 退出（可进 CI）。
 
 ## 3. 插件配置（~/.dsh/profiles/web/cordis.patch.yml）
 
