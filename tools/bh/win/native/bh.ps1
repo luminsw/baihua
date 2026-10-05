@@ -124,9 +124,34 @@ function Update-Services {
 
 function Get-PidFile($name) { Join-Path $PidDir "$name.pid" }
 
+<#
+    本机监听端口集合（一次 .NET 枚举，毫秒级；不做缓存：Wait-Port 需要每次拿最新状态）。
+
+    只收「回环可达」的绑定：通配地址（0.0.0.0 / ::）或明确的回环地址 —— 与旧实现
+    「连 127.0.0.1:port」语义一致（server 绑 0.0.0.0、webui 绑 127.0.0.1 都命中）。
+#>
+function Get-ListeningPortSet {
+    $set = @{}
+    try {
+        $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+        foreach ($ep in $listeners) {
+            $addr = $ep.Address
+            if ($addr.Equals([System.Net.IPAddress]::Any) -or
+                $addr.Equals([System.Net.IPAddress]::IPv6Any) -or
+                [System.Net.IPAddress]::IsLoopback($addr)) {
+                $set[[int]$ep.Port] = $true
+            }
+        }
+    } catch { }
+    return $set
+}
+
 function Test-PortOpen($port) {
-    $c = New-Object Net.Sockets.TcpClient
-    try { $c.Connect('127.0.0.1', $port); return $true } catch { return $false } finally { $c.Dispose() }
+    # ⚠️ 不要改回 TcpClient.Connect：部分机器（有防火墙/WFP 过滤时）对**未监听**的回环端口
+    # 不返回 RST 而是一直等到超时，实测 ~2.05s/次；`bh status` 要探 4 个端口 → 6s+，
+    # 而 DSH 插件是同步拿这个结果（历史版本 spawnSync）→ 整个 harness 卡 6s。
+    # 端口枚举一次只要 ~30ms，且 4 个端口复用同一实现总耗时仍是 ~30ms。
+    return (Get-ListeningPortSet).ContainsKey([int]$port)
 }
 
 function Wait-Port($port, $seconds) {
