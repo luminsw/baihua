@@ -11,7 +11,8 @@
 
 ## 1. 升级步骤（在 192.168.3.9 上执行）
 
-> 假设望月台为 k8s 部署（与本机一致），用 `bh-k3s`（Linux 上 `bh` 同义）；若为 Windows native 则用 `bh`（`tools/bh/bh.ps1`，文档里的 `bh-k3s <cmd>` 换成 `bh <cmd>`）。
+> 假设望月台为 k8s 部署（与本机一致），用 `bh`（Linux 上即 k3s 形态，见 `tools/bh/linux/k8s/bh.sh`）；Windows native 也用 `bh`（`tools/bh/bh.ps1`）。
+> 旧的 `bh-k3s <cmd>` 已随本机 WSL 卸载退役（2026-10-27），文档里见到时一律换成 `bh <cmd>`。
 
 ### 1.1 更新百花后端源码并重建
 ```bash

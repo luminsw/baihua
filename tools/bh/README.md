@@ -86,6 +86,16 @@ bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
 > OpenVINO 用 `ovms` 进程/系统服务（REST :8000，`scripts/install-openvino-ovms-service.ps1` 安装）。
 > 环境变量：`PG_HOST`（默认 127.0.0.1）、`PG_USER`（默认 postgres）、`PG_PASSWORD`、`PG_DATABASE`（默认 baihua）。
 
+## 自检（native 回归）
+
+```powershell
+pwsh -File scripts/verify-bh-native.ps1          # 8 项：无 bh-k3s 残留 / 无 WSL·Docker 依赖 / status(--json) / 旧写法提示
+pwsh -File scripts/verify-bh-native.ps1 -Quiet   # 只输出失败与汇总
+```
+
+只读脚本（不 start/stop 服务），改了 `tools/bh/*.ps1` 后建议先跑一遍——
+`dotnet test` 覆盖不到 PowerShell 入口。
+
 ### Linux（k3s 形态）
 
 在 Linux 机器上 `bh` 等同 k3s 形态（`linux/k8s/bh.sh`）：build/deploy/up/status/logs 等，

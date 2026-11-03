@@ -29,6 +29,9 @@ tmp_check_db.csx
 *.swp
 .DS_Store
 
+# 本机测试辅助：受限环境（vstest testhost 无法启动）下的进程内 xunit runner，仅本机用、不入库
+/tools/UtRunner/
+
 # 构建产物（隔离输出目录，如 .fam35/.testout/.artifacts-* 等）
 .fam35/
 .testout/

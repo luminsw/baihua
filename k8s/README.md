@@ -791,7 +791,12 @@ k3s kubectl -n kube-system get jobs
 > 退役需管理员权限：`powershell -ExecutionPolicy Bypass -File scripts\install-openvino-ovms-service.ps1 -Remove`
 > （只停服务+删注册，模型目录与 OVMS 二进制保留，可随时重装）。
 
-### 6. Windows 宿主上的访问方式（`bh-k3s dashboard` 与手机）
+### 6. Windows 宿主上的访问方式（历史：WSL 包装层已退役）
+
+> **已退役（2026-10-27）**：本机 WSL 已卸载，Windows 侧 `bh-k3s` 包装层（`tools/bh/bh-k3s.ps1`）
+> 与 WSL 保活脚本（`scripts/bh-wsl.ps1` 等）已删除，Windows 一律走 native `bh`（见 `tools/bh/README.md`）。
+> 本节保留「Windows 宿主 + WSL2 + k3s」的原始记录，仅供将来重装 WSL2 时参考；
+> 其中的 `bh-k3s <cmd>` 需改成 WSL 内的 `bh <cmd>`（即 `tools/bh/linux/k8s/bh.sh`）。
 
 - **浏览器（Windows 本机）**：`bh-k3s dashboard` 已能自动打开 Windows 默认浏览器 ——
   Windows 包装层（`tools/bh/bh-k3s.ps1`）用 `BAIHUA_DASHBOARD_PRINT_ONLY=1` 让 WSL 里只取 cli-token 并回传 URL，
