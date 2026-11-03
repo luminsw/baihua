@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Baihua.Contracts.Learn;
 using Baihua.Data;
 using Baihua.Family.Tests.Services;
@@ -35,9 +36,17 @@ public class QuizBankSourceDataTests
         var dir = Path.GetDirectoryName(baseFile)!;
         var batches = Directory.GetFiles(dir, "*.json")
             .Where(f => !string.Equals(Path.GetFileName(f), "jingfang-package.json", StringComparison.Ordinal))
-            .OrderBy(f => Path.GetFileName(f), StringComparer.Ordinal)
+            .OrderBy(BatchOrder)
+            .ThenBy(f => Path.GetFileName(f), StringComparer.Ordinal)
             .ToList();
         return [baseFile, .. batches];
+    }
+
+    /// <summary>批次号（b1、b10… 按数字而非字典序，与内容生产/导入顺序一致）。</summary>
+    private static int BatchOrder(string path)
+    {
+        var m = Regex.Match(Path.GetFileName(path), @"^b(\d+)");
+        return m.Success ? int.Parse(m.Groups[1].Value) : int.MaxValue;
     }
 
     private static QuizBankPackage Load(string path)

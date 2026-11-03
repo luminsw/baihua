@@ -84,7 +84,7 @@ if (isCheck)
 
     // 正确项唯一性体检（数据红线：判定零 AI 的前提）
 
-    var allQuestions = await db.QuizQuestions.Select(q => new { q.QuestionCode, q.OptionsJson }).ToListAsync();
+    var allQuestions = await db.QuizQuestions.Select(q => new { q.QuestionCode, q.OptionsJson, q.ItemId }).ToListAsync();
     var bad = allQuestions
         .Where(q =>
         {
@@ -96,7 +96,14 @@ if (isCheck)
     Console.WriteLine(bad.Count == 0
         ? "  正确项唯一性体检：全部通过"
         : $"  ✗ 正确项≠1 的题：{bad.Count} 个（{string.Join(", ", bad.Take(5))}…）");
-    return bad.Count == 0 ? 0 : 2;
+
+    // 条目关联体检：题目引用的 itemCode 必须真的关联上条目（拼错/跨包导入顺序会让 ItemId 静默为 null）
+    var noItem = allQuestions.Where(q => q.ItemId == null).Select(q => q.QuestionCode).ToList();
+    Console.WriteLine(noItem.Count == 0
+        ? "  条目关联体检：全部题目已关联条目"
+        : $"  ✗ 未关联条目的题：{noItem.Count} 个（{string.Join(", ", noItem.Take(5))}…）");
+
+    return bad.Count == 0 && noItem.Count == 0 ? 0 : 2;
 }
 
 // ── 导入 ──
