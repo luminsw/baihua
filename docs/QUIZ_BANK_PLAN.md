@@ -2,6 +2,10 @@
 
 > 2026-10-27 立项。目标：把「百花拜师」中医学习数据做成**选择题题库**，补全伤寒/金匮全方剂内容，
 > 在百花增加**选择题形式的学习模块**；数据库设计**行业无关**（行业→题库两级），为花阁/花记复用做准备。
+>
+> **状态（2026-11-03）**：S1–S5 已完成——契约/实体/服务/API/UI（/learn）落地，内容 219 方 259 题
+> （`data/tcm-quiz/`：B0 基线包 + B1~B10 增量包），题库包导出端点可用；回归测试见
+> `tests/Baihua.Family.Tests/Services/QuizBank*` 与 `tests/Baihua.Family.Tests/Learning/QuizBankSourceDataTests.cs`。
 
 ## 一、现状调查结论
 

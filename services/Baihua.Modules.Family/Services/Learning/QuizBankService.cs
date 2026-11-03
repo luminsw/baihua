@@ -89,12 +89,21 @@ public class QuizBankService
         }
 
         // 3. 知识条目 upsert（按 ItemCode）
+        // itemIdMap 必须预先装入库内既有条目：增量包常常只带题目（items 为空），条目定义在早先的批次里，
+        // 只看本包会把题目引用的 itemCode 静默置空（导出/按方剂关联就断了，且不报错）。
         var itemCodes = package.Items.Select(x => x.ItemCode).ToList();
+        var referencedItemCodes = package.Questions
+            .Select(x => x.ItemCode)
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code!)
+            .Distinct()
+            .ToList();
+        var lookupItemCodes = itemCodes.Concat(referencedItemCodes).Distinct().ToList();
         var existingItems = await db.QuizItems
-            .Where(x => x.BankId == bank.Id && itemCodes.Contains(x.ItemCode))
+            .Where(x => x.BankId == bank.Id && lookupItemCodes.Contains(x.ItemCode))
             .ToDictionaryAsync(x => x.ItemCode, ct);
 
-        var itemIdMap = new Dictionary<string, int>();
+        var itemIdMap = existingItems.ToDictionary(x => x.Key, x => x.Value.Id);
         foreach (var dto in package.Items)
         {
             if (string.IsNullOrWhiteSpace(dto.ItemCode) || string.IsNullOrWhiteSpace(dto.Name))
@@ -358,7 +367,7 @@ public class QuizBankService
         using var db = await _dbFactory.CreateDbContextAsync(ct);
 
         var question = await db.QuizQuestions.SingleOrDefaultAsync(
-            q => q.Bank.Code == bankCode && q.QuestionCode == submit.QuestionCode, ct)
+            q => q.Bank!.Code == bankCode && q.QuestionCode == submit.QuestionCode, ct)
             ?? throw new InvalidOperationException($"题目不存在：{bankCode}/{submit.QuestionCode}");
 
         var options = JsonSerializer.Deserialize<List<QuizOptionDto>>(question.OptionsJson, JsonOptions) ?? [];
