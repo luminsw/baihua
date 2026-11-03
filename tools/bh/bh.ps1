@@ -1,14 +1,15 @@
 ﻿#requires -Version 5.1
 <#
   bh - 百花 CLI（Windows，native 形态：dotnet 进程直接跑在 Windows 上）
-  不依赖 WSL/k3s；委托 tools/bh/win/native/bh.ps1 执行（PostgreSQL 由用户自行安装）。
+  不依赖 WSL/Docker/k3s；委托 tools/bh/win/native/bh.ps1 执行（PostgreSQL 由用户自行安装）。
 
-  k3s（全容器化，经 WSL）已独立为另一个命令：bh-k3s <command>。
+  k3s 形态（经 WSL）已随本机 WSL 卸载而退役（2026-10-27）：Windows 侧 bh-k3s 入口已删除，
+  Linux 侧 k3s 实现保留在 linux/k8s（供 Linux 机器使用，与 Windows bh 无关）。
 
   用法:
     bh <command> [args]          执行 native 命令（委托 win/native/bh.ps1）
     bh lan [on|off|status]       局域网入口（宿主 :80 -> :8788 portproxy）
-    bh install                   复制定位器到 %USERPROFILE%\.local\bin（装 bh 与 bh-k3s，加入用户 PATH）
+    bh install                   复制定位器到 %USERPROFILE%\.local\bin（加入用户 PATH）
     bh uninstall                 移除定位器与 PATH 项
 #>
 [CmdletBinding()]
@@ -29,44 +30,49 @@ $Arg1 = if ($All.Count -gt 0) { $All[0] } else { '' }
 $CmdArgs = @($All)
 
 function Show-Help {
-    Write-Host 'bh - 百花 CLI（Windows native：dotnet 进程，不依赖 WSL/k3s）'
+    Write-Host 'bh - 百花 CLI（Windows native：dotnet 进程，不依赖 WSL/Docker/k3s）'
     Write-Host ''
     Write-Host '用法:'
     Write-Host '  bh                           打开管理面板（= bh dashboard）'
     Write-Host '  bh <command> [args]           执行 native 命令'
     Write-Host '  bh lan [on|off|status]        局域网入口（宿主 :80 -> :8788 portproxy）'
-    Write-Host '  bh install / uninstall        安装（bh + bh-k3s）/ 移除 定位器与用户 PATH'
+    Write-Host '  bh install / uninstall        安装 / 移除 定位器与用户 PATH'
     Write-Host ''
     Write-Host 'native 命令: build / build-restart / start / stop / restart / update'
     Write-Host '             status [--json] / logs <svc> [n] / dashboard / open / open-webui'
     Write-Host 'native 依赖: .NET SDK 10、本机 PostgreSQL（Windows 服务）、可选 OVMS(:8000)'
     Write-Host ''
-    Write-Host 'k3s（全容器化，经 WSL）已独立为另一个命令: bh-k3s <command>'
-    Write-Host '  例: bh-k3s status / bh-k3s build server webui / bh-k3s up / bh-k3s dashboard'
+    Write-Host 'k3s 形态已随本机 WSL 卸载退役（Linux 侧实现保留于 tools/bh/linux/k8s）'
     Write-Host ''
     Write-Host '完整说明见 tools/bh/README.md'
 }
 
 function Invoke-Install {
     # 复制自包含定位器到 %USERPROFILE%\.local\bin，并把该目录加入用户 PATH。
-    # bh 与 bh-k3s 各自一个定位器（同一套定位逻辑，只是转发的入口脚本不同），
-    # 装哪个入口都一样——这里一次把两个都装上，避免"装了 bh 却没有 bh-k3s"。
     # 定位器每次调用时自动定位仓库根（BAIHUA_HOME > 常见路径 > 向上查找），
     # 仓库改名/移动后无需重装。
+    # k3s 已退役：install 不再装 bh-k3s，并主动清理旧版安装的 bh-k3s 定位器
+    # （源文件已从仓库删除，旧装机残留只会报"找不到脚本"）。
     $bin = Join-Path $HOME '.local\bin'
     New-Item -ItemType Directory -Force -Path $bin | Out-Null
     $files = @(
-        @{ Src = 'locator.ps1';     Dst = 'bh.ps1' },
-        @{ Src = 'bh.cmd';          Dst = 'bh.cmd' },
-        @{ Src = 'locator-k3s.ps1'; Dst = 'bh-k3s.ps1' },
-        @{ Src = 'bh-k3s.cmd';      Dst = 'bh-k3s.cmd' }
+        @{ Src = 'locator.ps1'; Dst = 'bh.ps1' },
+        @{ Src = 'bh.cmd';      Dst = 'bh.cmd' }
     )
     foreach ($f in $files) {
         $src = Join-Path $Root $f.Src
         if (-not (Test-Path $src)) { Write-Warning "[install] 缺少 $src（跳过 $($f.Dst)）"; continue }
         Copy-Item $src (Join-Path $bin $f.Dst) -Force
     }
-    Write-Host "[install] 已安装定位器: bh / bh-k3s -> $bin"
+    Write-Host "[install] 已安装定位器: bh -> $bin"
+
+    # 清理旧版遗留的 bh-k3s 定位器（k3s 形态已退役）
+    $legacy = @('bh-k3s.ps1', 'bh-k3s.cmd') | ForEach-Object { Join-Path $bin $_ }
+    $removed = @($legacy | Where-Object { Test-Path $_ })
+    if ($removed.Count -gt 0) {
+        $removed | ForEach-Object { Remove-Item $_ -Force -ErrorAction SilentlyContinue }
+        Write-Host '[install] 已清理 k3s 形态遗留定位器: bh-k3s.ps1 / bh-k3s.cmd'
+    }
 
     # 幂等：把 $bin 追加到用户 PATH（HKCU\Environment）
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -85,10 +91,9 @@ function Invoke-Install {
 public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 '@ -ErrorAction SilentlyContinue
     $null = [Win32.Native]::SendMessageTimeout([IntPtr]::Zero, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]([UIntPtr]::Zero))
-    Write-Host '[install] 完成。新开终端后可直接使用: bh <command> / bh-k3s <command>'
+    Write-Host '[install] 完成。新开终端后可直接使用: bh <command>'
     Write-Host '         当前会话请用: .\tools\bh\bh.ps1 <command>'
     Write-Host '[install] 定位器自动查找: $env:BAIHUA_HOME > 常见路径 > 当前目录向上；仓库改名/移动后无需重新安装'
-    Write-Host '[install] 注意: bh / bh-k3s 只装 Windows 侧定位器；k3s 需另行在 WSL 内完成首次安装（见 tools/bh/README.md）'
 }
 
 function Invoke-Uninstall {
@@ -105,7 +110,7 @@ function Invoke-Uninstall {
     foreach ($n in @('bh.ps1', 'bh.cmd', 'bh-k3s.ps1', 'bh-k3s.cmd')) {
         Remove-Item (Join-Path $bin $n) -Force -ErrorAction SilentlyContinue
     }
-    Write-Host '[uninstall] 已移除 %USERPROFILE%\.local\bin\bh.ps1 / bh.cmd / bh-k3s.ps1 / bh-k3s.cmd'
+    Write-Host '[uninstall] 已移除 %USERPROFILE%\.local\bin\bh.ps1 / bh.cmd（含 k3s 遗留 bh-k3s.* 如有）'
 }
 
 # ---- 共享工具函数 ----
@@ -136,10 +141,10 @@ if ($Arg1 -in @('install', 'uninstall')) {
     exit 0
 }
 if ($Arg1 -in @('help', '-h', '--help')) { Show-Help; exit 0 }
-# 旧写法是 bh k8s <cmd>；k3s 已独立成命令，这里给出可执行的迁移指引而不是静默当成 native 命令
+# 旧写法 bh k8s <cmd> / bh-k3s <cmd>：k3s 形态已随本机 WSL 卸载退役，给出明确指引而非静默失败
 if ($Arg1 -eq 'k8s') {
-    $rest = (@($All | Select-Object -Skip 1) -join ' ')
-    Write-Warning "[bh] 'k8s' 不再是子命令：k3s 部署已独立为 bh-k3s。请改用: bh-k3s $rest"
+    Write-Warning "[bh] 'k8s' 不再是子命令：k3s 形态已随 WSL 卸载退役（native 是唯一 Windows 形态）。"
+    Write-Warning "[bh] 如需 k8s 能力请先重装 WSL2 并参考 tools/bh/linux/k8s；日常使用直接: bh <command>"
     exit 1
 }
 # 旧写法是 bh native <cmd>；native 就是本命令的默认形态，前缀已无意义
