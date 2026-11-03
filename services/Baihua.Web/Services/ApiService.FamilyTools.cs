@@ -642,6 +642,47 @@ namespace Baihua.Web.Services
             }
         }
 
+        // ===== 多行业选择题题库学习（/learn）=====
+
+        public async Task<List<Baihua.Contracts.Learn.QuizBankOverviewDto>> GetLearnBanksAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                quick.CancelAfter(QuickCallTimeout);
+                var response = await GetWithMetricsAsync("/api/learn/banks", quick.Token);
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadFromJsonAsync<List<Baihua.Contracts.Learn.QuizBankOverviewDto>>(quick.Token)
+                       ?? new List<Baihua.Contracts.Learn.QuizBankOverviewDto>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取题库列表失败");
+                return new List<Baihua.Contracts.Learn.QuizBankOverviewDto>();
+            }
+        }
+
+        public async Task<List<Baihua.Contracts.Learn.QuizQuestionViewDto>> DrawLearnQuestionsAsync(string bankCode, int count = 10, CancellationToken cancellationToken = default)
+        {
+            using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            quick.CancelAfter(QuickCallTimeout);
+            var response = await GetWithMetricsAsync($"/api/learn/banks/{Uri.EscapeDataString(bankCode)}/questions?count={count}", quick.Token);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<List<Baihua.Contracts.Learn.QuizQuestionViewDto>>(quick.Token)
+                   ?? new List<Baihua.Contracts.Learn.QuizQuestionViewDto>();
+        }
+
+        public async Task<Baihua.Contracts.Learn.QuizAnswerResultDto?> SubmitLearnAnswerAsync(string bankCode, Baihua.Contracts.Learn.QuizAnswerSubmitDto submit, CancellationToken cancellationToken = default)
+        {
+            using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            quick.CancelAfter(QuickCallTimeout);
+            var response = await PostWithMetricsAsync(
+                $"/api/learn/banks/{Uri.EscapeDataString(bankCode)}/answer", JsonContent.Create(submit), quick.Token);
+            if (!response.IsSuccessStatusCode)
+                return null;
+            return await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizAnswerResultDto>(quick.Token);
+        }
+
         public async Task<List<LeaderboardEntryDto>> GetLeaderboardAsync(string type, string? vaultId = null)
         {
             try

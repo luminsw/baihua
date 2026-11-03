@@ -1,0 +1,382 @@
+@page "/learn"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Microsoft.Extensions.Logging.ILogger<Learn> Logger
+@inject IJSRuntime JS
+@using Baihua.Contracts.Learn
+@using Baihua.Contracts.Achievements
+
+<PageTitle>经方题库 · 学习</PageTitle>
+
+<div class="learn-page">
+    <h1>📚 中医 · 经方题库</h1>
+
+    @if (stage == Stage.Banks)
+    {
+        <div class="learn-setup">
+            <h2>选择题库</h2>
+            @if (banks.Count == 0)
+            {
+                <p class="learn-empty">暂无可用题库（请先导入题库包）。</p>
+            }
+            else
+            {
+                <div class="bank-list">
+                    @foreach (var bank in banks)
+                    {
+                        <button class="bank-card btn" @onclick="() => SelectBankAsync(bank)">
+                            <div class="bank-name">@bank.IndustryName · @bank.BankName</div>
+                            <div class="bank-meta">
+                                <span>@bank.ItemCount 方剂</span>
+                                <span>@bank.QuestionCount 道题</span>
+                                <span>v@(string.IsNullOrEmpty(bank.Version) ? "-" : bank.Version)</span>
+                            </div>
+                        </button>
+                    }
+                </div>
+                <div class="export-row">
+                    <a class="btn btn-outline-secondary" href="/api/learn/banks/@banks[0].BankCode/export" target="_blank">⬇ 导出题库包（供花阁/花记）</a>
+                </div>
+            }
+        </div>
+    }
+    else if (stage == Stage.Learner)
+    {
+        <div class="learn-setup">
+            <h2>选择家庭成员</h2>
+            @if (learners.Count == 0)
+            {
+                <p class="learn-empty">尚无家庭成员，请先在成就页创建学习者。</p>
+            }
+            else
+            {
+                <div class="player-select">
+                    @foreach (var l in learners)
+                    {
+                        <button class="btn @(selectedLearnerId == l.Id ? "btn-primary" : "btn-outline-primary")" @onclick="() => SelectLearnerAsync(l.Id)">
+                            @l.AvatarEmoji @l.Name
+                        </button>
+                    }
+                </div>
+            }
+            <button class="btn btn-link" @onclick="() => BackToBanks()">← 返回题库选择</button>
+        </div>
+    }
+    else if (stage == Stage.Playing && currentQuestion != null)
+    {
+        <div class="learn-question">
+            <div class="learn-progress">
+                <span>第 @(index + 1) / @questions.Count 题</span>
+                <span>✅ @correctCount　❌ @(answeredCount - correctCount)</span>
+            </div>
+
+            <div class="learn-stem">
+                <div class="stem-patient">@currentQuestion.StemDetail?.Patient</div>
+                <ul class="stem-signs">
+                    @foreach (var sign in currentQuestion.StemDetail?.Signs ?? new List<string>())
+                    {
+                        <li>@sign</li>
+                    }
+                </ul>
+                <div class="stem-full">@currentQuestion.Stem</div>
+            </div>
+
+            @if (result == null)
+            {
+                <div class="learn-options">
+                    @foreach (var opt in currentQuestion.Options)
+                    {
+                        <button class="option-btn btn" @onclick="() => AnswerAsync(opt.Key)">
+                            <span class="option-key">@opt.Key</span>
+                            <span class="option-content">@opt.Content</span>
+                        </button>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="learn-result @(result.IsCorrect ? "correct" : "wrong")">
+                    <div class="result-head">
+                        @(result.IsCorrect ? "✅ 答对了" : $"❌ 答错了——正确答案：{result.CorrectKey}．{result.CorrectContent}")
+                    </div>
+                    <div class="result-options">
+                        @foreach (var opt in result.Options)
+                        {
+                            <div class="result-option @OptionClass(opt)">
+                                <span class="option-key">@opt.Key</span>
+                                <span>@opt.Content</span>
+                                @if (!string.IsNullOrEmpty(opt.Explanation))
+                                {
+                                    <div class="option-explanation">@opt.Explanation</div>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="result-analysis">
+                        <div class="analysis-title">📖 解析</div>
+                        <div class="analysis-body">@currentAnalysis</div>
+                    </div>
+                    @if ((result.Discrimination?.Count ?? 0) > 0)
+                    {
+                        <div class="result-discrimination">
+                            <div class="analysis-title">🎯 易混淆方 · 关键区分点</div>
+                            <table class="table table-sm discrimination-table">
+                                <tbody>
+                                    @foreach (var d in result.Discrimination!)
+                                    {
+                                        <tr>
+                                            <td class="versus-cell">vs @d.Versus</td>
+                                            <td>@d.Point</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    <div class="result-actions">
+                        @if (isLast)
+                        {
+                            <button class="btn btn-primary" @onclick="FinishAsync">查看结算 →</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-primary" @onclick="NextAsync">下一题 →</button>
+                        }
+                    </div>
+                    @if (aiAnalysis == null)
+                    {
+                        <div class="ai-row">
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="RequestAiAnalysisAsync" disabled="@aiLoading">
+                                @if (aiLoading)
+                                {
+                                    <span>AI 分析中…</span>
+                                }
+                                else
+                                {
+                                    <span>🤖 AI 延伸分析（可选·由 AI 生成·可能产生费用）</span>
+                                }
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="ai-result">
+                            <div class="analysis-title">🤖 AI 延伸分析<span class="ai-note">（AI 生成内容，仅供参考）</span></div>
+                            <div class="analysis-body">@aiAnalysis</div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else if (stage == Stage.Summary)
+    {
+        <div class="learn-summary">
+            <h2>🏁 本轮结算</h2>
+            <div class="summary-score">@correctCount / @questions.Count</div>
+            <div class="summary-note">正确率 @ScorePercent%，@(wrongCount == 0 ? "全对！" : wrongCount <= 2 ? "表现不错！" : "错题已入回顾，再接再厉！")</div>
+
+            @if (wrongQuestions.Count > 0)
+            {
+                <h3>错题回顾</h3>
+                <div class="wrong-list">
+                    @foreach (var w in wrongQuestions)
+                    {
+                        <div class="wrong-item">
+                            <div class="wrong-stem">@w.Question.StemDetail?.Patient</div>
+                            <div class="wrong-answer">正确答案：@w.Result.CorrectKey．@w.Result.CorrectContent</div>
+                        </div>
+                    }
+                </div>
+                <button class="btn btn-outline-primary" @onclick="RetryWrongAsync">只重做错题</button>
+            }
+            <div class="summary-actions">
+                <button class="btn btn-primary" @onclick="StartOverAsync">再来一轮</button>
+                <button class="btn btn-outline-secondary" @onclick="() => BackToBanks()">返回题库选择</button>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .learn-page { max-width: 860px; margin: 0 auto; padding: 1rem; }
+    .bank-list { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
+    .bank-card { text-align: left; padding: .9rem 1.2rem; }
+    .bank-name { font-size: 1.05rem; font-weight: 600; }
+    .bank-meta { display: flex; gap: 1rem; color: var(--bs-secondary-color); font-size: .85rem; margin-top: .25rem; }
+    .player-select { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+    .learn-progress { display: flex; justify-content: space-between; color: var(--bs-secondary-color); margin-bottom: .75rem; }
+    .learn-stem { background: var(--bs-tertiary-bg); border-radius: .5rem; padding: 1rem; margin-bottom: 1rem; }
+    .stem-patient { font-weight: 600; margin-bottom: .5rem; }
+    .stem-signs { margin: 0 0 .5rem 0; padding-left: 1.2rem; }
+    .stem-signs li { margin: .15rem 0; }
+    .stem-full { font-size: .85rem; color: var(--bs-secondary-color); white-space: pre-wrap; }
+    .learn-options { display: flex; flex-direction: column; gap: .5rem; }
+    .option-btn { text-align: left; display: flex; gap: .75rem; align-items: baseline; padding: .7rem 1rem; }
+    .option-key { font-weight: 700; min-width: 1.4rem; }
+    .result-head { font-size: 1.1rem; font-weight: 600; margin-bottom: .75rem; }
+    .learn-result.wrong .result-head { color: var(--bs-danger); }
+    .learn-result.correct .result-head { color: var(--bs-success); }
+    .result-option { padding: .5rem .75rem; border-radius: .375rem; margin-bottom: .4rem; }
+    .result-option.right { background: rgba(25, 135, 84, .12); border: 1px solid var(--bs-success); }
+    .result-option.picked-wrong { background: rgba(220, 53, 69, .10); border: 1px solid var(--bs-danger); }
+    .result-option.plain { background: var(--bs-tertiary-bg); }
+    .option-explanation { font-size: .85rem; color: var(--bs-secondary-color); margin-top: .25rem; }
+    .analysis-title { font-weight: 600; margin: .9rem 0 .4rem; }
+    .analysis-body { white-space: pre-wrap; line-height: 1.7; }
+    .discrimination-table .versus-cell { font-weight: 600; white-space: nowrap; }
+    .ai-note { font-size: .8rem; color: var(--bs-secondary-color); font-weight: 400; }
+    .summary-score { font-size: 3rem; font-weight: 700; text-align: center; }
+    .summary-note { text-align: center; color: var(--bs-secondary-color); margin-bottom: 1rem; }
+    .wrong-item { border-left: 3px solid var(--bs-danger); padding: .4rem .8rem; margin: .5rem 0; }
+    .wrong-stem { font-weight: 600; }
+    .wrong-answer { font-size: .9rem; color: var(--bs-secondary-color); }
+    .summary-actions, .result-actions, .ai-row { margin-top: 1rem; display: flex; gap: .5rem; }
+</style>
+
+@code {
+    private enum Stage { Banks, Learner, Playing, Summary }
+
+    private Stage stage = Stage.Banks;
+    private List<QuizBankOverviewDto> banks = new();
+    private List<LearnerDto> learners = new();
+    private string selectedBankCode = "";
+    private int selectedLearnerId;
+    private string sessionId = Guid.NewGuid().ToString("N")[..12];
+
+    private List<QuizQuestionViewDto> questions = new();
+    private List<(QuizQuestionViewDto Question, QuizAnswerResultDto Result)> wrongQuestions = new();
+    private int index;
+    private QuizQuestionViewDto? currentQuestion;
+    private QuizAnswerResultDto? result;
+    private string currentAnalysis = "";
+    private int correctCount;
+    private int answeredCount;
+    private bool isLast => index >= questions.Count - 1;
+    private int wrongCount => answeredCount - correctCount;
+    private int ScorePercent => questions.Count == 0 ? 0 : (int)Math.Round(correctCount * 100.0 / questions.Count);
+
+    private bool aiLoading;
+    private string? aiAnalysis;
+
+    protected override async Task OnInitializedAsync()
+    {
+        banks = await ApiService.GetLearnBanksAsync();
+    }
+
+    private async Task SelectBankAsync(QuizBankOverviewDto bank)
+    {
+        selectedBankCode = bank.BankCode;
+        learners = await ApiService.GetLearnersAsync();
+        stage = Stage.Learner;
+    }
+
+    private async Task SelectLearnerAsync(int learnerId)
+    {
+        selectedLearnerId = learnerId;
+        sessionId = Guid.NewGuid().ToString("N")[..12];
+        questions = await ApiService.DrawLearnQuestionsAsync(selectedBankCode, 10);
+        index = 0;
+        correctCount = 0;
+        answeredCount = 0;
+        wrongQuestions.Clear();
+        stage = questions.Count > 0 ? Stage.Playing : Stage.Banks;
+        LoadCurrent();
+    }
+
+    private void LoadCurrent()
+    {
+        currentQuestion = index < questions.Count ? questions[index] : null;
+        result = null;
+        aiAnalysis = null;
+    }
+
+    private async Task AnswerAsync(string key)
+    {
+        if (currentQuestion == null || result != null) return;
+        PickedKey = key;
+        var submit = new QuizAnswerSubmitDto
+        {
+            QuestionCode = currentQuestion.QuestionCode,
+            SelectedKey = key,
+            LearnerId = selectedLearnerId,
+            SessionId = sessionId,
+        };
+        result = await ApiService.SubmitLearnAnswerAsync(selectedBankCode, submit)
+                 ?? new QuizAnswerResultDto { IsCorrect = false, CorrectKey = "?", CorrectContent = "（判定失败：后端不可用）", Options = new List<QuizOptionDto>() };
+        currentAnalysis = result.Analysis;
+        answeredCount++;
+        if (result.IsCorrect) correctCount++;
+        else if (currentQuestion != null)
+        {
+            wrongQuestions.Add((currentQuestion, result));
+        }
+    }
+
+    private Task NextAsync()
+    {
+        index++;
+        LoadCurrent();
+        return Task.CompletedTask;
+    }
+
+    private Task FinishAsync()
+    {
+        stage = Stage.Summary;
+        return Task.CompletedTask;
+    }
+
+    private async Task RequestAiAnalysisAsync()
+    {
+        if (currentQuestion == null || result == null || aiLoading) return;
+        aiLoading = true;
+        try
+        {
+            var prompt =
+                $"我正在做中医经方选择题练习，请对下面这题做延伸讲解（辨证思路、方义、临床要点），帮助我理解记忆：" +
+                $"\n\n【题目】{currentQuestion.Stem}" +
+                $"\n\n【我的答案】{result.IsCorrect switch { true => "答对了", _ => "答错了" } }，正确答案是 {result.CorrectKey}．{result.CorrectContent}" +
+                $"\n\n【标准解析】{currentAnalysis}";
+            var chat = await ApiService.ChatAsync(prompt);
+            aiAnalysis = chat.Success ? (chat.Reply ?? chat.Message ?? chat.Content) : $"AI 分析失败：{chat.Message}";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "AI 延伸分析失败");
+            aiAnalysis = "AI 分析暂不可用（请检查 AI 配置）。";
+        }
+        finally
+        {
+            aiLoading = false;
+        }
+    }
+
+    private Task RetryWrongAsync()
+    {
+        questions = wrongQuestions.Select(w => w.Question).ToList();
+        wrongQuestions.Clear();
+        index = 0;
+        correctCount = 0;
+        answeredCount = 0;
+        stage = Stage.Playing;
+        LoadCurrent();
+        return Task.CompletedTask;
+    }
+
+    private Task StartOverAsync()
+    {
+        stage = Stage.Learner;
+        return Task.CompletedTask;
+    }
+
+    private Task BackToBanks()
+    {
+        stage = Stage.Banks;
+        return Task.CompletedTask;
+    }
+
+    private string OptionClass(QuizOptionDto opt) => opt.IsCorrect ? "right"
+        : (result != null && opt.Key == PickedKey ? "picked-wrong" : "plain");
+
+    private string? PickedKey { get; set; }
+}

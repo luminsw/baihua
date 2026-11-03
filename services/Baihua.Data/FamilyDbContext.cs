@@ -50,6 +50,13 @@ public class FamilyDbContext : DbContext
     public DbSet<ServerPeer> ServerPeers => Set<ServerPeer>();
     public DbSet<ServerMessage> ServerMessages => Set<ServerMessage>();
 
+    // 多行业选择题题库（学习模块）：行业无关，中医（经方）是第一个实例
+    public DbSet<QuizIndustry> QuizIndustries => Set<QuizIndustry>();
+    public DbSet<QuizBank> QuizBanks => Set<QuizBank>();
+    public DbSet<QuizItem> QuizItems => Set<QuizItem>();
+    public DbSet<QuizQuestion> QuizQuestions => Set<QuizQuestion>();
+    public DbSet<QuizAttempt> QuizAttempts => Set<QuizAttempt>();
+
     // 测速历史（BenchmarkRepository 使用）
     public DbSet<BenchmarkSessionEntity> BenchmarkSessions => Set<BenchmarkSessionEntity>();
 
@@ -442,6 +449,106 @@ public class FamilyDbContext : DbContext
             entity.Property(e => e.Direction).HasMaxLength(10).IsRequired();
             entity.Property(e => e.Content).IsRequired();
             entity.Property(e => e.SentAtUtc).HasDefaultValueSql("now()");
+        });
+
+        // ── 多行业选择题题库（学习模块）──
+        modelBuilder.Entity<QuizIndustry>(entity =>
+        {
+            entity.ToTable("QuizIndustries");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Code).IsUnique();
+
+            entity.Property(e => e.Code).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+        });
+
+        modelBuilder.Entity<QuizBank>(entity =>
+        {
+            entity.ToTable("QuizBanks");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.IndustryId, e.Code }).IsUnique();
+            entity.HasOne(e => e.Industry)
+                .WithMany()
+                .HasForeignKey(e => e.IndustryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.Property(e => e.Code).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Version).HasMaxLength(20);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+        });
+
+        modelBuilder.Entity<QuizItem>(entity =>
+        {
+            entity.ToTable("QuizItems");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.BankId, e.ItemCode }).IsUnique();
+            entity.HasOne(e => e.Bank)
+                .WithMany()
+                .HasForeignKey(e => e.BankId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(e => e.ItemCode).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.ItemType).HasMaxLength(32).IsRequired().HasDefaultValue("concept");
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Summary).HasMaxLength(500);
+            entity.Property(e => e.ContentJson).IsRequired();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+        });
+
+        modelBuilder.Entity<QuizQuestion>(entity =>
+        {
+            entity.ToTable("QuizQuestions");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.BankId, e.QuestionCode }).IsUnique();
+            entity.HasIndex(e => e.BankId);
+            entity.HasIndex(e => e.ItemId);
+            entity.HasOne(e => e.Bank)
+                .WithMany()
+                .HasForeignKey(e => e.BankId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Item)
+                .WithMany()
+                .HasForeignKey(e => e.ItemId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.Property(e => e.QuestionCode).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.QuestionType).HasMaxLength(32).IsRequired().HasDefaultValue("single_choice");
+            entity.Property(e => e.Target).HasMaxLength(32).IsRequired().HasDefaultValue("formula");
+            entity.Property(e => e.Stem).IsRequired();
+            entity.Property(e => e.OptionsJson).IsRequired();
+            entity.Property(e => e.Analysis).IsRequired();
+            entity.Property(e => e.Difficulty).HasDefaultValue(3);
+            entity.Property(e => e.SourceRef).HasMaxLength(200);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+        });
+
+        modelBuilder.Entity<QuizAttempt>(entity =>
+        {
+            entity.ToTable("QuizAttempts");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.LearnerId);
+            entity.HasIndex(e => e.QuestionId);
+            entity.HasIndex(e => new { e.LearnerId, e.BankId });
+            entity.HasOne(e => e.Learner)
+                .WithMany()
+                .HasForeignKey(e => e.LearnerId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Question)
+                .WithMany()
+                .HasForeignKey(e => e.QuestionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.Property(e => e.SelectedKey).HasMaxLength(8).IsRequired();
+            entity.Property(e => e.SessionId).HasMaxLength(64);
+            entity.Property(e => e.AnsweredAt).HasDefaultValueSql("now()");
         });
 
         modelBuilder.Entity<BenchmarkSessionEntity>(entity =>

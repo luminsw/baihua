@@ -75,6 +75,7 @@ public sealed class FamilyModule : IBaihuaModule
         services.AddSingleton<LeaderboardSettingsService>();
         services.AddSingleton<RewardService>();
         services.AddSingleton<QuizService>();
+        services.AddSingleton<QuizBankService>();
         services.AddHostedService<StudyRecordMigrationService>();
 
         // === 待办 / 病历本 ===

@@ -77,10 +77,12 @@ app.*.map.json
 docker/data/
 
 # Service runtime data (SQLite databases, local dev state)
-/data/
+/data/*
 services/**/data/
 # 例外：Baihua.Core 的 Data 源码目录（勿与运行时 data 目录混淆；Windows 下大小写不敏感）
 !services/Baihua.Core/Data/
+# 例外：经方题库源数据（内容 JSON——数据驱动的内容之本，必须入库；运行时数据仍在 /data/ 根）
+!/data/tcm-quiz/
 
 # Test files
 check_task.py
