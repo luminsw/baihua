@@ -130,8 +130,8 @@ function Get-EnvMap {
     }
     if ($changed) {
         $lines = @('# 由 bh wslc 生成/维护（Windows WSL 容器形态）。改端口/路径后 bh wslc restart 生效。')
+        # 空值也写（如 OVMS_HOST_IP=），否则下次读取缺键又被当成"新增"，文件每次都被重写
         foreach ($k in ($map.Keys | Sort-Object)) {
-            if ([string]::IsNullOrWhiteSpace($map[$k])) { continue }
             $lines += ($k + '=' + $map[$k])
         }
         $utf8 = New-Object System.Text.UTF8Encoding($false)

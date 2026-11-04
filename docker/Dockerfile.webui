@@ -1,7 +1,7 @@
 # Baihua.Web — WebUI（Blazor Server，5177）
 #
 # 与 Dockerfile.server 一样改为官方 .NET 镜像多阶段构建，不依赖预构建的 bh/base-* 镜像，
-# Windows Docker Desktop 可直接构建。
+# Windows 上 `bh wslc build` / Linux 上 docker compose 都可直接构建。
 
 # ==================== Build 阶段 ====================
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build

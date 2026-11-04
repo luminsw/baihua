@@ -1,7 +1,7 @@
 # Baihua.Server — 百花服务器（单一后端进程：家庭 / AI / 知识库 三模块合一，8788）
 #
 # 直接基于官方 .NET 镜像做多阶段构建，不依赖 bh/sdk-offline、bh/base-build、bh/base-runtime
-# 这些需要预先构建的基础镜像 —— 因此 Windows Docker Desktop 上 `bh docker build` 可以直接构建。
+# 这些需要预先构建的基础镜像 —— 因此 Windows 上 `bh wslc build` 可以直接构建（无需 Docker Desktop）。
 # （k8s 的镜像配方在 k8s/images/，走离线 SDK 缓存，与本文件互不影响。）
 #
 # 构建：
