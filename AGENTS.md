@@ -225,10 +225,12 @@ dotnet build services/BaiHua.slnx -c Release
   `install_ovms_service.bat <模型目录>` + `sc config ovms start= auto`——直接 `sc create` 注册控制台程序会 1053）。
   `bh build` → `bh start`（详见 `tools/bh/README.md`）。
 - **wslc（Windows 可选形态，2026-11-04 起）**：`bh wslc <cmd>` 用 WSL 3 自带的 `wslc.exe`（**不需要 Docker Desktop**）
-  跑 `postgres` + `server`（8788）+ `webui`（5177），自定义网络 `bh-net`，镜像由 `docker/Dockerfile.server|webui` 构建；
+  跑 `postgres` + `server`（8788）+ `webui`（5177）+ `nginx`（宿主 :80，浏览器/移动端统一入口）四个容器，
+  自定义网络 `bh-net`，镜像由 `docker/Dockerfile.server|webui` 构建；
   命名卷 `bh-pgdata`（挂 `/var/lib/postgresql`，pg18 布局）、`bh-data`、`bh-logs`，知识库目录 `VAULTS_DIR` 绑定挂载；
   PostgreSQL 只绑 127.0.0.1:5433；宿主机 OVMS 由 `bh wslc start` 探测宿主 IP 后注入 `OpenVinoOms__BaseUrl`。
   与 native 互斥（同占 8788/5177）。配置见 `docker/.env.wslc`（gitignore）。
+  局域网 :80 由 nginx 容器独占（`0.0.0.0:80`），**wslc 形态不需要 `bh lan on`**（执行会提示；历史 portproxy 用 `bh lan off` 清理）。
   拉不到 `mcr.microsoft.com/dotnet/sdk` 时用 `bh wslc build -Prebuilt`（宿主机 publish + `aspnet:10.0` 运行时镜像）。
 - **k8s（仅 Linux，`tools/bh/linux/k8s/`）**：`server`（8788）+ `webui`（5177）+ `postgres` + `openvino`（OVMS，profile 可选）等工作负载全部容器化；
   k8s 清单见 `k8s/20-server.yaml` / `23-webui.yaml` / `25-postgres.yaml` / `22a-openvino.yaml`，Linux 上 `bh build server webui` → `bh deploy` / `bh up`。

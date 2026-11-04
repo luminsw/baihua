@@ -53,7 +53,7 @@ $Root = Split-Path -Parent $Root
 $DockerDir = Join-Path $Root 'docker'
 $EnvFile = Join-Path $DockerDir '.env.wslc'
 $Network = 'bh-net'
-$Containers = [ordered]@{ postgres = 'bh-postgres'; server = 'bh-server'; webui = 'bh-webui' }
+$Containers = [ordered]@{ postgres = 'bh-postgres'; server = 'bh-server'; webui = 'bh-webui'; nginx = 'bh-nginx' }
 $Volumes = @('bh-pgdata', 'bh-data', 'bh-logs')
 $PgImageName = 'postgres:18-alpine'
 
@@ -141,13 +141,21 @@ function Get-EnvMap {
 }
 
 # ---------- 镜像 ----------
+# Docker Hub 镜像在国内常超时：按 BAIHUA_WSL_MIRROR 改写（library/x 与 org/x 都支持）
+function Get-MirroredImage {
+    param([string]$Name, $EnvMap)
+    $mirror = $EnvMap['BAIHUA_WSL_MIRROR']
+    if ([string]::IsNullOrWhiteSpace($mirror)) { return $Name }
+    $m = $mirror.TrimEnd('/')
+    if ($Name -match '^([^/:]+)/([^/:]+):(.+)$') {
+        return ($m + '/' + $matches[1] + '/' + $matches[2] + ':' + $matches[3])
+    }
+    return ($m + '/library/' + $Name)
+}
+
 function Get-PgImage {
     param($EnvMap)
-    $mirror = $EnvMap['BAIHUA_WSL_MIRROR']
-    if (-not [string]::IsNullOrWhiteSpace($mirror)) {
-        return ($mirror.TrimEnd('/') + '/library/' + $PgImageName)
-    }
-    return $PgImageName
+    return (Get-MirroredImage $PgImageName $EnvMap)
 }
 
 function Test-Image([string]$Name) {
@@ -361,13 +369,42 @@ function Start-Stack {
         if (-not (Wait-Port $envMap['BAIHUA_WEBUI_PORT'] 120)) { throw 'WebUI 5177 未在 120s 内就绪（bh wslc logs webui）' }
     }
 
-    Write-Host ('[start] 完成：后端 http://127.0.0.1:' + $envMap['BAIHUA_SERVER_PORT'] + '  WebUI http://127.0.0.1:' + $envMap['BAIHUA_WEBUI_PORT'])
-    Write-Host '        局域网 :80 入口仍用：bh lan on（宿主 portproxy -> 127.0.0.1:8788）'
+    # ---------- nginx（局域网统一入口 :80：/mg、/api、/pair → server；其余 → webui） ----------
+    if ([string]::IsNullOrWhiteSpace($Only) -or $Only -eq 'nginx') {
+        $proxy = (netsh interface portproxy show v4tov4 2>$null | Out-String)
+        if ($proxy -match '(?m)^\s*\S+\s+80\s+') {
+            Write-Warning '端口 80 上有 netsh portproxy（bh lan on 的遗留）：wslc 形态由 nginx 容器独占 :80，请先执行 bh lan off'
+        } else {
+            try {
+                $nginxImg = Get-MirroredImage 'nginx:1.27-alpine' $envMap
+                Ensure-Image $nginxImg
+                Remove-Container $Containers['nginx']
+                Write-Host '[start] nginx (:80) ...'
+                $conf = Join-Path $Root 'docker/nginx/wslc.conf'
+                $headers = Join-Path $Root 'docker/nginx/server-proxy-headers.conf'
+                # 显式 0.0.0.0：wslc 默认把发布端口绑在 127.0.0.1，局域网/手机访问不到
+                $args = @('run', '-d', '--name', $Containers['nginx'], '--network', $Network,
+                    '-p', '0.0.0.0:80:80',
+                    '-v', ($conf + ':/etc/nginx/conf.d/default.conf:ro'),
+                    '-v', ($headers + ':/etc/nginx/server-proxy-headers.conf:ro'),
+                    $nginxImg)
+                Invoke-Wslc -WslcArgs $args | Out-Null
+                if (Wait-Port 80 60) { Write-Host '  nginx ready: http://127.0.0.1/ 或 http://<宿主IP>/' }
+                else { Write-Warning 'nginx 60s 内未就绪（bh wslc logs nginx）' }
+            } catch {
+                Write-Warning ('nginx 启动失败（:80 可能被占用）：' + $_.Exception.Message)
+                Write-Warning '  仍可用 8788（后端）/ 5177（WebUI）直连；修复后 bh wslc restart'
+            }
+        }
+    }
+
+    Write-Host ('[start] 完成：后端 http://127.0.0.1:' + $envMap['BAIHUA_SERVER_PORT'] + '  WebUI http://127.0.0.1:' + $envMap['BAIHUA_WEBUI_PORT'] + '  入口 http://127.0.0.1/')
+    Write-Host '        局域网：http://<宿主IP>/ （nginx :80，浏览器与花记移动端共用）'
 }
 
 function Stop-Stack {
     Ensure-Wslc
-    foreach ($name in @($Containers['webui'], $Containers['server'], $Containers['postgres'])) {
+    foreach ($name in @($Containers['nginx'], $Containers['webui'], $Containers['server'], $Containers['postgres'])) {
         if (Test-Container $name) {
             Invoke-Wslc -WslcArgs @('container', 'stop', $name) -AllowFail | Out-Null
             Invoke-Wslc -WslcArgs @('container', 'remove', '-f', $name) -AllowFail | Out-Null
@@ -384,6 +421,8 @@ function Show-Status {
     Write-Host ''
     Write-Host ('后端:   http://127.0.0.1:' + $envMap['BAIHUA_SERVER_PORT'])
     Write-Host ('WebUI:  http://127.0.0.1:' + $envMap['BAIHUA_WEBUI_PORT'])
+    $nginxState = if (Test-Container $Containers['nginx']) { 'RUNNING (:80)' } else { 'stopped' }
+    Write-Host ('入口:   http://127.0.0.1/  nginx=' + $nginxState)
     $ov = if (Test-PortOpen 8000) { 'RUNNING (port 8000)' } else { 'stopped' }
     Write-Host ('OVMS:   ' + $ov + '（容器内经宿主 IP:8000 访问）')
     $mirror = $envMap['BAIHUA_WSL_MIRROR']

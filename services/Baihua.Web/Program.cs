@@ -419,7 +419,10 @@ app.MapPost("/api/auth/cli-token", (HttpContext context, Baihua.Web.Services.Aut
             isPrivateNet =
                 new System.Net.IPNetwork(IPAddress.Parse("10.0.0.0"), 8).Contains(remoteIp) ||
                 new System.Net.IPNetwork(IPAddress.Parse("172.16.0.0"), 12).Contains(remoteIp) ||
-                new System.Net.IPNetwork(IPAddress.Parse("192.168.0.0"), 16).Contains(remoteIp);
+                new System.Net.IPNetwork(IPAddress.Parse("192.168.0.0"), 16).Contains(remoteIp) ||
+                // WSL/wslc 的 127.0.0.1 端口代理在容器里表现为 169.254.x（link-local），
+                // 不放行会让宿主机 bh dashboard / 浏览器访问 /api/auth/cli-token 被 403
+                new System.Net.IPNetwork(IPAddress.Parse("169.254.0.0"), 16).Contains(remoteIp);
         }
         catch { isPrivateNet = false; }
     }
@@ -480,7 +483,19 @@ app.MapPost("/api/internal/notify-state-change", (HttpContext context, Baihua.We
     var remoteIp = context.Connection.RemoteIpAddress;
     if (remoteIp != null && !System.Net.IPAddress.IsLoopback(remoteIp))
     {
-        return Results.StatusCode(403);
+        // 容器形态：后端在同一个 bridge 网络里（172.x），wslc 端口代理为 169.254.x；
+        // 这里只接受回环 + 私有/link-local 网段，仍然拒绝公网来源
+        var isPrivate = false;
+        try
+        {
+            isPrivate =
+                new System.Net.IPNetwork(IPAddress.Parse("10.0.0.0"), 8).Contains(remoteIp) ||
+                new System.Net.IPNetwork(IPAddress.Parse("172.16.0.0"), 12).Contains(remoteIp) ||
+                new System.Net.IPNetwork(IPAddress.Parse("192.168.0.0"), 16).Contains(remoteIp) ||
+                new System.Net.IPNetwork(IPAddress.Parse("169.254.0.0"), 16).Contains(remoteIp);
+        }
+        catch { isPrivate = false; }
+        if (!isPrivate) { return Results.StatusCode(403); }
     }
     if (request?.Type == "ai")
     {

@@ -187,6 +187,17 @@ if ($Arg1 -eq 'lan') {
     $sub = if ($CmdArgs.Count -gt 1) { $CmdArgs[1] } else { 'status' }
     switch ($sub) {
         'on' {
+            # wslc 形态自带 nginx 容器占宿主 :80（浏览器 + 花记移动端统一入口），不需要 portproxy
+            $wslcNginx = $false
+            if (Get-Command wslc -ErrorAction SilentlyContinue) {
+                & wslc container inspect bh-nginx 2>$null | Out-Null
+                $wslcNginx = ($LASTEXITCODE -eq 0)
+            }
+            if ($wslcNginx) {
+                Write-Warning '[lan] 当前是 wslc 形态：nginx 容器已占宿主 :80（/mg、/api → 后端，其余 → WebUI），无需 bh lan on'
+                Write-Warning '[lan] 若之前建过 portproxy，请执行 bh lan off 清理（否则 nginx 无法绑定 :80）'
+                exit 0
+            }
             $lanIp = Get-HostLanIp
             if (-not $lanIp) { Write-Host '[lan] 未识别到宿主局域网 IP'; exit 0 }
             Write-Host '[lan] 设置宿主 :80 -> :8788 转发（需要管理员授权）...'

@@ -100,8 +100,8 @@ bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
 ### wslc 命令速查（`bh wslc`）
 
 前置：**WSL 3**（`wsl --version` 看版本，`wsl --update` 升级；`wslc.exe` 随 WSL 提供，**不需要 Docker Desktop**）。
-架构对应关系：`postgres` + `server`（8788）+ `webui`（5177）三个容器，用户自定义网络 `bh-net`，
-镜像用 `docker/Dockerfile.server|webui` 由 `wslc build` 构建。
+架构对应关系：`postgres` + `server`（8788）+ `webui`（5177）+ `nginx`（宿主 :80，浏览器与花记移动端统一入口）四个容器，
+用户自定义网络 `bh-net`，镜像用 `docker/Dockerfile.server|webui` 由 `wslc build` 构建。
 
 | 命令 | 说明 |
 |------|------|
@@ -125,7 +125,9 @@ bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
   postgres 经它拉取；.NET 基础镜像走 `mcr.microsoft.com`（可直连）。留空则用官方 registry。
 - **OVMS 仍跑在 Windows**（`ovms` 服务，:8000）：容器访问宿主需要宿主 IP，`bh wslc start` 会逐个探测
   宿主网卡地址并自动把 `OpenVinoOms__BaseUrl` 传进 server 容器；探测不到时可用 `OVMS_HOST_IP` 指定。
-- **局域网 :80 入口**：仍用 `bh lan on`（宿主 portproxy → `127.0.0.1:8788`），与 native 一致。
+- **局域网 :80 入口**：由 nginx 容器独占（`0.0.0.0:80`，配置 `docker/nginx/wslc.conf`）：
+  `/mg/*`、`/api/*`、`/pair`、`/ws/*`、`/mcp` → server，其余 → WebUI。**wslc 形态不需要 `bh lan on`**
+  （执行会提示）；之前建过 portproxy 的先 `bh lan off`，否则 nginx 无法绑定 :80。
 - **与 native 互斥**：两种形态都占 8788/5177，切换前先 `bh stop` 或 `bh wslc stop`。
 - **重启后**：容器不随 Windows 登录自动拉起（`wslc` 没有 restart policy），需要再 `bh wslc start`；
   OVMS 是 Windows 服务（AUTO_START），不受影响。

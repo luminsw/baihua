@@ -73,6 +73,19 @@ Test-Case 'bh 入口含 wslc 分派，且旧 docker cell 已移除' {
     elseif (Test-Path $DockerCell) { '旧的 tools/bh/win/docker 仍在（应已删除）' }
 }
 
+Test-Case 'nginx 入口配置齐全（wslc.conf 用容器名上游，cell 发布 0.0.0.0:80）' {
+    $conf = Join-Path $RepoRoot 'docker/nginx/wslc.conf'
+    if (-not (Test-Path $conf)) { '缺少 docker/nginx/wslc.conf' }
+    else {
+        $c = Get-Content $conf -Raw
+        if ($c -notmatch 'bh-server:8788' -or $c -notmatch 'bh-webui:5177') { 'wslc.conf 上游不是 bh-server/bh-webui' }
+        else {
+            $cell = Get-Content $Cell -Raw
+            if ($cell -notmatch "0\.0\.0\.0:80:80") { 'cell 没有把 nginx 发布到 0.0.0.0:80（局域网访问不到）' }
+        }
+    }
+}
+
 Test-Case 'wslc cell 只用 wslc，不调用 docker' {
     $text = Get-Content $Cell -Raw
     if ($text -match '(?m)^\s*&\s*docker|docker\s+compose') { 'cell 里仍有 docker 调用' }
