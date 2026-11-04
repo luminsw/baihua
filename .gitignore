@@ -264,3 +264,6 @@ dist/
 
 # 拜师契约含个人进度：已移出仓库到 ~/.dsh/baishi/BAISHI_MASTER.md
 docs/BAISHI_MASTER.md
+
+# Windows Docker 形态的本地环境文件（含随机 PG_PASSWORD，由 bh docker 生成）
+docker/.env.windows

@@ -42,6 +42,10 @@ function Show-Help {
     Write-Host '             status [--json] / logs <svc> [n] / dashboard / open / open-webui'
     Write-Host 'native 依赖: .NET SDK 10、本机 PostgreSQL（Windows 服务）、可选 OVMS(:8000)'
     Write-Host ''
+    Write-Host 'docker 形态: bh docker <build|start|stop|restart|status|logs|update|dashboard|env>'
+    Write-Host '             全容器（postgres/server/webui，Docker Desktop 的 Linux 容器），与 native 互斥（同占 8788/5177）'
+    Write-Host '             依赖: Docker Desktop 已安装并运行（本机 OVMS 经 host.docker.internal:8000 访问）'
+    Write-Host ''
     Write-Host 'k3s 形态已随本机 WSL 卸载退役（Linux 侧实现保留于 tools/bh/linux/k8s）'
     Write-Host ''
     Write-Host '完整说明见 tools/bh/README.md'
@@ -155,6 +159,17 @@ if ($Arg1 -eq 'native') {
     $Arg1 = if ($All.Count -gt 0) { $All[0] } else { '' }
     $CmdArgs = @($All)
     if ($CmdArgs.Count -eq 0) { Show-Help; exit 0 }
+}
+
+# ==================== docker（第二形态，需 Docker Desktop） ====================
+# native 仍是默认形态；bh docker <cmd> 走全容器（postgres / server / webui）。
+if ($Arg1 -in @('docker', 'compose')) {
+    $cell = Join-Path $Root 'win\docker\bh.ps1'
+    if (-not (Test-Path $cell)) { Write-Error "[docker] 缺少 $cell"; exit 1 }
+    $rest = @($CmdArgs | Select-Object -Skip 1)
+    if ($rest.Count -eq 0) { $rest = @('help') }
+    & $cell @rest
+    exit $LASTEXITCODE
 }
 
 # ==================== native ====================
