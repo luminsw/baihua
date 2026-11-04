@@ -106,6 +106,7 @@ bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
 | 命令 | 说明 |
 |------|------|
 | `bh wslc build [server\|webui]` | 构建镜像（首次会拉 .NET SDK 镜像，较慢；源码变更后重跑） |
+| `bh wslc build -Prebuilt` | 预编译路径：宿主机 `dotnet publish -r linux-x64` → 产物打进 `aspnet:10.0` 运行时镜像（拉不到 SDK 镜像时用） |
 | `bh wslc start [svc...]` | 启动（默认全部：postgres → server → webui），等待 8788/5177 就绪 |
 | `bh wslc stop` / `restart` | 停止并删除容器（命名卷保留数据）/ 重启 |
 | `bh wslc status` | `wslc container list --all` + 访问地址 + OVMS 探测 |
@@ -128,6 +129,10 @@ bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
 - **与 native 互斥**：两种形态都占 8788/5177，切换前先 `bh stop` 或 `bh wslc stop`。
 - **重启后**：容器不随 Windows 登录自动拉起（`wslc` 没有 restart policy），需要再 `bh wslc start`；
   OVMS 是 Windows 服务（AUTO_START），不受影响。
+- **镜像构建拉不到 SDK 时**：本机实测 `wslc pull mcr.microsoft.com/dotnet/sdk:*` 会卡住（`aspnet:*` 正常），
+  用 `bh wslc build -Prebuilt`（宿主机 publish + 预构建 Dockerfile）即可绕开 SDK 镜像。
+- **管理 API 来源网段**：容器模式下 server 的 `BAIHUA_ADMIN_ALLOWED_NETS` 额外放行 `169.254.0.0/16`
+  （wslc 的 127.0.0.1 端口代理在容器内表现为这个源地址，不放行会让宿主机访问 `/api/*` 返回 403）。
 
 ## 自检（回归）
 

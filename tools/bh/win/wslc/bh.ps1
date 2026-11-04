@@ -61,7 +61,7 @@ function Show-Help {
     Write-Host 'bh wslc — 百花 Windows 容器形态（WSL 自带 wslc.exe，无需 Docker Desktop）'
     Write-Host ''
     Write-Host '用法: bh wslc <command> [args]'
-    Write-Host '  build [server|webui]   构建镜像（首次较慢）'
+    Write-Host '  build [server|webui] [ -Prebuilt ]   构建镜像（首次较慢；拉不到 sdk 镜像时用 -Prebuilt：宿主机 publish + 运行时镜像）'
     Write-Host '  pull                   拉取 postgres 镜像'
     Write-Host '  start [svc...] / stop / restart'
     Write-Host '  status / logs <svc> [n] / exec <svc> <cmd...> / ps'
@@ -216,14 +216,21 @@ function Resolve-OvmsUrl {
     if (-not [string]::IsNullOrWhiteSpace($EnvMap['OVMS_HOST_IP'])) {
         return ('http://' + $EnvMap['OVMS_HOST_IP'] + ':8000')
     }
-    if (-not (Test-Image 'bh-server:latest')) { return '' }
+    # 优先用已在跑的 postgres 容器探测（alpine 自带 wget；prebuilt 的 server 镜像没有 curl）
+    $pgName = $Containers['postgres']
+    $useExec = Test-Container $pgName
+    if (-not $useExec -and -not (Test-Image 'bh-server:latest')) { return '' }
     $ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.)' } |
         Sort-Object @{ Expression = { if ($_.InterfaceAlias -match 'vEthernet') { 2 } else { 1 } } } |
         Select-Object -ExpandProperty IPAddress -Unique
     foreach ($ip in $ips) {
         $url = 'http://' + $ip + ':8000'
-        $r = Invoke-Wslc -WslcArgs @('run', '--rm', '--entrypoint', 'curl', 'bh-server:latest', '-fsS', '--max-time', '3', ($url + '/v1/models')) -AllowFail
+        if ($useExec) {
+            $r = Invoke-Wslc -WslcArgs @('exec', $pgName, 'wget', '-qO-', '--timeout=3', ($url + '/v1/models')) -AllowFail
+        } else {
+            $r = Invoke-Wslc -WslcArgs @('run', '--rm', '--entrypoint', 'curl', 'bh-server:latest', '-fsS', '--max-time', '3', ($url + '/v1/models')) -AllowFail
+        }
         if ($r.ExitCode -eq 0) {
             Write-Host ('[ovms] 容器可达宿主 OVMS：' + $url)
             return $url
@@ -234,10 +241,30 @@ function Resolve-OvmsUrl {
 }
 
 function Build-Images {
-    param([string]$Only)
+    param([string]$Only, [switch]$Prebuilt)
     $targets = @()
     if ([string]::IsNullOrWhiteSpace($Only) -or $Only -eq 'server') { $targets += 'server' }
     if ([string]::IsNullOrWhiteSpace($Only) -or $Only -eq 'webui') { $targets += 'webui' }
+
+    if ($Prebuilt) {
+        # 预编译路径：宿主机 publish（linux-x64）→ 产物打进 aspnet 运行时镜像。
+        # 适用：拉不到 mcr 的 sdk 构建镜像（本机实测 sdk:* 会卡住，aspnet:* 正常）。
+        $publishDir = Join-Path $Root 'out/wslc'
+        foreach ($t in $targets) {
+            if ($t -eq 'server') { $proj = 'services/Baihua.Server/Baihua.Server.csproj' } else { $proj = 'services/Baihua.Web/Baihua.Web.csproj' }
+            $dest = Join-Path $publishDir $t
+            Write-Host ('[build] dotnet publish ' + $t + ' (linux-x64) ...')
+            & dotnet publish (Join-Path $Root $proj) -c Release -r linux-x64 --self-contained false -o $dest
+            if ($LASTEXITCODE -ne 0) { throw ('dotnet publish 失败：' + $t) }
+            $df = Join-Path $Root ('docker/Dockerfile.' + $t + '.prebuilt')
+            Write-Host ('[build] ' + $t + ' image (prebuilt) ...')
+            & wslc build -t ('bh-' + $t + ':latest') -f $df $dest
+            if ($LASTEXITCODE -ne 0) { throw ('构建失败：' + $t) }
+        }
+        Write-Host '[build] done（prebuilt）'
+        return
+    }
+
     Push-Location $Root
     try {
         foreach ($t in $targets) {
@@ -302,7 +329,9 @@ function Start-Stack {
             '-e', ('PG_PASSWORD=' + $envMap['PG_PASSWORD']),
             '-e', ('PG_DATABASE=' + $envMap['PG_DATABASE']),
             '-e', 'BAIHUA_VAULT_ROOT=/vaults',
-            '-e', 'BAIHUA_ADMIN_ALLOWED_NETS=172.16.0.0/12',
+            # 172.16/12：webui 容器（bridge）；169.254/16：wslc 的 127.0.0.1 端口代理在宿主看来是这个源地址
+            # （不加它，宿主机访问 /api/* 会被 AccessControl 判成非本机 403）
+            '-e', 'BAIHUA_ADMIN_ALLOWED_NETS=127.0.0.1/32,172.16.0.0/12,169.254.0.0/16',
             '-e', 'OpenObserve__Enabled=false',
             '-v', 'bh-data:/app/data',
             '-v', 'bh-logs:/app/logs',
@@ -398,7 +427,15 @@ $script:EnvMap = @{}
 
 switch ($Command.ToLower()) {
     'help'      { Show-Help }
-    'build'     { Ensure-Wslc; Build-Images $Arg1 }
+    'build'     {
+        Ensure-Wslc
+        $pre = ($All -contains '-Prebuilt') -or ($All -contains '--prebuilt') -or ($All -contains '-prebuilt')
+        $only = ''
+        foreach ($a in @($All | Select-Object -Skip 1)) {
+            if ($a -eq 'server' -or $a -eq 'webui') { $only = $a }
+        }
+        Build-Images $only -Prebuilt:$pre
+    }
     'pull'      { Ensure-Wslc; $m = Get-EnvMap; Ensure-Image (Get-PgImage $m) }
     'start'     { Start-Stack $Arg1 }
     'up'        { Start-Stack $Arg1 }

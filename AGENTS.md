@@ -229,6 +229,7 @@ dotnet build services/BaiHua.slnx -c Release
   命名卷 `bh-pgdata`（挂 `/var/lib/postgresql`，pg18 布局）、`bh-data`、`bh-logs`，知识库目录 `VAULTS_DIR` 绑定挂载；
   PostgreSQL 只绑 127.0.0.1:5433；宿主机 OVMS 由 `bh wslc start` 探测宿主 IP 后注入 `OpenVinoOms__BaseUrl`。
   与 native 互斥（同占 8788/5177）。配置见 `docker/.env.wslc`（gitignore）。
+  拉不到 `mcr.microsoft.com/dotnet/sdk` 时用 `bh wslc build -Prebuilt`（宿主机 publish + `aspnet:10.0` 运行时镜像）。
 - **k8s（仅 Linux，`tools/bh/linux/k8s/`）**：`server`（8788）+ `webui`（5177）+ `postgres` + `openvino`（OVMS，profile 可选）等工作负载全部容器化；
   k8s 清单见 `k8s/20-server.yaml` / `23-webui.yaml` / `25-postgres.yaml` / `22a-openvino.yaml`，Linux 上 `bh build server webui` → `bh deploy` / `bh up`。
   **Windows 侧 k3s 形态（原 `bh-k3s`，经 WSL）已随本机 WSL 卸载退役（2026-10-27）**：`bh-k3s` 入口/定位器已删除，

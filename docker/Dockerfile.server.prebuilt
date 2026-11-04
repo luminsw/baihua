@@ -1,0 +1,16 @@
+# Baihua.Server — 预编译产物镜像（不依赖 .NET SDK 镜像）
+#
+# 用途：某些环境拉不到 mcr.microsoft.com/dotnet/sdk（构建镜像）时，先在宿主机 publish，
+# 再把产物打进 aspnet 运行时镜像：bh wslc build -Prebuilt
+#
+# 构建（构建上下文 = publish 输出目录）：
+#   dotnet publish services/Baihua.Server -c Release -r linux-x64 --self-contained false -o out/wslc/server
+#   wslc build -t bh-server:latest -f docker/Dockerfile.server.prebuilt out/wslc/server
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY . .
+EXPOSE 8788
+ENV ASPNETCORE_URLS=http://0.0.0.0:8788
+ENV BAIHUA_HOME=/app/data
+ENV BAIHUA_SKIP_MUTEX=true
+ENTRYPOINT ["dotnet", "bh-server.dll"]
