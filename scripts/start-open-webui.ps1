@@ -85,8 +85,11 @@ function Start-OpenWebUI {
     $env:OLLAMA_BASE_URL = 'http://localhost:1'
     $env:HF_HUB_OFFLINE = '1'
     $env:TRANSFORMERS_OFFLINE = '1'
+    # 知识库/RAG embedding 也走本机 OVMS：0.11.x 只认 RAG_EMBEDDING_MODEL（RAG_OPENAI_EMBEDDING_MODEL 不生效）
     $env:RAG_EMBEDDING_ENGINE = 'openai'
-    $env:RAG_OPENAI_EMBEDDING_MODEL = 'qwen3-embedding-0.6b'
+    $env:RAG_EMBEDDING_MODEL = 'qwen3-embedding-0.6b'
+    $env:RAG_OPENAI_API_BASE_URL = "$OvmsUrl/v1"
+    $env:RAG_OPENAI_API_KEY = 'dummy'
     $env:WEBUI_AUTH = 'false'
 
     $p = Start-Process -FilePath $exe -ArgumentList 'serve' -WorkingDirectory $VenvDir -RedirectStandardOutput $LogFile -RedirectStandardError "$LogFile.err" -PassThru -WindowStyle Hidden
@@ -95,10 +98,11 @@ function Start-OpenWebUI {
     Write-Host '[open-webui] waiting for health ...'
     $deadline = (Get-Date).AddSeconds(90)
     while ((Get-Date) -lt $deadline) {
-        if (Test-PortOpen $Port) { Write-Host "[open-webui] ready on $Port"; return }
+        if (Test-PortOpen $Port) { Write-Host "[open-webui] ready on $Port"; return $p }
         Start-Sleep -Milliseconds 1000
     }
     Write-Warning "[open-webui] 端口 $Port 90s 内未就绪，查看日志: $LogFile"
+    return $p
 }
 
 # 脱离调用者进程树的启动：经一次性计划任务在独立上下文里再跑一次自己（-Detached）。
@@ -112,16 +116,21 @@ function Start-OpenWebUIDetached {
     }
     $taskName = 'baihua-open-webui-start'
     $self = $PSCommandPath
-    $register = @(
-        "`$a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$self`" -Detached'"
-        "`$t = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(2)"
-        "Register-ScheduledTask -TaskName '$taskName' -Action `$a -Trigger `$t -Force | Out-Null"
-        "Start-ScheduledTask -TaskName '$taskName'"
-    ) -join '; '
-    Write-Host '[open-webui] 经计划任务启动（脱离调用者进程树）...'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $register
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error '[open-webui] 计划任务注册/启动失败'
+
+    # 关键：计划任务的动作是“本脚本 -Detached”，而 -Detached 实例会把 open-webui 当子进程
+    # 一直 wait 到它退出 —— 这样任务本身的生命周期 = 服务生命周期，任务结束不会连坐杀掉服务。
+    # （2026-11-04 实测：旧实现 Start-Process 后任务立即结束，Task Scheduler 关闭 job object 时
+    #  把服务子进程一起杀掉，表现为“启动成功但过一会儿就静默消失”。）
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $self + '" -Detached')
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(2)
+    # 不设执行时长上限，且允许电池供电时运行（默认会因“仅交流电”拒绝启动）
+    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
+    Write-Host '[open-webui] 经计划任务启动（脱离调用者进程树，任务随服务存活）...'
+    try {
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+        Start-ScheduledTask -TaskName $taskName
+    } catch {
+        Write-Error ("[open-webui] 计划任务注册/启动失败：" + $_.Exception.Message)
         return
     }
     Write-Host '[open-webui] waiting for health ...'
@@ -131,16 +140,17 @@ function Start-OpenWebUIDetached {
     while ((Get-Date) -lt $deadline) {
         if (Test-PortOpen $Port) {
             Write-Host "[open-webui] ready on $Port"
-            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+            # 不要 Unregister：任务此刻正 hold 着服务进程，删任务会把它一起停掉
             return
         }
         Start-Sleep -Milliseconds 1000
     }
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-    Write-Warning "[open-webui] 45s 内未就绪（启动仍在后台继续，稍后看状态）；日志: $LogFile"
+    Write-Warning "[open-webui] 45s 内未就绪（后台仍在启动，稍后用 bh open-webui status 看）；日志: $LogFile"
 }
 
 function Stop-OpenWebUI {
+    # 先摘掉守护任务，避免“服务已停但任务仍 Running/被触发”导致的状态残留
+    Unregister-ScheduledTask -TaskName 'baihua-open-webui-start' -Confirm:$false -ErrorAction SilentlyContinue
     if (Test-Path $PidFile) {
         $pid2 = [int](Get-Content $PidFile)
         $proc = Get-Process -Id $pid2 -ErrorAction SilentlyContinue
@@ -176,4 +186,7 @@ if ($Stop) { Stop-OpenWebUI; exit 0 }
 if ($Install) { Install-OpenWebUI; exit 0 }
 # 默认（无开关）：先经计划任务脱离调用者进程树，再由 -Detached 实例真正启动
 if (-not $Detached) { Start-OpenWebUIDetached; exit 0 }
-Start-OpenWebUI
+# -Detached 实例：started 之后一直 wait 着服务进程 —— 计划任务因此保持 Running，
+# 服务不会被 Task Scheduler 的 job object 连坐杀掉（任务结束＝服务结束）。
+$serverProc = Start-OpenWebUI
+if ($serverProc) { Wait-Process -Id $serverProc.Id -ErrorAction SilentlyContinue }

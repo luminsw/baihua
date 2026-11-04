@@ -52,13 +52,16 @@ C:\Users\lumin\src\
 
 | 项目 | Linux/Mac | Windows |
 |------|-----------|---------|
-| 百花 | `./tools/bh/bh.sh`（Linux 上即 k3s 形态；或显式 `./tools/bh/linux/k8s/bh.sh`） | `bh`（native，`tools\bh\bh.ps1`，**唯一形态**）；cmd 下同名 `.cmd` |
+| 百花 | `./tools/bh/bh.sh`（Linux 上即 k3s 形态；或显式 `./tools/bh/linux/k8s/bh.sh`） | `bh`（native，默认识别）；`bh docker <cmd>`（Docker Desktop 全容器）；cmd 下同名 `.cmd` |
 | 花阁 | `./hg` | `.\hg.ps1` |
 
-> 百花 CLI 在 Windows 上**只有一个命令 `bh` = native**（dotnet 进程，不依赖 WSL/Docker/k3s）。
+> 百花 CLI 在 Windows 上有**两种互斥形态**（都占 8788/5177，同时只能跑一种）：
+> - `bh <cmd>` = **native**（默认）：dotnet 进程直接跑在 Windows，不依赖 WSL/Docker/k3s；
+> - `bh docker <cmd>` = **docker**：Docker Desktop 的 Linux 容器跑 postgres/server/webui，宿主机不需要 .NET/PG。
+>
 > 旧写法 `bh k8s <cmd>` 与 `bh-k3s <cmd>` 均已移除（k3s 形态已随本机 WSL 卸载退役，2026-10-27；
 > Linux 侧 k3s 实现保留在 `tools/bh/linux/k8s/`，与 Windows bh 无关）。
-> 首次运行（.NET SDK、PostgreSQL 与口令）见 `tools/bh/README.md`「首次运行」。
+> 首次运行见 `tools/bh/README.md`「首次运行」「docker 命令速查」。
 
 > 当前架构为**单一后端进程**：`Baihua.Server`（8788）承载家庭 / AI / 知识库三个模块，
 > 业务代码拆在三个类库里；WebUI（5177，Blazor Server）仍是独立进程。
@@ -143,7 +146,7 @@ C:\Users\lumin\src\
 - `services/Baihua.Core/`：共享服务层（含 VaultSettingsService、DeviceService 等；跨模块接口在 `Baihua.Core/Modules/`）
 - `services/Baihua.Data/`：共享 EF Core 数据层（单库多 DbContext + `DatabaseInitializer`）
 - `services/BaiHua.slnx`：服务端解决方案（包含所有 services/ 项目及 libs/MobileContract）
-- `tools/bh/`：极简 CLI 工具（Windows 唯一命令：`bh` = `win/native` dotnet 进程；k3s 形态已退役，Linux 侧实现保留在 `linux/k8s/`）
+- `tools/bh/`：极简 CLI 工具（Windows：`bh` = `win/native` dotnet 进程，`bh docker` = `win/docker` Docker Desktop 全容器；k3s 形态已退役，Linux 侧实现保留在 `linux/k8s/`）
 - `libs/BaihuaSdk/`：跨平台移动端 SDK（net9.0;net10.0，零 MAUI 依赖，主要 target net10.0）
 - `libs/MobileContract/`：移动端契约（DTO、接口定义）
 - `clients/Huapu/`：花圃（BaiHua.Nursery）— 移动端技术实验与验证工具（非正式发布 App，详见下方说明）
@@ -215,19 +218,26 @@ dotnet build services/BaiHua.slnx -c Release
 > `FamilyApi:BaseUrl` / `AiApi:BaseUrl` / `VaultApi:BaseUrl` 三个配置键（源码里 `FamilyApi`/`AiApi`/`VaultApi`
 > 仅作为 HttpClient 名字保留兼容别名，实际都指向唯一的 `BaihuaServer:BaseUrl`）。
 
-**部署形态**（Windows 上 native 唯一；k8s 仅 Linux）：
-- **native（Windows 唯一形态）**：`bh-server.exe`（8788）+ `bh-webui.exe`（5177）以 dotnet 进程直接跑在 Windows 上，
-  不依赖 WSL/Docker/k3s；PostgreSQL 由用户自行安装（Windows 服务 `postgresql-x64-18`），OpenVINO 用 `ovms` 进程/系统服务（REST :8000）。
+**部署形态**（Windows：native / docker；Linux：k8s）：
+- **native（Windows 默认形态）**：`bh-server.exe`（8788）+ `bh-webui.exe`（5177）以 dotnet 进程直接跑在 Windows 上，
+  不依赖 WSL/Docker/k3s；PostgreSQL 由用户自行安装（Windows 服务 `postgresql-x64-18`），
+  OpenVINO 用 Windows 服务 `ovms`（AUTO_START，REST :8000；安装须走 OVMS 自带的
+  `install_ovms_service.bat <模型目录>` + `sc config ovms start= auto`——直接 `sc create` 注册控制台程序会 1053）。
   `bh build` → `bh start`（详见 `tools/bh/README.md`）。
+- **docker（Windows 可选形态）**：`bh docker <cmd>` 用 Docker Desktop 的 Linux 容器跑
+  `postgres` + `server`（8788）+ `webui`（5177），compose 见 `docker/docker-compose.windows.yml`；
+  数据/日志在 `%USERPROFILE%\.baihua`，PostgreSQL 用命名卷 `baihua-win-pgdata`（只绑 127.0.0.1:5433），
+  宿主机 OVMS 经 `host.docker.internal:8000` 访问。与 native 互斥（同占 8788/5177）。
 - **k8s（仅 Linux，`tools/bh/linux/k8s/`）**：`server`（8788）+ `webui`（5177）+ `postgres` + `openvino`（OVMS，profile 可选）等工作负载全部容器化；
   k8s 清单见 `k8s/20-server.yaml` / `23-webui.yaml` / `25-postgres.yaml` / `22a-openvino.yaml`，Linux 上 `bh build server webui` → `bh deploy` / `bh up`。
   **Windows 侧 k3s 形态（原 `bh-k3s`，经 WSL）已随本机 WSL 卸载退役（2026-10-27）**：`bh-k3s` 入口/定位器已删除，
   `bh install` 会清理旧版遗留定位器；`bh lan on` 会清理指向已消失 WSL IP 的遗留 portproxy 规则。
   历史：WSL2 + k3s 在部分环境下不稳定（init 系统反复 poweroff、发行版空闲回收拖垮集群），这是当初 native 成为默认、最终 WSL 被卸载的原因。
-- **compose 对应关系**（`docker/docker-compose.yml`，供本地/参考）：服务名 `server` / `webui` / `nginx` / `postgres` /
-  `openvino`（profile `inference`）/ `openobserve`（profile `observability`）。
-- 已退役：合并前 `family`/`ai`/`vault` 三容器、`docker-ai` profile、`host.docker.internal:8791` 跨进程访问，
-  以及 `tools/bh` 的 docker cell（`win/docker`、`linux/native`）。
+- **compose 对应关系**：Linux 服务器用 `docker/docker-compose.yml`（服务名 `server` / `webui` / `nginx` /
+  `postgres` / `openvino`（profile `inference`）/ `openobserve`（profile `observability`），
+  Windows 用 `docker/docker-compose.windows.yml`（`postgres` / `server` / `webui`，bridge 网络）。
+- 已退役：合并前 `family`/`ai`/`vault` 三容器、`docker-ai` profile、`host.docker.internal:8791` 跨进程访问、
+  `tools/bh` 的 `linux/native` cell。**`win/docker` cell 已于 2026-11-04 恢复**（`bh docker`）。
 - **OpenVINO 推理**仍与后端进程分离：native cell 用 Windows `ovms` 进程/系统服务（REST :8000，`scripts/install-openvino-ovms-service.ps1` 安装），
   k8s cell 用工作负载 `bh-openvino`（OVMS，REST :8000）；后端经 `OpenVinoOms__BaseUrl` 访问。
 
