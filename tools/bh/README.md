@@ -5,23 +5,24 @@ Windows 上有**两种互斥的部署形态**，都占 8788（后端）/ 5177（
 | 命令 | 形态 | 跑在哪 | 依赖 | 说明 |
 |------|------|--------|------|------|
 | `bh <cmd>` | **native（默认）** | Windows dotnet 进程（`bh-server.exe` / `bh-webui.exe`） | .NET SDK 10、本机 PostgreSQL、可选 OVMS | 不依赖 Docker/WSL，最快 |
-| `bh docker <cmd>` | **docker** | Docker Desktop 里的 Linux 容器（postgres / server / webui） | Docker Desktop（Linux 容器） | 环境隔离，一条命令起全栈 |
+| `bh wslc <cmd>` | **wslc** | WSL 3 里的 Linux 容器（postgres / server / webui） | WSL >= 2.9.3（自带 `wslc.exe`） | 环境隔离，一条命令起全栈 |
 | `bh`（Linux 上） | k3s | Linux k3s（containerd） | Linux + k3s | 与 Windows 无关 |
 
 > 历史上的 `bh-k3s`（经 WSL 的全容器化形态）已随本机 WSL 卸载而退役（2026-10-27）；
 > Windows 侧该入口与定位器已删除，Linux 侧 k3s 实现仍保留在 `linux/k8s/`。
 > 传入旧写法 `bh k8s <cmd>` / `bh-k3s <cmd>` 会失败并给出迁移指引。
 >
-> **docker 形态**用 Docker Desktop 的 Linux 容器承载百花（不需要 WSL 里的 k3s，也不需要预构建的
-> `bh/base-*` 基础镜像——`docker/Dockerfile.server`、`docker/Dockerfile.webui` 直接基于官方 .NET 镜像）。
+> **wslc 形态**用 Windows 11 新版 WSL 自带的容器 CLI（`wslc.exe`，WSL >= 2.9.3）承载百花，
+> **不需要 Docker Desktop**、不需要 WSL 里的 k3s，也不需要预构建的 `bh/base-*` 基础镜像——
+> `docker/Dockerfile.server`、`docker/Dockerfile.webui` 直接基于官方 .NET 镜像，`wslc build` 即可。
 
 ```
 tools/bh/
-├── bh.ps1 / bh.cmd          Windows 入口：默认 native；bh docker <cmd> 转发到 docker 形态
+├── bh.ps1 / bh.cmd          Windows 入口：默认 native；bh wslc <cmd> 转发到容器形态
 ├── locator.ps1              Windows 自包含定位器（复制到 PATH 用）
 ├── bh.sh / locator.sh       Linux 入口（指向 linux/k8s/bh.sh；Linux 上 bh 即 k3s 形态）
 ├── win/native/              native 实现（build/start/stop/status/logs/dashboard…）
-├── win/docker/              docker 实现（bh docker：compose up/down/ps/logs，docker/.env.windows）
+├── win/wslc/                wslc 实现（bh wslc：网络/卷/容器 build/run/logs，docker/.env.wslc）
 └── linux/k8s/               k3s 实现（Linux 专用；Windows 上已退役）
 ```
 
@@ -67,7 +68,7 @@ Linux 机器不受影响：`bh`（= k3s 形态）照常可用。
 
 ```
 bh <command> [args]           native 命令（Windows，默认形态）
-bh docker <command> [args]    docker 命令（Windows，Docker Desktop 全容器形态）
+bh wslc <command> [args]      wslc 命令（Windows，WSL 自带容器 CLI，全容器形态）
 bh lan [on|off|status]        局域网入口（宿主 :80→:8788 portproxy，两种形态通用）
 bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
 ```
@@ -96,37 +97,43 @@ bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
 > 这也是 `scripts/install-openvino-ovms-service.ps1` 里调用官方 bat 的原因。
 > 环境变量：`PG_HOST`（默认 127.0.0.1）、`PG_USER`（默认 postgres）、`PG_PASSWORD`、`PG_DATABASE`（默认 baihua）。
 
-### docker 命令速查（`bh docker`）
+### wslc 命令速查（`bh wslc`）
 
-前置：**Docker Desktop**（Linux 容器；默认 WSL2 后端，Windows 专业版/企业版可在设置里改用 Hyper-V 后端）。
-不需要 WSL 里装 k3s，也不需要预构建 `bh/base-*` 镜像。
+前置：**WSL 3**（`wsl --version` 看版本，`wsl --update` 升级；`wslc.exe` 随 WSL 提供，**不需要 Docker Desktop**）。
+架构对应关系：`postgres` + `server`（8788）+ `webui`（5177）三个容器，用户自定义网络 `bh-net`，
+镜像用 `docker/Dockerfile.server|webui` 由 `wslc build` 构建。
 
 | 命令 | 说明 |
 |------|------|
-| `bh docker build [server\|webui]` | 构建镜像（首次或源码变更后；Dockerfile 直接基于官方 .NET 镜像） |
-| `bh docker start [svc...]` | 启动（默认全部：postgres → server → webui），等待 8788/5177 就绪 |
-| `bh docker stop` / `restart` | 停止（数据卷保留）/ 重启 |
-| `bh docker status` | `compose ps` + 访问地址 + 本机 OVMS 探测 |
-| `bh docker logs <svc> [n]` | 日志（server / webui / postgres） |
-| `bh docker ps` / `pull` | 容器列表 / 拉取镜像 |
-| `bh docker update` | git pull + build + start |
-| `bh docker dashboard` / `open` | 打开 WebUI（dashboard 尝试 cli-token 自动登录） |
-| `bh docker env` | 查看/生成 `docker/.env.windows`（首次自动生成，含随机 `PG_PASSWORD`） |
+| `bh wslc build [server\|webui]` | 构建镜像（首次会拉 .NET SDK 镜像，较慢；源码变更后重跑） |
+| `bh wslc start [svc...]` | 启动（默认全部：postgres → server → webui），等待 8788/5177 就绪 |
+| `bh wslc stop` / `restart` | 停止并删除容器（命名卷保留数据）/ 重启 |
+| `bh wslc status` | `wslc container list --all` + 访问地址 + OVMS 探测 |
+| `bh wslc logs <svc> [n]` | 日志（server / webui / postgres） |
+| `bh wslc exec <svc> <cmd...>` | 在运行中的容器里执行命令（如 `bh wslc exec postgres psql -U baihua -d baihua`） |
+| `bh wslc ps` / `pull` | 容器列表 / 拉取 postgres 镜像 |
+| `bh wslc update` | git pull + build + start |
+| `bh wslc dashboard` / `open` | 打开 WebUI（dashboard 尝试 cli-token 自动登录） |
+| `bh wslc env` | 查看/生成 `docker/.env.wslc`（首次自动生成，含随机 `PG_PASSWORD`） |
 
 要点：
-- **数据/日志**：`BAIHUA_DATA_DIR`（默认 `%USERPROFILE%\.baihua`，与 native 共用密钥/配置）、
-  `BAIHUA_LOG_DIR`（默认 `%USERPROFILE%\.baihua\docker-logs`）、`VAULTS_DIR`（默认 `%USERPROFILE%\Vaults`）。
-- **PostgreSQL** 在容器里（命名卷 `baihua-win-pgdata`），只绑 `127.0.0.1:5433`，避免和宿主机 5432 的 PostgreSQL 冲突。
-- **OVMS 仍跑在宿主机**（Windows :8000 进程/服务）：容器经 `host.docker.internal:8000` 访问，不在容器里跑 GPU 推理。
+- **数据**：命名卷 `bh-pgdata`（PostgreSQL，挂 `/var/lib/postgresql`，pg18 布局）、`bh-data`（`/app/data`，密钥/配置）、
+  `bh-logs`（`/app/logs`）；知识库目录 `VAULTS_DIR`（默认 `%USERPROFILE%\Vaults`）以 Windows 路径绑定挂载到 `/vaults`。
+- **PostgreSQL** 只绑 `127.0.0.1:5433`（避开宿主 5432 上可能已装的 PostgreSQL）。
+- **镜像源**：Docker Hub 在国内常直连超时，`docker/.env.wslc` 的 `BAIHUA_WSL_MIRROR` 默认 `docker.m.daocloud.io`，
+  postgres 经它拉取；.NET 基础镜像走 `mcr.microsoft.com`（可直连）。留空则用官方 registry。
+- **OVMS 仍跑在 Windows**（`ovms` 服务，:8000）：容器访问宿主需要宿主 IP，`bh wslc start` 会逐个探测
+  宿主网卡地址并自动把 `OpenVinoOms__BaseUrl` 传进 server 容器；探测不到时可用 `OVMS_HOST_IP` 指定。
 - **局域网 :80 入口**：仍用 `bh lan on`（宿主 portproxy → `127.0.0.1:8788`），与 native 一致。
-- **与 native 互斥**：两种形态都占 8788/5177，切换前先 `bh stop` 或 `bh docker stop`。
-- 首次 `bh docker start` 会自动构建镜像（需要容器内能访问 NuGet）；构建慢时先 `bh docker build` 单独跑。
+- **与 native 互斥**：两种形态都占 8788/5177，切换前先 `bh stop` 或 `bh wslc stop`。
+- **重启后**：容器不随 Windows 登录自动拉起（`wslc` 没有 restart policy），需要再 `bh wslc start`；
+  OVMS 是 Windows 服务（AUTO_START），不受影响。
 
 ## 自检（回归）
 
 ```powershell
 pwsh -File scripts/verify-bh-native.ps1          # native：无 bh-k3s 残留 / 无 WSL·Docker 依赖 / status(--json) / 旧写法提示
-pwsh -File scripts/verify-bh-docker.ps1          # docker：入口/dispatch/compose 静态检查（装了 Docker 再跑 config 校验）
+pwsh -File scripts/verify-bh-wslc.ps1            # wslc：入口/dispatch/只用 wslc 的静态检查（无 wslc 时跳过运行时项）
 pwsh -File scripts/verify-bh-native.ps1 -Quiet   # 只输出失败与汇总
 ```
 

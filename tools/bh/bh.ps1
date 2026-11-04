@@ -42,9 +42,9 @@ function Show-Help {
     Write-Host '             status [--json] / logs <svc> [n] / dashboard / open / open-webui'
     Write-Host 'native 依赖: .NET SDK 10、本机 PostgreSQL（Windows 服务）、可选 OVMS(:8000)'
     Write-Host ''
-    Write-Host 'docker 形态: bh docker <build|start|stop|restart|status|logs|update|dashboard|env>'
-    Write-Host '             全容器（postgres/server/webui，Docker Desktop 的 Linux 容器），与 native 互斥（同占 8788/5177）'
-    Write-Host '             依赖: Docker Desktop 已安装并运行（本机 OVMS 经 host.docker.internal:8000 访问）'
+    Write-Host 'wslc 形态:  bh wslc <build|start|stop|restart|status|logs|exec|update|dashboard|env>'
+    Write-Host '             全容器（postgres/server/webui，WSL 自带的 wslc.exe，不需要 Docker Desktop），与 native 互斥（同占 8788/5177）'
+    Write-Host '             依赖: WSL >= 2.9.3（wsl --update）；OVMS 仍跑在 Windows 服务 :8000'
     Write-Host ''
     Write-Host 'k3s 形态已随本机 WSL 卸载退役（Linux 侧实现保留于 tools/bh/linux/k8s）'
     Write-Host ''
@@ -161,15 +161,21 @@ if ($Arg1 -eq 'native') {
     if ($CmdArgs.Count -eq 0) { Show-Help; exit 0 }
 }
 
-# ==================== docker（第二形态，需 Docker Desktop） ====================
-# native 仍是默认形态；bh docker <cmd> 走全容器（postgres / server / webui）。
-if ($Arg1 -in @('docker', 'compose')) {
-    $cell = Join-Path $Root 'win\docker\bh.ps1'
-    if (-not (Test-Path $cell)) { Write-Error "[docker] 缺少 $cell"; exit 1 }
+# ==================== wslc（Windows 容器形态，WSL 自带 wslc.exe） ====================
+# native 仍是默认形态；bh wslc <cmd> 走 WSL 容器（postgres / server / webui），不需要 Docker Desktop。
+if ($Arg1 -in @('wslc', 'container')) {
+    $cell = Join-Path $Root 'win\wslc\bh.ps1'
+    if (-not (Test-Path $cell)) { Write-Error "[wslc] 缺少 $cell"; exit 1 }
     $rest = @($CmdArgs | Select-Object -Skip 1)
     if ($rest.Count -eq 0) { $rest = @('help') }
     & $cell @rest
     exit $LASTEXITCODE
+}
+# 旧写法：Windows 容器形态不再用 Docker Desktop，统一走 wslc
+if ($Arg1 -eq 'docker') {
+    Write-Warning "[bh] Windows 容器形态已改用 WSL 自带的 wslc.exe（不需要 Docker Desktop）：bh wslc <cmd>"
+    Write-Warning "[bh] 例：bh wslc status / bh wslc start"
+    exit 1
 }
 
 # ==================== native ====================

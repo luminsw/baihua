@@ -35,7 +35,7 @@ clients/
   Huapu/            # 花圃（BaiHua.Nursery）— MAUI 技术验证客户端
 scripts/            # 开发、发布、部署脚本
 docker/             # Docker compose 配置（nginx / server / webui 镜像）
-tools/bh/           # 极简 CLI（Windows：bh = native / bh docker = 全容器；Linux：bh = k3s）
+tools/bh/           # 极简 CLI（Windows：bh = native / bh wslc = WSL 容器；Linux：bh = k3s）
 tests/              # 后端/ SDK / 花圃单元测试 + E2E
 ```
 
@@ -62,12 +62,12 @@ cd services/Baihua.Web && dotnet run
 Windows 上有两种互斥形态（都占 8788/5177，推荐 PowerShell 7，UTF-8 中文正常）：
 
 ```powershell
-bh build; bh start          # native（默认）：dotnet 进程，不依赖 WSL/Docker/k3s（需 .NET SDK 10 + 本机 PostgreSQL）
-bh docker start             # docker：Docker Desktop 全容器（postgres/server/webui），无需本机装 .NET/PG
+bh build; bh start          # native（默认）：dotnet 进程，不依赖容器/WSL（需 .NET SDK 10 + 本机 PostgreSQL）
+bh wslc start               # 容器：WSL 自带 wslc.exe（无需 Docker Desktop），postgres/server/webui 全容器
 ```
 
-首次运行（native 的 .NET SDK 10 / PostgreSQL 与口令；docker 的镜像构建）与完整命令见 `tools/bh/README.md`，
-回归自检：`pwsh -File scripts/verify-bh-native.ps1`、`pwsh -File scripts/verify-bh-docker.ps1`。
+首次运行（native 的 .NET SDK 10 / PostgreSQL 与口令；wslc 的镜像构建）与完整命令见 `tools/bh/README.md`，
+回归自检：`pwsh -File scripts/verify-bh-native.ps1`、`pwsh -File scripts/verify-bh-wslc.ps1`。
 
 ## DSH 插件生态（DeepSeek Harness × 百花）
 
