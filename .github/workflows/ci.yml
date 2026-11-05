@@ -168,9 +168,13 @@ jobs:
       - name: Dump service logs (on failure)
         if: failure()
         run: |
+          echo "===== curl /family/checkin (raw response head) ====="
+          curl -isS --max-time 5 http://127.0.0.1:5177/family/checkin | head -30 || true
+          echo "===== curl /api/achievements/learners ====="
+          curl -isS --max-time 5 http://127.0.0.1:8788/api/achievements/learners | head -15 || true
           for f in /tmp/baihua-logs/*.log; do
             echo "===== $(basename "$f") ====="
-            tail -n 200 "$f" || true
+            grep -E "checkin|family|Error|ERR|warn|Exception" "$f" | tail -n 60 || true
           done
 
       - name: Upload Playwright artifacts (on failure)

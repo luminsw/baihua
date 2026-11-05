@@ -42,8 +42,10 @@ export async function ensureTestData(page: Page) {
 export async function navigateTo(page: Page, path: string) {
   const base = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5177';
   const url = base.replace(/\/$/, '') + path;
-  await page.goto(url);
+  const resp = await page.goto(url);
+  console.log(`[navigateTo] ${path} → ${page.url()} (HTTP ${resp?.status() ?? '?'})`);
   await page.waitForLoadState('networkidle');
+  console.log(`[navigateTo] after networkidle url=${page.url()} h1=${(await page.locator('h1').first().textContent({ timeout: 5000 }).catch(() => '(none)'))?.trim()}`);
 }
 
 export async function waitForBlazor(page: Page) {
