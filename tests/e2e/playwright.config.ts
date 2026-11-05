@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test';
 import * as path from 'path';
+import * as fs from 'fs';
 
 // shared-e2e folder sits under tests/shared-e2e relative to this file (tests/e2e)
 const sharedE2EPath = path.resolve(__dirname, '..', 'shared-e2e');
@@ -27,11 +28,16 @@ export default defineConfig({
     // 该 fixture 同时是回归护栏：Playwright 默认 locale=en-US，浏览器会发送 Accept-Language: en-US；
     // 断言保持中文，等于验证「Accept-Language: en-US 也不会切走英文」。
     locale: 'zh-CN',
-    // Ubuntu 26.04 下 Playwright 无法自动下载浏览器，使用系统 Chromium
-    // On Linux use system Chromium when PW_CHROMIUM_PATH is not set; on other OS leave undefined so Playwright uses its own browsers
+    // 浏览器选择策略：PW_CHROMIUM_PATH 优先；Linux 再试系统 snap Chromium（本机 Ubuntu 约定）；
+    // 路径不存在（如 GitHub runner）→ 回退 Playwright 自带浏览器（CI 由 `playwright install` 提供）。
+    // 旧实现硬编码 snap 路径且无存在性检查，CI 上 launch 即失败（2026-11-05 修复）。
     launchOptions: (() => {
-      const exe = process.env.PW_CHROMIUM_PATH || (process.platform === 'linux' ? '/snap/chromium/current/usr/lib/chromium-browser/chrome' : undefined);
-      return exe ? { executablePath: exe, args: ['--no-sandbox', '--disable-setuid-sandbox'] } : { args: ['--no-sandbox', '--disable-setuid-sandbox'] };
+      const args = ['--no-sandbox', '--disable-setuid-sandbox'];
+      const candidates = [process.env.PW_CHROMIUM_PATH,
+        process.platform === 'linux' ? '/snap/chromium/current/usr/lib/chromium-browser/chrome' : '']
+        .filter(Boolean) as string[];
+      const exe = candidates.find(c => fs.existsSync(c));
+      return exe ? { executablePath: exe, args } : { args };
     })(),
   },
   projects: [
