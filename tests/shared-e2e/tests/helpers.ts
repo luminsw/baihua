@@ -37,6 +37,11 @@ export async function ensureTestData(page: Page) {
     });
     if (!created.ok()) throw new Error(`创建 Learner 失败: ${created.status()} ${await created.text()}`);
   }
+  // FAM-34：空库（CI）下 OnboardingCompleted=false，MainLayout 会在每个页面加载 500ms 后
+  // 强制重定向到 /onboarding，导致所有页面断言落空（2026-11-05 CI 诊断确认）。
+  // 测试环境前置幂等标记完成，绕过引导拦截。
+  const completed = await page.request.post(apiBase + '/api/onboarding/complete');
+  if (!completed.ok()) throw new Error(`标记 Onboarding 完成失败: ${completed.status()}`);
 }
 
 export async function navigateTo(page: Page, path: string) {
