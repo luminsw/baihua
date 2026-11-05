@@ -127,8 +127,29 @@ data/tcm-quiz/
 | S3 | 学习模块 UI（刷题流＋反馈＋结算＋AI 按钮） | /learn 页面，playwright 验证 |
 | S4 | 内容批次 B1…B10（多会话，每批一文件一导入） | 覆盖全伤寒金匮 ~300 方 |
 | S5 | 导出文件端到端＋（未来）花阁上传/花记下载对接 | 题库包文件可下载分发 |
+| S6 | 移动端同步端点（服务端，2026-11-05 完成） | `mg/learn/*` 双前缀＋鉴权域接入；花记两端接入后续任务 |
 
-## 八、待确认决策点
+## 八、移动端题库同步协议（S6，2026-11-05）
+
+题库是结构化数据（非文件树），不照搬知识库的 manifest→file 两步协议，简化为「列表比对版本 → 全量拉包」：
+
+| 端点 | 返回 | 说明 |
+|---|---|---|
+| `GET /mg/learn/banks` | `QuizBankOverviewDto[]`（camelCase） | 含 `bankCode`/`version`/`questionCount`，端上比对版本决定是否更新 |
+| `GET /mg/learn/banks/{bankCode}/package` | `QuizBankPackage`（camelCase） | 全量包，**含 `isCorrect`**——花记下载后本地离线判定（判定零 AI：比对选项 key） |
+
+鉴权与知识库 `/mg/vaults`→`/mg/manifest` 同域（`LearnBankController` 双前缀 `api/learn`＋`mg/learn`，
+Program.cs 三处路径表均加 `/mg/learn/`）：HMAC 签名（mobileApiPaths）＋已配对设备（vaultMobilePaths）＋
+局域网放行（publicPaths）。移动端调用需携带 `X-Device-Id` 与 HMAC 签名头（与 Kotlin `RequestSigner` 算法一致）。
+
+同步协议（花记端建议实现）：
+1. 本地存 `bankCode → version`（已下载版本）；
+2. 启动/刷新时拉 `GET /mg/learn/banks`，任一题库 `version` 与本地不同 → 拉该题库 `/package` 全量覆盖；
+3. 本地入库后即可离线刷题（抽题、判定、进度全在端上，无服务端 QuizAttempts 记录）。
+
+服务端状态：S6 已落地（服务端先行）；花记鸿蒙/安卓两端接入为后续独立任务。
+
+## 九、待确认决策点
 
 1. **UI 时机**：你原话「数据完全准备好后再做模块」。但 S4（230 方）需要很多轮会话——
    建议 S2/S3 先行（已学 70 方先用起来），S4 内容与使用并行补全；**若坚持数据全齐再做 UI，S3 挪到 S4 之后**。

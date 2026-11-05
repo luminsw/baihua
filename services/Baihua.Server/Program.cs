@@ -73,6 +73,7 @@ string[] vaultMobilePaths =
 [
     "/mg/manifest", "/mg/file", "/mg/file_chunk", "/mg/cards",
     "/mg/vaults", "/mg/verify-token", "/mg/note-count",
+    "/mg/learn/",
     "/api/sync/",
     "/vault/manifest", "/vault/file", "/vault/file_chunk",
     "/mobile-vaults/push", "/mobile-vaults/unpush"
@@ -367,6 +368,7 @@ app.Use(async (context, next) =>
         "/mg/vaults", "/mg/pair",
         "/mg/devices/revoke",
         "/mg/device-backup",
+        "/mg/learn/",
         "/api/ai/chat"
     };
 
@@ -487,6 +489,7 @@ app.Use(async (context, next) =>
         "/api/discovery", "/mg/discovery",
         "/mobile-vaults/push", "/mobile-vaults/unpush",
         "/mg/vaults", "/mg/manifest", "/mg/file", "/mg/cards",
+        "/mg/learn/",
         "/mg/pair", "/mg/pair/check",
         "/mg/register-device",
         "/mg/auth/config", "/mg/verify-token",

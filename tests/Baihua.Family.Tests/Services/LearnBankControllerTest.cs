@@ -225,4 +225,38 @@ public class LearnBankControllerTest
         Assert.Equal("B", package.Questions.Single(q => q.QuestionCode == "q_001").Options.Single(o => o.IsCorrect).Key);
         Assert.Equal("f_alpha", package.Questions.Single(q => q.QuestionCode == "q_001").ItemCode);
     }
+
+    // ============ GET {api|mg}/learn/banks/{bankCode}/package（移动端同步） ============
+
+    [Fact]
+    public async Task GetPackage_UnknownBank_ReturnsNotFound()
+    {
+        var (controller, _) = CreateController();
+
+        var action = await controller.GetPackage("nope");
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(action.Result);
+        Assert.Contains("题库不存在", GetError(notFound.Value));
+    }
+
+    [Fact]
+    public async Task GetPackage_Valid_ReturnsFullPackageForOfflineGrading()
+    {
+        var (controller, _) = await CreateControllerWithSampleBankAsync();
+
+        var action = await controller.GetPackage(QuizBankTestSupport.BankCode);
+
+        var ok = Assert.IsType<OkObjectResult>(action.Result);
+        var package = Assert.IsType<QuizBankPackage>(ok.Value!);
+        Assert.Equal(QuizBankTestSupport.IndustryCode, package.Industry.Code);
+        Assert.Equal(QuizBankTestSupport.BankCode, package.Bank.Code);
+        Assert.Equal("v1", package.Bank.Version);
+        Assert.Equal(2, package.Items.Count);
+        Assert.Equal(3, package.Questions.Count);
+
+        // 移动端离线判定依赖静态正确项：包内必须保留 isCorrect 数据声明
+        var q = package.Questions.Single(x => x.QuestionCode == "q_001");
+        Assert.Equal("B", q.Options.Single(o => o.IsCorrect).Key);
+        Assert.Equal("f_alpha", q.ItemCode);
+    }
 }

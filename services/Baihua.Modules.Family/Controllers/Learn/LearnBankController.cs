@@ -4,7 +4,10 @@ using Baihua.Modules.Family.Services;
 namespace Baihua.Modules.Family.Controllers;
 
 /// <summary>
-/// 多行业选择题题库学习 API（/learn 页后端）。
+/// 多行业选择题题库学习 API（/learn 页后端 + 移动端同步）。
+///
+/// 双路由前缀：api/learn/*（WebUI，管理面板访问域）；mg/learn/*（移动端同步域，
+/// 与 /mg/manifest→/mg/file 的知识库同步同域：HMAC 签名 + 已配对设备，见 Program.cs 三处路径表）。
 ///
 /// 判定零 AI：作答判定＝比对选项 key（QuizBankService 纯确定性路径）。
 /// 「AI 分析」由 Web 端另调 api/assistant/chat（可选、可能产生费用），不经本控制器。
@@ -12,6 +15,7 @@ namespace Baihua.Modules.Family.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/learn")]
+[Route("mg/learn")]
 public class LearnBankController : ControllerBase
 {
     private readonly QuizBankService _quizBankService;
@@ -84,6 +88,26 @@ public class LearnBankController : ControllerBase
                 System.Text.Encoding.UTF8.GetBytes(System.Text.Json.JsonSerializer.Serialize(package, jsonOptions)),
                 "application/json",
                 fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 移动端同步：全量题库包（JSON 响应体，含答案——花记下载后本地离线刷题判定）。
+    /// 客户端同步协议：先 GET banks 比对 version，变更时拉本端点全量覆盖（题库为结构化
+    /// 数据，非文件树，故不需要 manifest/分文件，一个 JSON 包即一版）。
+    /// </summary>
+    [HttpGet("banks/{bankCode}/package")]
+    public async Task<ActionResult<Contracts.Learn.QuizBankPackage>> GetPackage(string bankCode, CancellationToken ct = default)
+    {
+        try
+        {
+            var package = await _quizBankService.ExportPackageAsync(
+                await ResolveIndustryCodeAsync(bankCode, ct), bankCode, ct);
+            return Ok(package);
         }
         catch (InvalidOperationException ex)
         {
