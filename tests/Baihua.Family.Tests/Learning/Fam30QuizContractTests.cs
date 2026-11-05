@@ -21,14 +21,20 @@ public class Fam30QuizContractTests
 {
     // ============ 后端契约（反射探测） ============
 
+    /// <summary>
+    /// 定位 FAM-30 互考服务。必须按名精确匹配：程序集里另有 QuizBankService（题库，
+    /// 名字也含 "Quiz"），宽松 Contains 会命中它导致探测目标错乱（2026-11-05 修复）。
+    /// </summary>
+    private static Type? FindQuizService() =>
+        typeof(LeaderboardService).Assembly.GetTypes()
+            .FirstOrDefault(t => t.IsClass && !t.IsAbstract && t.IsPublic
+                                 && t.Name.Equals("QuizService", StringComparison.OrdinalIgnoreCase));
+
     [Fact]
     public void QuizService_MustExist()
     {
         // AC1/AC2：互考服务存在（名称含 Quiz）
-        var quizType = typeof(LeaderboardService).Assembly.GetTypes()
-            .FirstOrDefault(t => t.IsClass && !t.IsAbstract && t.IsPublic
-                                 && t.Name.Contains("Quiz", StringComparison.OrdinalIgnoreCase)
-                                 && t.Name.EndsWith("Service", StringComparison.OrdinalIgnoreCase));
+        var quizType = FindQuizService();
         Assert.NotNull(quizType);
     }
 
@@ -36,9 +42,7 @@ public class Fam30QuizContractTests
     public void QuizResult_MustRecordScore()
     {
         // AC2/AC3：对战结果含双方得分/正确率
-        var quizType = typeof(LeaderboardService).Assembly.GetTypes()
-            .FirstOrDefault(t => t.IsClass && !t.IsAbstract && t.IsPublic
-                                 && t.Name.Contains("Quiz", StringComparison.OrdinalIgnoreCase));
+        var quizType = FindQuizService();
         Assert.NotNull(quizType);
         var hasScore = quizType!.GetMethods(BindingFlags.Public | BindingFlags.Instance)
             .Any(m => m.Name.Contains("Score", StringComparison.OrdinalIgnoreCase)
@@ -52,9 +56,7 @@ public class Fam30QuizContractTests
     public void QuizResult_MustPersistToStudyActivity()
     {
         // AC4：互考记录写入 StudyActivity（ActivityType=quiz，计入打卡）
-        var quizType = typeof(LeaderboardService).Assembly.GetTypes()
-            .FirstOrDefault(t => t.IsClass && !t.IsAbstract && t.IsPublic
-                                 && t.Name.Contains("Quiz", StringComparison.OrdinalIgnoreCase));
+        var quizType = FindQuizService();
         Assert.NotNull(quizType);
 
         // 反射检查 Quiz 服务是否引用 StudyActivity 写入（互考类型）

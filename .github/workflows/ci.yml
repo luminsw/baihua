@@ -71,6 +71,22 @@ jobs:
     name: Playwright E2E
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # 合并后为单一 PostgreSQL 数据库（DbConnections 默认值与下方凭据对齐：
+    # PG_USER=baihua / PG_PASSWORD=Baihua2026Pg! / PG_DATABASE=baihua），无需额外环境变量
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: baihua
+          POSTGRES_PASSWORD: Baihua2026Pg!
+          POSTGRES_DB: baihua
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U baihua"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -130,14 +146,15 @@ jobs:
           set -euxo pipefail
           wait_for() {
             local url="$1" name="$2"
-            for i in $(seq 1 60); do
+            # 冷启动实测约 96s（dotnet run + DatabaseInitializer），放宽到 240s
+            for i in $(seq 1 120); do
               if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
                 echo "OK: $name ($url)"
                 return 0
               fi
               sleep 2
             done
-            echo "::error::$name 未在 120s 内就绪: $url"
+            echo "::error::$name 未在 240s 内就绪: $url"
             return 1
           }
           wait_for http://127.0.0.1:8788/health Server
