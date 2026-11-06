@@ -461,7 +461,7 @@ namespace Baihua.Core;
                 }
                 dbContext.SaveChanges();
                 
-                _ = NotifyDeviceStatusChangedAsync("sync_updated", device.DeviceName, null);
+                _ = NotifyDeviceStatusChangedAsync("sync_updated", device.DeviceName, null, deviceId: device.DeviceId);
             }
         }
 
@@ -616,7 +616,7 @@ namespace Baihua.Core;
                     catch { /* best effort */ }
                 }
 
-                _ = NotifyDeviceStatusChangedAsync("sync_updated", deviceName, null, vaultId, vaultName)
+                _ = NotifyDeviceStatusChangedAsync("sync_updated", deviceName, null, vaultId, vaultName, deviceId)
                     .ContinueWith(t =>
                     {
                         if (t.IsFaulted)
