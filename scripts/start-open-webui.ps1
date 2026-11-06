@@ -32,9 +32,11 @@ function Test-PortOpen($port) {
 }
 
 function Get-PythonExe {
-    $py = Get-Command python -ErrorAction SilentlyContinue
-    if ($py) { return $py.Source }
-    $py = Get-Command python3 -ErrorAction SilentlyContinue
+    # 排除 OVMS 自带 python：系统 PATH 里它排在最前（OVMS 安装污染），
+    # 用它建 venv 会得到指向 OVMS 目录的坏环境
+    $py = Get-Command python, python3 -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source -notmatch '\\ovms' } |
+        Select-Object -First 1
     if ($py) { return $py.Source }
     $candidates = @(
         "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
@@ -76,6 +78,13 @@ function Start-OpenWebUI {
     }
 
     New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+
+    # 系统级 PYTHONHOME（HKLM，OVMS python_on 包写入）会让 venv 失效：
+    # PYTHONHOME 优先于 pyvenv.cfg，venv 的 python 会去 OVMS 目录找标准库，
+    # 启动即崩（Fatal Python error: No module named 'encodings'，2026-11-06 实测）。
+    # venv 自带完整标准库，启动前必须清掉这两个变量（仅本进程，不影响 OVMS）。
+    Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue
+    Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
 
     $exe = Join-Path $VenvDir 'Scripts\open-webui.exe'
     $env:WEBUI_PORT = "$Port"
