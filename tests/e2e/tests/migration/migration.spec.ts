@@ -101,8 +101,9 @@ test.describe('【Nginx 端口迁移】服务健康 + QR 码地址验证', () =>
 
 test.describe('【设备管理页】OneHop Discover Tab 移除验证', () => {
   test.beforeEach(async ({ page }) => {
+    // 设备管理区域已并入首页（Home.razor 内嵌 FamilyHome），独立 /devices 路由已不存在
     await authorize(page);
-    await navigateTo(page, '/devices');
+    await navigateTo(page, '/');
     await waitForBlazor(page);
   });
 
@@ -153,10 +154,13 @@ test.describe('【OpenClaw 页】默认模型下拉验证', () => {
     await waitForBlazor(page);
   });
 
-  test('OpenClaw 默认模型区域存在', async ({ page }) => {
-    // 页面应含 "Default Model" 或 "默认模型" 区域
-    await expect(page.locator('h2, h3, legend, label').filter({ hasText: /Default Model|OpenClaw/i }).first())
-      .toBeVisible({ timeout: 15000 });
+  test('/openclaw 路由已随 AI 精减移除（页面不存在）', async ({ page }) => {
+    // OpenClaw 任务委派页已删除（入口迁 DSH）；此前断言页面存在，页面删除后 goto 落到
+    // NotFound fallback，断言必然超时（2026-11-05 CI 修复）。改为验证配置区域确实不再出现。
+    await page.waitForLoadState('networkidle');
+    const html = await page.content();
+    expect(html, '不应再有 OpenClaw 默认模型配置区').not.toContain('Default Model');
+    expect(html, '不应再有 OpenClaw 默认模型配置区').not.toContain('Save Default Model');
   });
 
   // Blazor Server headless 限制：Playwright 无头模式下 SignalR 电路连不上，SSR 页面只有 "Rejoining the server" 断线路径。
