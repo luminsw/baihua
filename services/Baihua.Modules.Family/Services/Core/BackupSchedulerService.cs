@@ -81,6 +81,9 @@ namespace Baihua.Modules.Family.Services
 
             if (result.Success)
             {
+                // 成功也记一行：出问题时才能看出「哪天开始不备份了」，也便于核对文件权限修复是否生效
+                _logger.LogInformation("自动备份完成：{Path}（{Size} KB）",
+                    result.BackupPath, (result.FileSize ?? 0) / 1024);
             }
             else
             {
