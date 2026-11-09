@@ -40,7 +40,17 @@ public class QuizBankService
     /// 导入题库包（幂等 upsert）：行业/题库按 code 定位，条目/题目按 code upsert。
     /// 重复导入同一包＝内容刷新（内容以包为准），不产生重复行。
     /// </summary>
-    public async Task<QuizBankImportResultDto> ImportPackageAsync(QuizBankPackage package, CancellationToken ct = default)
+    public Task<QuizBankImportResultDto> ImportPackageAsync(QuizBankPackage package, CancellationToken ct = default)
+        => ImportPackageAsync(package, new QuizBankImportOptions(), ct);
+
+    /// <summary>
+    /// 导入题库包（可选 append 模式）。
+    /// <para>默认 <see cref="QuizBankImportOptions.OverwriteExisting"/> = true：幂等 upsert，已存在的条目/题目按包内容刷新。</para>
+    /// <para>append 模式（false）：只追加新代码，已存在的条目/题目原样保留并计入 Skipped，
+    /// 防止 AI 生成或 Agent 写入的 code 撞车时静默覆盖人工整理的内容。</para>
+    /// </summary>
+    public async Task<QuizBankImportResultDto> ImportPackageAsync(
+        QuizBankPackage package, QuizBankImportOptions options, CancellationToken ct = default)
     {
         var result = new QuizBankImportResultDto
         {
@@ -56,7 +66,7 @@ public class QuizBankService
             industry = new QuizIndustry { Code = package.Industry.Code, Name = package.Industry.Name, Description = package.Industry.Name + "题库行业" };
             db.QuizIndustries.Add(industry);
         }
-        else
+        else if (options.OverwriteExisting || options.UpdateMetadata)
         {
             industry.Name = package.Industry.Name;
             industry.UpdatedAt = DateTime.UtcNow;
@@ -80,7 +90,7 @@ public class QuizBankService
             db.QuizBanks.Add(bank);
             await db.SaveChangesAsync(ct);
         }
-        else
+        else if (options.OverwriteExisting || options.UpdateMetadata)
         {
             bank.Name = package.Bank.Name;
             bank.Version = package.Bank.Version;
@@ -116,6 +126,15 @@ public class QuizBankService
             var contentJson = JsonSerializer.Serialize(dto.Content ?? new QuizItemContentDto(), JsonOptions);
             if (existingItems.TryGetValue(dto.ItemCode, out var entity))
             {
+                if (!options.OverwriteExisting)
+                {
+                    // append 模式：保留既有条目内容，仅为题目关联回填 Id
+                    itemIdMap[dto.ItemCode] = entity.Id;
+                    result.Warnings.Add($"条目已存在（append 模式保留原内容）：{dto.ItemCode}");
+                    result.ItemsSkipped++;
+                    continue;
+                }
+
                 entity.ItemType = dto.ItemType;
                 entity.Name = dto.Name;
                 entity.Summary = dto.Summary;
@@ -170,6 +189,13 @@ public class QuizBankService
             if (dto.Options.Count < 2)
             {
                 result.Warnings.Add($"题目选项不足 2 个，已跳过：{dto.QuestionCode}");
+                result.QuestionsSkipped++;
+                continue;
+            }
+            if (!options.OverwriteExisting && existingQuestions.ContainsKey(dto.QuestionCode))
+            {
+                // append 模式：已存在的题号原样保留（防止 AI 生成题号撞车覆盖人工题目）
+                result.Warnings.Add($"题目已存在（append 模式保留原内容）：{dto.QuestionCode}");
                 result.QuestionsSkipped++;
                 continue;
             }

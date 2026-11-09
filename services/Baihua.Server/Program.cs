@@ -201,7 +201,8 @@ builder.Services.AddMcpServer()
     .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateless)
     .WithTools<BaihuaVaultTools>()
     .WithTools<BaihuaFamilyTools>()
-    .WithTools<BaihuaLocalModelTools>();
+    .WithTools<BaihuaLocalModelTools>()
+    .WithTools<BaihuaLearnTools>();
 
 // ---------------- 限流 / 健康检查 / CORS ----------------
 // 配对码防暴力破解。

@@ -1,0 +1,573 @@
+@page "/learn/generate"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Microsoft.Extensions.Logging.ILogger<LearnGenerate> Logger
+@using System.Text.Json
+@using Baihua.Contracts.Learn
+@using Baihua.Web.Services
+
+<PageTitle>生成题库 · 学习</PageTitle>
+
+<div class="generate-page">
+    <div class="page-head">
+        <h1>✨ 生成题库</h1>
+        <a class="btn btn-link" href="/learn">← 返回题库</a>
+    </div>
+
+    @if (importResult != null)
+    {
+        <div class="card-panel success-panel">
+            <h2>✅ 导入完成</h2>
+            <div class="meta-line">
+                题库 <b>@importResult.BankCode</b> · 新增条目 <b>@importResult.ItemsImported</b>
+                · 新增题目 <b>@importResult.QuestionsImported</b>
+                @if (importResult.ItemsSkipped + importResult.QuestionsSkipped > 0)
+                {
+                    <span>· 跳过已存在 @(importResult.ItemsSkipped + importResult.QuestionsSkipped) 条</span>
+                }
+            </div>
+            @if (importResult.Warnings.Count > 0)
+            {
+                <details class="warn-details">
+                    <summary>查看 @importResult.Warnings.Count 条提示</summary>
+                    <ul>
+                        @foreach (var w in importResult.Warnings.Take(50))
+                        {
+                            <li>@w</li>
+                        }
+                    </ul>
+                </details>
+            }
+            <div class="actions">
+                <a class="btn btn-primary" href="/learn">去刷题</a>
+                <button class="btn btn-outline-secondary" @onclick="ResetAsync">再生成一批</button>
+            </div>
+        </div>
+    }
+    else if (package == null || validation == null)
+    {
+        <div class="card-panel">
+            <div class="source-tabs">
+                <button class="btn @(source == Source.Ai ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => source = Source.Ai">🤖 AI 生成</button>
+                <button class="btn @(source == Source.Paste ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => source = Source.Paste">📋 粘贴题库包 JSON</button>
+            </div>
+
+            @if (error != null)
+            {
+                <div class="alert-error">@error</div>
+            }
+
+            @if (source == Source.Ai)
+            {
+                <p class="hint">
+                    由已配置的 AI 模型生成；题量超过 10 会自动分批调用。<b>生成结果必须先预览确认，不会自动入库。</b>
+                </p>
+
+                <div class="form-grid">
+                    <label>行业代码</label>
+                    <input class="form-control" @bind="industryCode" placeholder="tcm" />
+                    <label>行业名称</label>
+                    <input class="form-control" @bind="industryName" placeholder="中医" />
+
+                    <label>题库代码</label>
+                    <input class="form-control" @bind="bankCode" placeholder="如 jingfang_ai" />
+                    <label>题库名称</label>
+                    <input class="form-control" @bind="bankName" placeholder="如 经方 · AI 扩充" />
+
+                    <label>题号前缀</label>
+                    <input class="form-control" @bind="codePrefix" placeholder="ai" />
+                    <span class="field-note">追加到已有题库时请用唯一前缀，避免撞号</span>
+
+                    <label class="span-2">生成主题 / 提示词 <span class="required">*</span></label>
+                    <textarea class="form-control span-2" rows="4" @bind="topic"
+                              placeholder="例：太阳病桂枝汤类方，重点考兼证与禁忌；每题给出病例四诊，问最合适的方剂"></textarea>
+
+                    <label>题型</label>
+                    <select class="form-select" @bind="target">
+                        <option value="formula">选方案（方剂）</option>
+                        <option value="pattern">选证型 / 病机</option>
+                        <option value="mixed">混合</option>
+                    </select>
+
+                    <label>参考范围（可选）</label>
+                    <input class="form-control" @bind="referenceScope" placeholder="如 伤寒论·太阳篇，或知识库 id" />
+
+                    <label>题量</label>
+                    <select class="form-select" @bind="questionCount">
+                        <option value="5">5 题</option>
+                        <option value="10">10 题</option>
+                        <option value="20">20 题（分 2 批）</option>
+                        <option value="30">30 题（分 3 批）</option>
+                    </select>
+
+                    <label>难度</label>
+                    <select class="form-select" @bind="difficulty">
+                        <option value="1">1 · 最易</option>
+                        <option value="2">2</option>
+                        <option value="3">3 · 中等</option>
+                        <option value="4">4</option>
+                        <option value="5">5 · 最难</option>
+                    </select>
+
+                    <label>干扰项策略</label>
+                    <select class="form-select" @bind="distractorStrategy">
+                        <option value="same_scope">同范围易混对象</option>
+                        <option value="random">随机对象</option>
+                    </select>
+
+                    <label>AI 提供商</label>
+                    <select class="form-select" @bind="providerId">
+                        <option value="">（使用主模型）</option>
+                        @foreach (var p in providers)
+                        {
+                            <option value="@p.Id">@p.Name@(p.IsMain ? "（主）" : "")</option>
+                        }
+                    </select>
+
+                    <label>模型</label>
+                    <select class="form-select" @bind="model">
+                        <option value="">（该提供商主模型）</option>
+                        @if (SelectedProvider != null)
+                        {
+                            @foreach (var m in SelectedProvider.Models)
+                            {
+                                <option value="@m.Name">@m.Name@(m.IsMain ? "（主）" : "")</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="hint-block">
+                    <div>已有行业（点击填入）：</div>
+                    <div class="chips">
+                        @foreach (var ind in industries)
+                        {
+                            <button class="chip" @onclick="() => PickIndustry(ind)">@ind.Name · @ind.Code</button>
+                        }
+                    </div>
+                    <div>当前行业下的题库（点击填入）：</div>
+                    <div class="chips">
+                        @foreach (var b in BanksOfCurrentIndustry)
+                        {
+                            <button class="chip" @onclick="() => PickBank(b)">@b.BankName · @b.BankCode（@b.QuestionCount 题）</button>
+                        }
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button class="btn btn-primary" @onclick="GenerateAsync" disabled="@busy">
+                        @(busy ? "AI 生成中…" : "开始生成预览")
+                    </button>
+                </div>
+                @if (busy)
+                {
+                    <p class="hint">生成中：10 题约 1-2 分钟；30 题分 3 批可能更久，请勿关闭页面。</p>
+                }
+            }
+            else
+            {
+                <p class="hint">
+                    把 Agent（MCP <code>baihua_learn_import_package</code>）或其它来源产出的题库包 JSON 粘贴到这里，
+                    先校验、预览，再确认导入。<b>同样不会自动入库。</b>
+                </p>
+                <textarea class="form-control" rows="14" @bind="pasteJson"
+                          placeholder='{ "formatVersion": 1, "industry": { ... }, "bank": { ... }, "items": [], "questions": [] }'></textarea>
+                <div class="actions">
+                    <button class="btn btn-primary" @onclick="ValidatePasteAsync">校验并预览</button>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card-panel">
+            <div class="preview-head">
+                <h2>预览审核</h2>
+                <div class="meta-line">
+                    @package.Industry.Name · @package.Bank.Name（@package.Bank.Code）
+                    · 条目 @package.Items.Count · 题目 @package.Questions.Count
+                    @if (!string.IsNullOrEmpty(modelUsed))
+                    {
+                        <span>· 模型 @modelUsed</span>
+                    }
+                    @if (batchCount > 1)
+                    {
+                        <span>· @batchCount 批</span>
+                    }
+                </div>
+            </div>
+
+            @if (error != null)
+            {
+                <div class="alert-error">@error</div>
+            }
+
+            @if (validation.Errors.Count > 0)
+            {
+                <div class="alert-error">
+                    <b>校验未通过（@validation.Errors.Count 项），修正前无法导入：</b>
+                    <ul>
+                        @foreach (var e in validation.Errors)
+                        {
+                            <li>@e</li>
+                        }
+                    </ul>
+                </div>
+            }
+            @if (validation.Warnings.Count > 0)
+            {
+                <details class="warn-details" open="@(validation.IsValid ? null : "open")">
+                    <summary>@validation.Warnings.Count 条质量提示</summary>
+                    <ul>
+                        @foreach (var w in validation.Warnings.Take(100))
+                        {
+                            <li>@w</li>
+                        }
+                    </ul>
+                </details>
+            }
+
+            <div class="question-list">
+                @foreach (var q in package.Questions)
+                {
+                    <div class="preview-q">
+                        <div class="q-head">
+                            <span class="q-code">@q.QuestionCode</span>
+                            <span class="q-meta">@q.Target · 难度 @q.Difficulty</span>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveQuestionAsync(q)">删除</button>
+                        </div>
+                        <div class="q-stem">@q.Stem</div>
+                        @if (q.StemDetail != null)
+                        {
+                            <div class="q-signs">
+                                @if (!string.IsNullOrWhiteSpace(q.StemDetail.Patient))
+                                {
+                                    <span class="patient">@q.StemDetail.Patient</span>
+                                }
+                                @foreach (var s in q.StemDetail.Signs)
+                                {
+                                    <span class="sign">@s</span>
+                                }
+                            </div>
+                        }
+                        <ul class="q-options">
+                            @foreach (var o in q.Options)
+                            {
+                                <li class="@(o.IsCorrect ? "right" : "")">
+                                    <span class="opt-key">@o.Key</span>
+                                    <span>@o.Content</span>
+                                    @if (o.IsCorrect)
+                                    {
+                                        <span class="opt-mark">✓ 正确</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(o.Explanation))
+                                    {
+                                        <div class="opt-exp">@o.Explanation</div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                        <details class="q-analysis">
+                            <summary>解析与区分点</summary>
+                            <div>@q.Analysis</div>
+                            @if ((q.Discrimination?.Count ?? 0) > 0)
+                            {
+                                <ul>
+                                    @foreach (var d in q.Discrimination!)
+                                    {
+                                        <li>vs @d.Versus：@d.Point</li>
+                                    }
+                                </ul>
+                            }
+                        </details>
+                    </div>
+                }
+            </div>
+
+            @if (package.Questions.Count == 0)
+            {
+                <p class="alert-error">题目已全部删除，请返回修改或重新生成。</p>
+            }
+
+            <div class="actions sticky-actions">
+                <button class="btn btn-primary" @onclick="ImportAsync"
+                        disabled="@(importing || !validation.IsValid || package.Questions.Count == 0)">
+                    @(importing ? "导入中…" : "确认导入")
+                </button>
+                <label class="overwrite-toggle">
+                    <input type="checkbox" @bind="overwriteExisting" />
+                    允许覆盖已存在的同代码条目/题目（危险）
+                </label>
+                <button class="btn btn-outline-secondary" @onclick="BackToForm" disabled="@importing">返回修改</button>
+            </div>
+            <p class="hint">默认 append：同代码的既有条目/题目会保留，只新增新代码。</p>
+        </div>
+    }
+</div>
+
+<style>
+    .generate-page { max-width: 960px; margin: 0 auto; padding: 1rem; }
+    .page-head { display: flex; align-items: center; justify-content: space-between; }
+    .card-panel { background: var(--bs-tertiary-bg); border-radius: .6rem; padding: 1.2rem; margin-top: 1rem; }
+    .source-tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
+    .form-grid { display: grid; grid-template-columns: 130px 1fr; gap: .55rem .8rem; align-items: center; }
+    .form-grid .span-2 { grid-column: span 2; }
+    .required { color: var(--bs-danger); }
+    .field-note { font-size: .8rem; color: var(--bs-secondary-color); }
+    .hint { color: var(--bs-secondary-color); font-size: .9rem; margin: .5rem 0; }
+    .hint-block { margin-top: 1rem; font-size: .85rem; }
+    .chips { display: flex; flex-wrap: wrap; gap: .4rem; margin: .3rem 0 .7rem; }
+    .chip { border: 1px solid var(--bs-border-color); background: transparent; border-radius: 999px; padding: .15rem .7rem; font-size: .82rem; }
+    .chip:hover { background: var(--bs-secondary-bg); }
+    .actions { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; }
+    .alert-error { background: rgba(220, 53, 69, .12); border-left: 3px solid var(--bs-danger); padding: .6rem .9rem; border-radius: .3rem; margin: .6rem 0; }
+    .warn-details { background: rgba(255, 193, 7, .12); border-left: 3px solid #ffc107; padding: .5rem .9rem; border-radius: .3rem; margin: .6rem 0; }
+    .warn-details ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+    .success-panel { border-left: 4px solid var(--bs-success); }
+    .meta-line { color: var(--bs-secondary-color); font-size: .9rem; }
+    .preview-head h2 { margin-bottom: .2rem; }
+    .question-list { display: flex; flex-direction: column; gap: .8rem; margin-top: 1rem; }
+    .preview-q { background: var(--bs-body-bg); border-radius: .5rem; padding: .9rem 1rem; }
+    .q-head { display: flex; align-items: center; gap: .7rem; margin-bottom: .4rem; }
+    .q-code { font-weight: 700; font-family: var(--bs-font-monospace); font-size: .85rem; }
+    .q-meta { color: var(--bs-secondary-color); font-size: .8rem; flex: 1; }
+    .q-stem { white-space: pre-wrap; }
+    .q-signs { display: flex; flex-wrap: wrap; gap: .35rem; margin: .4rem 0; }
+    .patient { font-weight: 600; font-size: .85rem; }
+    .sign { background: var(--bs-tertiary-bg); border-radius: 999px; padding: .1rem .6rem; font-size: .8rem; }
+    .q-options { list-style: none; padding: 0; margin: .5rem 0 0; }
+    .q-options li { padding: .3rem .5rem; border-radius: .3rem; margin-bottom: .25rem; }
+    .q-options li.right { background: rgba(25, 135, 84, .12); }
+    .opt-key { font-weight: 700; margin-right: .4rem; }
+    .opt-mark { color: var(--bs-success); font-weight: 600; margin-left: .5rem; }
+    .opt-exp { font-size: .82rem; color: var(--bs-secondary-color); margin-top: .15rem; }
+    .q-analysis { margin-top: .4rem; font-size: .87rem; }
+    .overwrite-toggle { font-size: .85rem; color: var(--bs-secondary-color); }
+    .sticky-actions { position: sticky; bottom: 0; background: var(--bs-tertiary-bg); padding: .7rem 0; border-top: 1px solid var(--bs-border-color); }
+</style>
+
+@code {
+    private enum Source { Ai, Paste }
+
+    private Source source = Source.Ai;
+    private bool busy;
+    private string? error;
+
+    private List<QuizBankOverviewDto> banks = new();
+    private List<AiProviderInfo> providers = new();
+
+    private string industryCode = "tcm";
+    private string industryName = "中医";
+    private string bankCode = "";
+    private string bankName = "";
+    private string codePrefix = "ai";
+    private string topic = "";
+    private string target = "formula";
+    private string referenceScope = "";
+    private int questionCount = 10;
+    private int difficulty = 3;
+    private string distractorStrategy = "same_scope";
+    private string providerId = "";
+    private string model = "";
+
+    private string pasteJson = "";
+
+    private QuizBankPackage? package;
+    private QuizBankValidationResultDto? validation;
+    private string? modelUsed;
+    private int batchCount;
+    private bool importing;
+    private bool overwriteExisting;
+    private QuizBankImportResultDto? importResult;
+
+    private IReadOnlyList<(string Code, string Name)> industries => banks
+        .Select(b => (b.IndustryCode, b.IndustryName))
+        .Distinct()
+        .ToList();
+
+    private IEnumerable<QuizBankOverviewDto> BanksOfCurrentIndustry =>
+        banks.Where(b => string.Equals(b.IndustryCode, industryCode, StringComparison.OrdinalIgnoreCase));
+
+    private AiProviderInfo? SelectedProvider =>
+        providers.FirstOrDefault(p => p.Id == providerId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        banks = await ApiService.GetLearnBanksAsync();
+        providers = await ApiService.GetAiProvidersAsync();
+        if (banks.Count > 0)
+        {
+            industryCode = banks[0].IndustryCode;
+            industryName = banks[0].IndustryName;
+        }
+    }
+
+    private void PickIndustry((string Code, string Name) industry)
+    {
+        industryCode = industry.Code;
+        industryName = industry.Name;
+    }
+
+    private void PickBank(QuizBankOverviewDto bank)
+    {
+        industryCode = bank.IndustryCode;
+        industryName = bank.IndustryName;
+        bankCode = bank.BankCode;
+        bankName = bank.BankName;
+    }
+
+    private async Task GenerateAsync()
+    {
+        if (busy) return;
+        error = null;
+        if (string.IsNullOrWhiteSpace(topic))
+        {
+            error = "请先填写生成主题";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(bankCode))
+        {
+            error = "请填写题库代码（如 jingfang_ai）";
+            return;
+        }
+
+        busy = true;
+        try
+        {
+            var request = new QuizGenerateRequestDto
+            {
+                IndustryCode = industryCode.Trim(),
+                IndustryName = industryName.Trim(),
+                BankCode = bankCode.Trim(),
+                BankName = string.IsNullOrWhiteSpace(bankName) ? bankCode.Trim() : bankName.Trim(),
+                Topic = topic.Trim(),
+                Target = target,
+                QuestionCount = questionCount,
+                Difficulty = difficulty,
+                ReferenceScope = string.IsNullOrWhiteSpace(referenceScope) ? null : referenceScope.Trim(),
+                DistractorStrategy = distractorStrategy,
+                CodePrefix = string.IsNullOrWhiteSpace(codePrefix) ? "ai" : codePrefix.Trim(),
+                ProviderId = string.IsNullOrWhiteSpace(providerId) ? null : providerId,
+                Model = string.IsNullOrWhiteSpace(model) ? null : model,
+            };
+
+            var result = await ApiService.GenerateLearnPreviewAsync(request);
+            if (!result.Success)
+            {
+                error = result.Error ?? "生成失败";
+                return;
+            }
+
+            package = result.Package;
+            validation = result.Validation;
+            modelUsed = result.ModelUsed;
+            batchCount = result.BatchCount;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "生成题库失败");
+            error = "生成失败：" + ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task ValidatePasteAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(pasteJson))
+        {
+            error = "请先粘贴题库包 JSON";
+            return;
+        }
+
+        QuizBankPackage? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<QuizBankPackage>(pasteJson, JsonSerializerOptions.Web);
+        }
+        catch (JsonException ex)
+        {
+            error = "JSON 解析失败：" + ex.Message;
+            return;
+        }
+
+        if (parsed is null)
+        {
+            error = "无法解析题库包（JSON 为 null）";
+            return;
+        }
+
+        var result = await ApiService.ValidateLearnPackageAsync(parsed);
+        if (result is null)
+        {
+            error = "校验接口不可用，请稍后重试";
+            return;
+        }
+
+        package = parsed;
+        validation = result;
+        modelUsed = null;
+        batchCount = 0;
+    }
+
+    private async Task RemoveQuestionAsync(QuizQuestionDto question)
+    {
+        if (package is null) return;
+        package.Questions.Remove(question);
+        validation = await ApiService.ValidateLearnPackageAsync(package) ?? validation;
+    }
+
+    private async Task ImportAsync()
+    {
+        if (package is null || validation is null || !validation.IsValid || importing) return;
+
+        importing = true;
+        error = null;
+        try
+        {
+            var result = await ApiService.ImportLearnPackageAsync(package, overwriteExisting);
+            if (result is null)
+            {
+                error = "导入失败（后端不可用或校验未通过）";
+                return;
+            }
+            importResult = result;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "导入题库失败");
+            error = "导入失败：" + ex.Message;
+        }
+        finally
+        {
+            importing = false;
+        }
+    }
+
+    private Task BackToForm()
+    {
+        package = null;
+        validation = null;
+        error = null;
+        modelUsed = null;
+        batchCount = 0;
+        return Task.CompletedTask;
+    }
+
+    private Task ResetAsync()
+    {
+        importResult = null;
+        package = null;
+        validation = null;
+        error = null;
+        modelUsed = null;
+        batchCount = 0;
+        overwriteExisting = false;
+        return Task.CompletedTask;
+    }
+}

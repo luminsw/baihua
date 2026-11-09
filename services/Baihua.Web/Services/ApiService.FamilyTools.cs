@@ -683,6 +683,86 @@ namespace Baihua.Web.Services
             return await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizAnswerResultDto>(quick.Token);
         }
 
+        /// <summary>AI 生成题库预览（不落库；30 题分批可能耗时数分钟，用 15 分钟超时客户端）</summary>
+        public async Task<Baihua.Contracts.Learn.QuizGeneratePreviewDto> GenerateLearnPreviewAsync(
+            Baihua.Contracts.Learn.QuizGenerateRequestDto request, CancellationToken cancellationToken = default)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            linked.CancelAfter(TimeSpan.FromMinutes(15));
+            try
+            {
+                var response = await PostWithMetricsAsync(
+                    "/api/learn/generate/preview", JsonContent.Create(request), linked.Token, _aiLongHttpClient);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync(linked.Token);
+                    return new Baihua.Contracts.Learn.QuizGeneratePreviewDto
+                    {
+                        Success = false,
+                        Error = $"生成失败（HTTP {(int)response.StatusCode}）：{body}",
+                    };
+                }
+                return await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizGeneratePreviewDto>(
+                           cancellationToken: linked.Token)
+                       ?? new Baihua.Contracts.Learn.QuizGeneratePreviewDto { Success = false, Error = "后端返回空结果" };
+            }
+            catch (OperationCanceledException)
+            {
+                return new Baihua.Contracts.Learn.QuizGeneratePreviewDto { Success = false, Error = "生成超时或已取消" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "AI 生成题库预览失败");
+                return new Baihua.Contracts.Learn.QuizGeneratePreviewDto { Success = false, Error = $"生成失败：{ex.Message}" };
+            }
+        }
+
+        /// <summary>校验题库包（粘贴模式 / 删除题目后复检），不落库</summary>
+        public async Task<Baihua.Contracts.Learn.QuizBankValidationResultDto?> ValidateLearnPackageAsync(
+            Baihua.Contracts.Learn.QuizBankPackage package, CancellationToken cancellationToken = default)
+        {
+            using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            quick.CancelAfter(QuickCallTimeout);
+            try
+            {
+                var response = await PostWithMetricsAsync("/api/learn/validate", JsonContent.Create(package), quick.Token);
+                if (!response.IsSuccessStatusCode) return null;
+                return await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizBankValidationResultDto>(quick.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "校验题库包失败");
+                return null;
+            }
+        }
+
+        /// <summary>导入题库包（默认 append，不覆盖已存在条目/题目）</summary>
+        public async Task<Baihua.Contracts.Learn.QuizBankImportResultDto?> ImportLearnPackageAsync(
+            Baihua.Contracts.Learn.QuizBankPackage package, bool overwriteExisting = false,
+            CancellationToken cancellationToken = default)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            linked.CancelAfter(LongHttpTimeout);
+            try
+            {
+                var payload = new Baihua.Contracts.Learn.QuizBankImportRequestDto
+                {
+                    Package = package,
+                    OverwriteExisting = overwriteExisting,
+                };
+                var response = await PostWithMetricsAsync(
+                    "/api/learn/import", JsonContent.Create(payload), linked.Token, _longHttpClient);
+                if (!response.IsSuccessStatusCode) return null;
+                return await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizBankImportResultDto>(
+                    cancellationToken: linked.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "导入题库包失败");
+                return null;
+            }
+        }
+
         public async Task<List<LeaderboardEntryDto>> GetLeaderboardAsync(string type, string? vaultId = null)
         {
             try

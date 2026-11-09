@@ -175,6 +175,9 @@ namespace Baihua.Web.Services
         Task<List<Baihua.Contracts.Learn.QuizBankOverviewDto>> GetLearnBanksAsync(CancellationToken cancellationToken = default);
         Task<List<Baihua.Contracts.Learn.QuizQuestionViewDto>> DrawLearnQuestionsAsync(string bankCode, int count = 10, CancellationToken cancellationToken = default);
         Task<Baihua.Contracts.Learn.QuizAnswerResultDto?> SubmitLearnAnswerAsync(string bankCode, Baihua.Contracts.Learn.QuizAnswerSubmitDto submit, CancellationToken cancellationToken = default);
+        Task<Baihua.Contracts.Learn.QuizGeneratePreviewDto> GenerateLearnPreviewAsync(Baihua.Contracts.Learn.QuizGenerateRequestDto request, CancellationToken cancellationToken = default);
+        Task<Baihua.Contracts.Learn.QuizBankValidationResultDto?> ValidateLearnPackageAsync(Baihua.Contracts.Learn.QuizBankPackage package, CancellationToken cancellationToken = default);
+        Task<Baihua.Contracts.Learn.QuizBankImportResultDto?> ImportLearnPackageAsync(Baihua.Contracts.Learn.QuizBankPackage package, bool overwriteExisting = false, CancellationToken cancellationToken = default);
         Task<List<LeaderboardEntryDto>> GetLeaderboardAsync(string type, string? vaultId = null);
         Task<DashboardDataDto> GetDashboardAsync(string? vaultId = null, int? learnerId = null);
         Task<CheckinDataDto> GetCheckinDataAsync(string? vaultId = null);
@@ -243,6 +246,7 @@ namespace Baihua.Web.Services
         private readonly HttpClient _httpClient;
         private readonly HttpClient _longHttpClient;
         private readonly HttpClient _aiHttpClient;
+        private readonly HttpClient _aiLongHttpClient;
         private readonly HttpClient _vaultHttpClient;
         private readonly SettingsService _settingsService;
         private readonly ILogger<ApiService> _logger;
@@ -260,6 +264,7 @@ namespace Baihua.Web.Services
             _httpClient = httpClientFactory.CreateClient("FamilyApi");
             _longHttpClient = httpClientFactory.CreateClient("FamilyApiLong");
             _aiHttpClient = httpClientFactory.CreateClient("AiApi");
+            _aiLongHttpClient = httpClientFactory.CreateClient("FamilyApiAiLong");
             _vaultHttpClient = httpClientFactory.CreateClient("VaultApi");
             
             // 延迟获取服务避免循环依赖

@@ -243,3 +243,99 @@ public class QuizBankImportResultDto
     public int QuestionsSkipped { get; set; }
     public List<string> Warnings { get; set; } = [];
 }
+/// <summary>
+/// 导入选项。
+/// <para><see cref="OverwriteExisting"/> = true（默认）：幂等 upsert，已存在的条目/题目按包内容刷新，
+/// 与 CLI 及历史批次导入行为一致。</para>
+/// <para>= false（append 模式，AI 生成 / Agent 写入默认）：只追加新代码；已存在的条目/题目原样保留并计入 Skipped。
+/// 用于防止 AI 生成的 code 撞车时静默覆盖人工整理的内容。</para>
+/// </summary>
+public class QuizBankImportOptions
+{
+    /// <summary>是否覆盖已存在的条目/题目（默认 true；append 模式传 false）</summary>
+    public bool OverwriteExisting { get; set; } = true;
+
+    /// <summary>
+    /// append 模式下是否仍更新行业/题库的名称与描述（默认 false：只加内容、不改元信息）
+    /// </summary>
+    public bool UpdateMetadata { get; set; }
+}
+
+/// <summary>
+/// 题库包体检结果：落库前的整体校验（AI 生成 / Agent 写入 / 手工导入共用）。
+/// <para>Errors：结构或关键字段缺陷，严格模式下整体拒绝落库。</para>
+/// <para>Warnings：可容忍但影响质量（缺解析、选项数不足 4、target 非标准值等）。</para>
+/// </summary>
+public class QuizBankValidationResultDto
+{
+    public bool IsValid => Errors.Count == 0;
+    public List<string> Errors { get; set; } = [];
+    public List<string> Warnings { get; set; } = [];
+    public int ItemCount { get; set; }
+    public int QuestionCount { get; set; }
+    public int FormulaQuestionCount { get; set; }
+    public int PatternQuestionCount { get; set; }
+    public List<string> ItemCodes { get; set; } = [];
+    public List<string> QuestionCodes { get; set; } = [];
+}
+// ─────────────────────────────────────────────
+// 生成 / 导入（UI 生成页；MCP 侧的导入走工具参数，不依赖这些 DTO）
+// ─────────────────────────────────────────────
+
+/// <summary>UI 生成题库的请求参数（行业 → 题库 → 主题 → 约束）</summary>
+public class QuizGenerateRequestDto
+{
+    public string IndustryCode { get; set; } = "";
+    public string IndustryName { get; set; } = "";
+    public string BankCode { get; set; } = "";
+    public string BankName { get; set; } = "";
+
+    /// <summary>生成主题与要求（必填）</summary>
+    public string Topic { get; set; } = "";
+
+    /// <summary>formula（选方案）/ pattern（选证型·病机）/ mixed（混合）</summary>
+    public string Target { get; set; } = "formula";
+
+    /// <summary>题量 1-30（超过 10 自动分批调用）</summary>
+    public int QuestionCount { get; set; } = 10;
+
+    /// <summary>难度 1-5</summary>
+    public int Difficulty { get; set; } = 3;
+
+    /// <summary>参考范围（书名篇章 / 知识库 id / 目录），可空</summary>
+    public string? ReferenceScope { get; set; }
+
+    /// <summary>same_scope（同范围易混干扰项，默认）/ random</summary>
+    public string DistractorStrategy { get; set; } = "same_scope";
+
+    /// <summary>题号前缀（默认 ai；追加到已有题库时建议用唯一前缀）</summary>
+    public string CodePrefix { get; set; } = "ai";
+
+    /// <summary>可选：指定 AI 提供商（留空用主 provider）</summary>
+    public string? ProviderId { get; set; }
+
+    /// <summary>可选：指定模型（留空用该 provider 的主模型）</summary>
+    public string? Model { get; set; }
+}
+
+/// <summary>生成预览结果：成功时含题库包与校验结果，不落库；解析失败时保留原始响应供排查</summary>
+public class QuizGeneratePreviewDto
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public string Prompt { get; set; } = "";
+    public QuizBankPackage? Package { get; set; }
+    public QuizBankValidationResultDto? Validation { get; set; }
+    public string? RawResponse { get; set; }
+    public string? ModelUsed { get; set; }
+    public int BatchCount { get; set; }
+}
+
+/// <summary>UI 确认导入请求</summary>
+public class QuizBankImportRequestDto
+{
+    public QuizBankPackage Package { get; set; } = new();
+
+    /// <summary>是否覆盖已存在的条目/题目（默认 false：append，只追加新代码）</summary>
+    public bool OverwriteExisting { get; set; }
+}

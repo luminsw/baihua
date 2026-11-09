@@ -441,6 +441,84 @@ public class QuizBankServiceTest
         Assert.Null(await db.QuizItems.SingleOrDefaultAsync(i => i.ItemCode == "f_no_name"));
     }
 
+    // ============ 导入：append 模式（防 AI 生成撞码覆盖） ============
+
+    [Fact]
+    public async Task ImportPackageAsync_AppendMode_DoesNotOverwriteExistingContent()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+        await service.ImportPackageAsync(QuizBankTestSupport.CreateSamplePackage());
+
+        // 同一 code 再次导入但内容被改动：append 模式必须原样保留
+        var package = QuizBankTestSupport.CreateSamplePackage();
+        package.Bank.Name = "被改的库名";
+        package.Items[0].Name = "被改的条目";
+        package.Questions[0].Stem = "被改的题干";
+
+        var result = await service.ImportPackageAsync(
+            package, new QuizBankImportOptions { OverwriteExisting = false });
+
+        Assert.Equal(0, result.ItemsImported);
+        Assert.Equal(2, result.ItemsSkipped);
+        Assert.Equal(0, result.QuestionsImported);
+        Assert.Equal(3, result.QuestionsSkipped);
+        Assert.Contains(result.Warnings, w => w.Contains("append 模式保留原内容"));
+
+        await using var db = new FamilyDbContext(options);
+        var bank = await db.QuizBanks.SingleAsync();
+        Assert.Equal("经方测试库", bank.Name);
+        var alpha = await db.QuizItems.SingleAsync(i => i.ItemCode == "f_alpha");
+        Assert.Equal("方甲", alpha.Name);
+        var q1 = await db.QuizQuestions.SingleAsync(q => q.QuestionCode == "q_001");
+        Assert.Equal("患者甲，证见测试主证一。最适宜的方剂是？", q1.Stem);
+    }
+
+    [Fact]
+    public async Task ImportPackageAsync_AppendMode_AddsOnlyNewCodes_AndKeepsItemLink()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+        await service.ImportPackageAsync(QuizBankTestSupport.CreateSamplePackage());
+
+        // 只新增 1 道题，并引用已存在条目（append 跳过后仍须回填 Id）
+        var incremental = QuizBankTestSupport.CreateSamplePackage();
+        incremental.Bank.Name = "不应生效";
+        incremental.Items = [];
+        incremental.Questions = [QuizBankTestSupport.NewQuestion("q_new", itemCode: "f_alpha")];
+
+        var result = await service.ImportPackageAsync(
+            incremental, new QuizBankImportOptions { OverwriteExisting = false });
+
+        Assert.Equal(0, result.ItemsImported);
+        Assert.Equal(1, result.QuestionsImported);
+        Assert.Equal(0, result.QuestionsSkipped);
+
+        await using var db = new FamilyDbContext(options);
+        Assert.Equal("经方测试库", (await db.QuizBanks.SingleAsync()).Name);
+        var alpha = await db.QuizItems.SingleAsync(i => i.ItemCode == "f_alpha");
+        var qNew = await db.QuizQuestions.SingleAsync(q => q.QuestionCode == "q_new");
+        Assert.Equal(alpha.Id, qNew.ItemId);
+        Assert.Equal(4, await db.QuizQuestions.CountAsync());
+    }
+
+    [Fact]
+    public async Task ImportPackageAsync_AppendMode_CreatesNewBankWhenAbsent()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+
+        var result = await service.ImportPackageAsync(
+            QuizBankTestSupport.CreateSamplePackage(), new QuizBankImportOptions { OverwriteExisting = false });
+
+        Assert.Equal(2, result.ItemsImported);
+        Assert.Equal(3, result.QuestionsImported);
+
+        await using var db = new FamilyDbContext(options);
+        Assert.Equal(1, await db.QuizBanks.CountAsync());
+        Assert.Equal(3, await db.QuizQuestions.CountAsync());
+    }
+
     // ============ 导出往返（业务场景 5） ============
 
     [Fact]

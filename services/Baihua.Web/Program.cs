@@ -307,6 +307,13 @@ builder.Services.AddHttpClient("FamilyApiLong", client =>
     client.Timeout = TimeSpan.FromMinutes(5);
 }).AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
+// 超长耗时接口（题库批量生成：30 题分 3 批 + 解析失败重试，单次可能超过 5 分钟）
+builder.Services.AddHttpClient("FamilyApiAiLong", client =>
+{
+    client.BaseAddress = new Uri(baihuaServerBaseUrl);
+    client.Timeout = TimeSpan.FromMinutes(15);
+}).AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
+
 builder.Services.AddHttpClient("AiApi", client =>
 {
     client.BaseAddress = new Uri(baihuaServerBaseUrl);
