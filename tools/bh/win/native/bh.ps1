@@ -645,7 +645,7 @@ switch ($Command.ToLower()) {
                 Write-Host "[start] waiting for health ..."
                 foreach ($svc in $targets) {
                     if (-not (Wait-Port $svc.Port 60)) { Write-Warning "[$($svc.Name)] port $($svc.Port) not ready in 60s" }
-                    else { Write-Host "[$($svc.Name)] ready on $($svc.Port)" }
+                    else { Update-RealPid $svc; Write-Host "[$($svc.Name)] ready on $($svc.Port)" }
                 }
             }
         }
