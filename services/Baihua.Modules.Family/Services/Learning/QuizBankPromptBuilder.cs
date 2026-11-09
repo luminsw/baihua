@@ -29,6 +29,8 @@ public static class QuizBankPromptBuilder
         /// <summary>自定义题型说明（target 不在画像内时使用）</summary>
         public string? TargetDescription { get; set; }
         public int QuestionCount { get; set; } = 10;
+        /// <summary>题量模式：fixed（固定）/ auto（AI 按知识点覆盖自适应决定）</summary>
+        public string QuestionCountMode { get; set; } = "fixed";
         public int Difficulty { get; set; } = 3;
         /// <summary>参考范围（书名篇章 / 知识库 id / 目录），可空</summary>
         public string? ReferenceScope { get; set; }
@@ -58,6 +60,7 @@ public static class QuizBankPromptBuilder
         var questionCount = Math.Clamp(options.QuestionCount, 1, 50);
         var difficulty = Math.Clamp(options.Difficulty, 1, 5);
         var target = NormalizeTarget(options.Target, profile);
+        var isAutoCount = string.Equals(options.QuestionCountMode, "auto", StringComparison.OrdinalIgnoreCase);
 
         var referenceBlock = string.IsNullOrWhiteSpace(options.ReferenceScope)
             ? "- 参考范围：未指定（必须基于该行业公认的基础知识，不得编造）"
@@ -73,7 +76,10 @@ public static class QuizBankPromptBuilder
         sb.AppendLine($"- 题库：{bankName}（代码 {bankCode}）");
         sb.AppendLine($"- 主题/要求：{topic}");
         sb.AppendLine($"- 题型：{DescribeTarget(target, profile, options.TargetDescription)}");
-        sb.AppendLine($"- 题目数量：{questionCount}");
+        if (isAutoCount)
+            sb.AppendLine("- 题目数量：自适应（先规划覆盖该主题所需的知识点，再为每个知识点生成 1-3 题；总题数控制在 8-30 题，覆盖完整性优先于数量）");
+        else
+            sb.AppendLine($"- 题目数量：{questionCount}");
         sb.AppendLine($"- 难度：{difficulty}（1 最易，5 最难）");
         sb.AppendLine($"- 干扰项来源：{DescribeDistractor(options.DistractorStrategy)}");
         sb.AppendLine(referenceBlock);
@@ -95,6 +101,10 @@ public static class QuizBankPromptBuilder
         sb.AppendLine("11. difficulty 必须是 1-5 的整数；questionType 固定为 single_choice。");
         sb.AppendLine("12. 所有文本使用简体中文；专有名词保持行业通用写法。");
         sb.AppendLine($"13. {DescribeTargetRule(target, profile, options.TargetDescription)}");
+        if (isAutoCount)
+        {
+            sb.AppendLine("14. 自适应题量：每个主要知识点至少 1 题；不要为凑数生成重复题；宁少勿滥，覆盖完整性优先。");
+        }
         sb.AppendLine();
         sb.AppendLine("## 结构示例（仅示意字段与层级，内容请按主题替换）");
         sb.AppendLine(BuildExample(profile));

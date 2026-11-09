@@ -24,6 +24,9 @@ public class QuizBankGeneratorService
     /// <summary>单批最大输出 tokens</summary>
     private const int MaxOutputTokens = 8000;
 
+    /// <summary>自适应题量（单批 8-30 题）输出上限</summary>
+    private const int AutoMaxOutputTokens = 16000;
+
     /// <summary>解析失败时的重试约束</summary>
     private const string RetrySuffix =
         "\n\n上一次输出无法解析为 JSON。请严格只输出一个 JSON 对象：不要 Markdown 代码块，不要前后解释文字，不要省略或截断任何字段。";
@@ -48,9 +51,14 @@ public class QuizBankGeneratorService
     {
         var topic = request.Topic?.Trim() ?? "";
         if (topic.Length == 0) return Fail("生成主题不能为空");
-        if (request.QuestionCount is < 1 or > 30) return Fail("题量须在 1-30 之间");
-        if (string.IsNullOrWhiteSpace(request.IndustryCode)) return Fail("行业代码不能为空");
-        if (string.IsNullOrWhiteSpace(request.BankCode)) return Fail("题库代码不能为空");
+
+        var isAutoCount = string.Equals(request.QuestionCountMode, "auto", StringComparison.OrdinalIgnoreCase);
+        if (!isAutoCount && request.QuestionCount is < 1 or > 30) return Fail("题量须在 1-30 之间");
+
+        // 普通用户不填代码：留空时自动生成唯一值（行业通常复用画像 code）
+        var industryCode = EnsureCode(request.IndustryCode, "ind");
+        var bankCode = EnsureCode(request.BankCode, "bank");
+        var codePrefix = EnsureCode(request.CodePrefix, "ai");
 
         var provider = string.IsNullOrWhiteSpace(request.ProviderId)
             ? _aiSettings.GetMainAiProvider()
@@ -60,20 +68,21 @@ public class QuizBankGeneratorService
         var model = string.IsNullOrWhiteSpace(request.Model) ? provider.GetMainModel() : request.Model.Trim();
         if (string.IsNullOrWhiteSpace(model)) return Fail("所选 AI 提供商未配置模型");
 
-        var profile = QuizIndustryProfileCatalog.Resolve(request.IndustryCode, request.IndustryName);
-        var batches = SplitBatches(request.QuestionCount, BatchSize);
+        var profile = QuizIndustryProfileCatalog.Resolve(industryCode, request.IndustryName);
+        // 自适应题量只跑一批（AI 一次规划并覆盖）；固定题量按 10 题分批
+        var batches = isAutoCount ? [1] : SplitBatches(request.QuestionCount, BatchSize);
         var merged = new QuizBankPackage
         {
             FormatVersion = 1,
             Industry = new QuizIndustryInfo
             {
-                Code = request.IndustryCode.Trim(),
-                Name = string.IsNullOrWhiteSpace(request.IndustryName) ? request.IndustryCode.Trim() : request.IndustryName.Trim(),
+                Code = industryCode,
+                Name = string.IsNullOrWhiteSpace(request.IndustryName) ? industryCode : request.IndustryName.Trim(),
             },
             Bank = new QuizBankInfo
             {
-                Code = request.BankCode.Trim(),
-                Name = string.IsNullOrWhiteSpace(request.BankName) ? request.BankCode.Trim() : request.BankName.Trim(),
+                Code = bankCode,
+                Name = string.IsNullOrWhiteSpace(request.BankName) ? bankCode : request.BankName.Trim(),
                 Version = "v1",
                 Description = $"AI 生成：{topic}",
             },
@@ -88,36 +97,39 @@ public class QuizBankGeneratorService
             for (var i = 0; i < batches.Count; i++)
             {
                 var count = batches[i];
-                var codePrefix = batches.Count == 1
-                    ? request.CodePrefix
-                    : $"{request.CodePrefix}_b{i + 1}";
+                var batchPrefix = batches.Count == 1
+                    ? codePrefix
+                    : $"{codePrefix}_b{i + 1}";
 
                 var prompt = QuizBankPromptBuilder.Build(new QuizBankPromptBuilder.Options
                 {
-                    IndustryCode = request.IndustryCode,
+                    IndustryCode = industryCode,
                     IndustryName = request.IndustryName,
-                    BankCode = request.BankCode,
+                    BankCode = bankCode,
                     BankName = request.BankName,
                     Topic = topic,
                     Target = request.Target,
                     QuestionCount = count,
+                    QuestionCountMode = isAutoCount ? "auto" : "fixed",
                     Difficulty = request.Difficulty,
                     ReferenceScope = request.ReferenceScope,
                     DistractorStrategy = request.DistractorStrategy,
-                    CodePrefix = codePrefix,
+                    CodePrefix = batchPrefix,
                     TargetDescription = request.TargetDescription,
                     Profile = profile,
                 });
                 if (i == 0) promptUsed = prompt;
 
-                var text = await CompleteAsync(provider, model, prompt, ct);
+                var text = await CompleteAsync(provider, model, prompt,
+                    isAutoCount ? AutoMaxOutputTokens : MaxOutputTokens, ct);
                 raw.AppendLine(text);
 
                 var package = QuizBankResponseParser.Parse(text);
                 if (package is null)
                 {
                     _logger.LogInformation("题库生成第 {Batch} 批解析失败，追加约束重试一次", i + 1);
-                    text = await CompleteAsync(provider, model, prompt + RetrySuffix, ct);
+                    text = await CompleteAsync(provider, model, prompt + RetrySuffix,
+                        isAutoCount ? AutoMaxOutputTokens : MaxOutputTokens, ct);
                     raw.AppendLine(text);
                     package = QuizBankResponseParser.Parse(text);
                 }
@@ -159,11 +171,11 @@ public class QuizBankGeneratorService
     }
 
     private async Task<string> CompleteAsync(
-        AiProviderConfig provider, string model, string prompt, CancellationToken ct)
+        AiProviderConfig provider, string model, string prompt, int maxOutputTokens, CancellationToken ct)
     {
         var messages = new List<ChatMessage> { new(ChatRole.User, prompt) };
         // 结构化输出求确定性（低温），避免同一参数每次生成风格漂移
-        var options = new ChatOptions { MaxOutputTokens = MaxOutputTokens, Temperature = 0.3f };
+        var options = new ChatOptions { MaxOutputTokens = maxOutputTokens, Temperature = 0.3f };
         var response = await _ai.GetChatResponseWithAutoStartAsync(
             provider, model, messages, options, ct, operation: "quiz", useCache: false);
         return response.Text ?? "";
@@ -182,6 +194,12 @@ public class QuizBankGeneratorService
         }
         return list;
     }
+
+    /// <summary>普通用户无需关心代码：留空时自动生成唯一代码（前缀 + 6 位随机）</summary>
+    public static string EnsureCode(string? value, string prefix)
+        => string.IsNullOrWhiteSpace(value)
+            ? $"{prefix}_{Guid.NewGuid().ToString("N")[..6]}"
+            : value.Trim();
 
     private static string Truncate(string text, int max)
         => text.Length <= max ? text : text[..max];

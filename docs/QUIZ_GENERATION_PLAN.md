@@ -232,3 +232,20 @@ WebUI 侧生成请求使用新增的 `FamilyApiAiLong` 客户端（15 分钟超�
 - 花记鸿蒙：`QuizRepository.getStats` 扩展 `answeredCount` / `masteredCount` / `accuracy`；`QuizListPage` 卡片与 `QuizStudyPage` 配置页展示。
 - 花记安卓：`QuizDao.getStats` 增加 `COUNT(DISTINCT questionCode)`；`QuizBankPage` 卡片与 `QuizPage` 配置页展示。
 - 移动端为离线判定，统计取本地 `quiz_attempts`，与 Web 端口径一致但数据源独立（不依赖服务端答题记录）。
+## 8. 普通用户友好：代码自动生成 + 自适应题量（2026-11-09 追加）
+
+**代码类字段全部自动生成**（行业代码 / 题库代码 / 题号前缀对普通用户过于专业）：
+
+- 生成页默认只显示：行业（名称下拉）、行业名称、题库名称、生成主题、题型、题量、难度等业务字段。
+- 行业代码 / 题库代码 / 题号前缀收进「高级选项」折叠区，留空即自动生成。
+- 生成服务 `EnsureCode`：留空时生成 `ind_xxxxxx` / `bank_xxxxxx` / `ai_xxxxxx`（6 位随机，保证 append 模式不撞号）。
+- 行业下拉仍映射到画像 code（tcm/programming 等），确保复用既有行业与题型。
+- MCP `baihua_learn_prompt_template` 同样支持 `industry_code` / `bank_code` / `code_prefix` 留空自动生成。
+
+**自适应题量**（固定数量未必最适合，让 AI 按知识点覆盖决定）：
+
+- `QuizGenerateRequestDto.QuestionCountMode`：`fixed`（默认）/ `auto`。
+- UI 题量下拉新增首选「自适应（由 AI 按知识点覆盖决定 8-30 题）」并设为默认。
+- 提示词改为「先规划覆盖该主题所需的知识点，再为每个知识点生成 1-3 题；总题数 8-30，覆盖完整性优先于数量」，并追加硬性规则「每个主要知识点至少 1 题，不为凑数生成重复题」。
+- 自适应模式只跑单批（不分批，避免重复覆盖），单批输出上限提高到 16000 tokens；固定模式仍按 10 题分批。
+- MCP 侧 `question_count = 0` 表示自适应。

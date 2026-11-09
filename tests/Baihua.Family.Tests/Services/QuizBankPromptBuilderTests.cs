@@ -207,4 +207,34 @@ public class QuizBankPromptBuilderTests
         Assert.Contains("\"decoction\"", prompt);
         Assert.Contains("\"itemType\": \"formula\"", prompt);
     }
+
+    // ============ 自适应题量 ============
+
+    [Fact]
+    public void Build_AutoCountMode_UsesAdaptiveInstruction()
+    {
+        var options = Options();
+        options.QuestionCountMode = "auto";
+        options.QuestionCount = 30;
+
+        var prompt = QuizBankPromptBuilder.Build(options);
+
+        Assert.Contains("题目数量：自适应", prompt);
+        Assert.Contains("8-30 题", prompt);
+        Assert.Contains("每个主要知识点至少 1 题", prompt);
+        Assert.DoesNotContain("题目数量：30", prompt);
+    }
+
+    [Fact]
+    public void Build_FixedCountMode_ShowsNumber()
+    {
+        var options = Options();
+        options.QuestionCount = 12;
+
+        var prompt = QuizBankPromptBuilder.Build(options);
+
+        Assert.Contains("题目数量：12", prompt);
+        Assert.DoesNotContain("题目数量：自适应", prompt);
+        Assert.DoesNotContain("每个主要知识点至少 1 题", prompt);
+    }
 }

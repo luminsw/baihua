@@ -30,7 +30,8 @@ public class LearnGenerateController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.Topic))
             return BadRequest(new { error = "生成主题不能为空" });
-        if (request.QuestionCount is < 1 or > 30)
+        if (!string.Equals(request.QuestionCountMode, "auto", StringComparison.OrdinalIgnoreCase)
+            && request.QuestionCount is < 1 or > 30)
             return BadRequest(new { error = "题量须在 1-30 之间" });
 
         try

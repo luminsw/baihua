@@ -67,7 +67,7 @@ public sealed class BaihuaLearnTools
         }
     }
 
-    [McpServerTool(Name = "baihua_learn_prompt_template"), Description("生成一份「题库生成提示词模板」（含行业化题型说明、JSON 结构与硬性规则）。把返回的 prompt 交给当前 AI（你自己），按模板产出题库包 JSON，再调用 baihua_learn_import_package 写入百花。参数：industry_code/industry_name（行业代码与名称，如 tcm/中医、driving/驾照、programming/编程；未登记行业会自动用通用画像）、bank_code/bank_name（题库代码与名称）、topic（生成主题与要求，必填）、target（题型：先经 baihua_learn_industries 查询该行业的 target 代码；留空=该行业第一个题型；mixed=在画像题型间混合；也可传自定义题型代码，此时用 target_description 说明它问什么）、question_count（题量，默认 10，最大 50）、difficulty（1-5，默认 3）、reference_scope（可选：参考范围，如某本书某篇章或知识库 id）、distractor_strategy（same_scope=同范围干扰项，推荐；random=随机）、code_prefix（题号前缀，默认 ai；追加到已有题库时请换一个唯一前缀）。")]
+    [McpServerTool(Name = "baihua_learn_prompt_template"), Description("生成一份「题库生成提示词模板」（含行业化题型说明、JSON 结构与硬性规则）。把返回的 prompt 交给当前 AI（你自己），按模板产出题库包 JSON，再调用 baihua_learn_import_package 写入百花。参数：industry_code/industry_name（行业代码与名称，如 tcm/中医、driving/驾照、programming/编程；未登记行业自动用通用画像；industry_code 可留空自动生成）、bank_code/bank_name（题库代码与名称；bank_code 可留空自动生成）、topic（生成主题与要求，必填）、target（题型：先经 baihua_learn_industries 查询；留空=该行业第一个题型；mixed=混合；也可传自定义题型代码并配 target_description）、question_count（题量：>0 为固定题量；传 0=自适应，由 AI 按知识点覆盖范围决定 8-30 题）、difficulty（1-5，默认 3）、reference_scope（可选：参考范围，如某本书某篇章或知识库 id）、distractor_strategy（same_scope=同范围干扰项，推荐；random=随机）、code_prefix（题号前缀；留空自动生成唯一前缀）。")]
     public string PromptTemplate(
         string industry_code, string industry_name, string bank_code, string bank_name, string topic,
         string target = "", int question_count = 10, int difficulty = 3,
@@ -79,20 +79,30 @@ public sealed class BaihuaLearnTools
             if (string.IsNullOrWhiteSpace(topic))
                 return JsonSerializer.Serialize(new { ok = false, error = "topic（生成主题）不能为空" }, JsonOpts);
 
+            // 普通用户/Agent 都无需操心代码：留空时自动生成唯一值；question_count<=0 表示自适应题量
+            var isAutoCount = question_count <= 0;
+            var effectiveIndustryCode = string.IsNullOrWhiteSpace(industry_code)
+                ? $"ind_{Guid.NewGuid().ToString("N")[..6]}" : industry_code;
+            var effectiveBankCode = string.IsNullOrWhiteSpace(bank_code)
+                ? $"bank_{Guid.NewGuid().ToString("N")[..6]}" : bank_code;
+            var effectivePrefix = string.IsNullOrWhiteSpace(code_prefix)
+                ? $"ai{Guid.NewGuid().ToString("N")[..6]}" : code_prefix;
+
             var prompt = QuizBankPromptBuilder.Build(new QuizBankPromptBuilder.Options
             {
-                IndustryCode = industry_code,
+                IndustryCode = effectiveIndustryCode,
                 IndustryName = industry_name,
-                BankCode = bank_code,
+                BankCode = effectiveBankCode,
                 BankName = bank_name,
                 Topic = topic,
                 Target = target,
                 TargetDescription = target_description,
-                QuestionCount = question_count,
+                QuestionCount = isAutoCount ? 30 : question_count,
+                QuestionCountMode = isAutoCount ? "auto" : "fixed",
                 Difficulty = difficulty,
                 ReferenceScope = reference_scope,
                 DistractorStrategy = distractor_strategy,
-                CodePrefix = code_prefix,
+                CodePrefix = effectivePrefix,
             });
             return JsonSerializer.Serialize(new { ok = true, prompt }, JsonOpts);
         }

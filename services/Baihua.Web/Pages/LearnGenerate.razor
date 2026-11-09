@@ -62,8 +62,9 @@
             @if (source == Source.Ai)
             {
                 <p class="hint">
-                    由已配置的 AI 模型生成；题量超过 10 会自动分批调用。<b>生成结果必须先预览确认，不会自动入库。</b>
-                    行业决定题型与术语：内置 @profiles.Count(p => p.BuiltIn) 个行业画像，未登记的行业自动使用「通用知识」。
+                    只需填「题库名称 + 生成主题」——行业代码、题库代码、题号前缀都由系统自动处理（可在「高级选项」里覆盖）。
+                    题量可选「自适应」，由 AI 按知识点覆盖范围决定。<b>生成结果必须先预览确认，不会自动入库。</b>
+                    行业决定题型与术语：内置 @profiles.Count(p => p.BuiltIn) 个行业画像，未登记的行业使用「通用知识」。
                 </p>
 
                 <div class="form-grid">
@@ -71,7 +72,7 @@
                     <select class="form-select" @bind="industryCode" @bind:after="ApplyIndustryProfile">
                         @foreach (var p in profiles)
                         {
-                            <option value="@p.Code">@p.Name · @p.Code@(p.BuiltIn ? "" : "（已有）")</option>
+                            <option value="@p.Code">@p.Name@(p.BuiltIn ? "" : "（已有）")</option>
                         }
                         @if (SelectedProfile == null && !string.IsNullOrWhiteSpace(industryCode))
                         {
@@ -79,19 +80,11 @@
                         }
                     </select>
 
-                    <label>行业代码</label>
-                    <input class="form-control" @bind="industryCode" placeholder="如 tcm / driving / programming" />
                     <label>行业名称</label>
                     <input class="form-control" @bind="industryName" placeholder="如 中医 / 驾照 / 编程" />
 
-                    <label>题库代码</label>
-                    <input class="form-control" @bind="bankCode" placeholder="如 jingfang_ai / driving_ai" />
-                    <label>题库名称</label>
+                    <label>题库名称 <span class="required">*</span></label>
                     <input class="form-control" @bind="bankName" placeholder="如 经方扩充 / 交规题库" />
-
-                    <label>题号前缀</label>
-                    <input class="form-control" @bind="codePrefix" placeholder="ai" />
-                    <span class="field-note">追加到已有题库时请用唯一前缀，避免撞号</span>
 
                     <label class="span-2">生成主题 / 提示词 <span class="required">*</span></label>
                     <textarea class="form-control span-2" rows="4" @bind="topic"
@@ -125,6 +118,7 @@
 
                     <label>题量</label>
                     <select class="form-select" @bind="questionCount">
+                        <option value="0">自适应（由 AI 按知识点覆盖决定 8-30 题）</option>
                         <option value="5">5 题</option>
                         <option value="10">10 题</option>
                         <option value="20">20 题（分 2 批）</option>
@@ -167,6 +161,19 @@
                         }
                     </select>
                 </div>
+
+                <details class="advanced">
+                    <summary>高级选项（代码类字段留空即自动生成）</summary>
+                    <div class="form-grid">
+                        <label>行业代码</label>
+                        <input class="form-control" @bind="industryCode" placeholder="留空自动生成" />
+                        <label>题库代码</label>
+                        <input class="form-control" @bind="bankCode" placeholder="留空自动生成" />
+                        <label>题号前缀</label>
+                        <input class="form-control" @bind="codePrefix" placeholder="留空自动生成" />
+                        <span class="field-note span-2">追加到已有题库时，题库代码与题号前缀请填既有值或唯一值。</span>
+                    </div>
+                </details>
 
                 <div class="hint-block">
                     <div>当前行业：@(SelectedProfile?.Description ?? "自定义行业（使用通用画像）")</div>
@@ -348,6 +355,9 @@
     .form-grid { display: grid; grid-template-columns: 140px 1fr; gap: .55rem .8rem; align-items: center; }
     .form-grid .span-2 { grid-column: span 2; }
     .required { color: var(--bs-danger); }
+    .advanced { margin-top: 1rem; font-size: .9rem; }
+    .advanced summary { cursor: pointer; color: var(--bs-secondary-color); }
+    .advanced .form-grid { margin-top: .6rem; }
     .field-note { font-size: .8rem; color: var(--bs-secondary-color); }
     .hint { color: var(--bs-secondary-color); font-size: .9rem; margin: .5rem 0; }
     .hint-block { margin-top: 1rem; font-size: .85rem; }
@@ -397,13 +407,13 @@
     private string industryName = "";
     private string bankCode = "";
     private string bankName = "";
-    private string codePrefix = "ai";
+    private string codePrefix = "";
     private string topic = "";
     private string target = "";
     private string customTargetCode = "";
     private string targetDescription = "";
     private string referenceScope = "";
-    private int questionCount = 10;
+    private int questionCount = 0;
     private int difficulty = 3;
     private string distractorStrategy = "same_scope";
     private string providerId = "";
@@ -482,9 +492,9 @@
             error = "请先填写生成主题";
             return;
         }
-        if (string.IsNullOrWhiteSpace(bankCode))
+        if (string.IsNullOrWhiteSpace(bankName))
         {
-            error = "请填写题库代码（如 jingfang_ai）";
+            error = "请填写题库名称（如 经方扩充 / 交规题库）";
             return;
         }
 
@@ -508,7 +518,8 @@
                 Topic = topic.Trim(),
                 Target = effectiveTarget,
                 TargetDescription = effectiveDescription,
-                QuestionCount = questionCount,
+                QuestionCount = questionCount <= 0 ? 30 : questionCount,
+                QuestionCountMode = questionCount <= 0 ? "auto" : "fixed",
                 Difficulty = difficulty,
                 ReferenceScope = string.IsNullOrWhiteSpace(referenceScope) ? null : referenceScope.Trim(),
                 DistractorStrategy = distractorStrategy,

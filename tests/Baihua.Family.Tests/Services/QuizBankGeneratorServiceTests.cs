@@ -35,4 +35,24 @@ public class QuizBankGeneratorServiceTests
         var batches = QuizBankGeneratorService.SplitBatches(30, 10);
         Assert.Equal(30, batches.Sum());
     }
+
+    // ============ 代码自动生成（普通用户不填 code） ============
+
+    [Fact]
+    public void EnsureCode_Blank_GeneratesUniquePrefixedCode()
+    {
+        var a = QuizBankGeneratorService.EnsureCode("", "ai");
+        var b = QuizBankGeneratorService.EnsureCode(null, "bank");
+
+        Assert.StartsWith("ai_", a);
+        Assert.StartsWith("bank_", b);
+        Assert.Equal(9, a.Length); // ai_ + 6 位随机
+        Assert.NotEqual(a, QuizBankGeneratorService.EnsureCode("   ", "ai"));
+    }
+
+    [Fact]
+    public void EnsureCode_Provided_TrimsAndKeeps()
+    {
+        Assert.Equal("jingfang_ai", QuizBankGeneratorService.EnsureCode("  jingfang_ai  ", "bank"));
+    }
 }

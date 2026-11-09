@@ -73,6 +73,20 @@ const packageJson = JSON.stringify({
   if (!hasTopicField) throw new Error('缺少生成主题字段');
   console.log('✓ 表单字段齐全');
 
+  // 普通用户只填名称和主题：代码类字段收进「高级选项」且默认折叠
+  const advanced = page.locator('details.advanced');
+  if (await advanced.count() === 0) throw new Error('缺少高级选项折叠区');
+  if (await advanced.getAttribute('open') !== null) throw new Error('高级选项不应默认展开');
+  console.log('✓ 代码类字段已折叠到高级选项');
+
+  // 题量支持「自适应」
+  const countSelect = page.locator('.form-grid select').nth(2);
+  const countOptions = await countSelect.locator('option').allTextContents();
+  if (!countOptions.some(t => t.includes('自适应'))) {
+    throw new Error('题量下拉缺少自适应选项：' + countOptions.join(' | '));
+  }
+  console.log('✓ 题量支持自适应（AI 决定覆盖所需题量）');
+
   // 行业画像：行业下拉应包含多行业；切换行业后题型动态变化
   const industrySelect = page.locator('.form-grid select').first();
   const industryOptions = await industrySelect.locator('option').allTextContents();

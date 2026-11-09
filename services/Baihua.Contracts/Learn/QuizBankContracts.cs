@@ -344,8 +344,13 @@ public class QuizGenerateRequestDto
     /// <summary>formula（选方案）/ pattern（选证型·病机）/ mixed（混合）</summary>
     public string Target { get; set; } = "formula";
 
-    /// <summary>题量 1-30（超过 10 自动分批调用）</summary>
+    /// <summary>题量 1-30（fixed 模式使用；auto 模式作为上限参考）</summary>
     public int QuestionCount { get; set; } = 10;
+
+    /// <summary>
+    /// 题量模式：fixed=固定题量（默认）；auto=由 AI 按知识点覆盖范围自适应决定（8-30 题）
+    /// </summary>
+    public string QuestionCountMode { get; set; } = "fixed";
 
     /// <summary>难度 1-5</summary>
     public int Difficulty { get; set; } = 3;
