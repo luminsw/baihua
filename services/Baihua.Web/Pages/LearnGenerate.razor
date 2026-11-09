@@ -63,16 +63,29 @@
             {
                 <p class="hint">
                     由已配置的 AI 模型生成；题量超过 10 会自动分批调用。<b>生成结果必须先预览确认，不会自动入库。</b>
+                    行业决定题型与术语：内置 @profiles.Count(p => p.BuiltIn) 个行业画像，未登记的行业自动使用「通用知识」。
                 </p>
 
                 <div class="form-grid">
+                    <label>行业</label>
+                    <select class="form-select" @bind="industryCode" @bind:after="ApplyIndustryProfile">
+                        @foreach (var p in profiles)
+                        {
+                            <option value="@p.Code">@p.Name · @p.Code@(p.BuiltIn ? "" : "（已有）")</option>
+                        }
+                        @if (SelectedProfile == null && !string.IsNullOrWhiteSpace(industryCode))
+                        {
+                            <option value="@industryCode">@industryCode（自定义）</option>
+                        }
+                    </select>
+
                     <label>行业代码</label>
-                    <input class="form-control" @bind="industryCode" placeholder="tcm" />
+                    <input class="form-control" @bind="industryCode" placeholder="如 tcm / driving / programming" />
                     <label>行业名称</label>
-                    <input class="form-control" @bind="industryName" placeholder="中医" />
+                    <input class="form-control" @bind="industryName" placeholder="如 中医 / 驾照 / 编程" />
 
                     <label>题库代码</label>
-                    <input class="form-control" @bind="bankCode" placeholder="如 jingfang_ai" />
+                    <input class="form-control" @bind="bankCode" placeholder="如 jingfang_ai / driving_ai" />
                     <label>题库名称</label>
                     <input class="form-control" @bind="bankName" placeholder="如 经方 · AI 扩充" />
 
@@ -82,17 +95,33 @@
 
                     <label class="span-2">生成主题 / 提示词 <span class="required">*</span></label>
                     <textarea class="form-control span-2" rows="4" @bind="topic"
-                              placeholder="例：太阳病桂枝汤类方，重点考兼证与禁忌；每题给出病例四诊，问最合适的方剂"></textarea>
+                              placeholder="@SelectedProfile?.TopicPlaceholder"></textarea>
 
                     <label>题型</label>
                     <select class="form-select" @bind="target">
-                        <option value="formula">选方案（方剂）</option>
-                        <option value="pattern">选证型 / 病机</option>
-                        <option value="mixed">混合</option>
+                        @if (SelectedProfile != null)
+                        {
+                            @foreach (var t in SelectedProfile.Targets)
+                            {
+                                <option value="@t.Code">@t.Label</option>
+                            }
+                        }
+                        <option value="mixed">混合（画像内题型混合）</option>
+                        <option value="custom">自定义题型…</option>
                     </select>
 
+                    @if (target == "custom")
+                    {
+                        <label>自定义题型代码</label>
+                        <input class="form-control" @bind="customTargetCode" placeholder="如 case_analysis" />
+                        <label class="span-2">题型说明</label>
+                        <input class="form-control span-2" @bind="targetDescription"
+                               placeholder="这个题型问什么、选项里放什么（如：给出案例，选出正确的处理方式）" />
+                    }
+
                     <label>参考范围（可选）</label>
-                    <input class="form-control" @bind="referenceScope" placeholder="如 伤寒论·太阳篇，或知识库 id" />
+                    <input class="form-control" @bind="referenceScope"
+                           placeholder="@(SelectedProfile?.ReferenceScopePlaceholder ?? "如 某本教材的章节 / 知识库 id")" />
 
                     <label>题量</label>
                     <select class="form-select" @bind="questionCount">
@@ -140,18 +169,12 @@
                 </div>
 
                 <div class="hint-block">
-                    <div>已有行业（点击填入）：</div>
+                    <div>当前行业：@(SelectedProfile?.Description ?? "自定义行业（使用通用画像）")</div>
+                    <div>已有题库（点击填入）：</div>
                     <div class="chips">
-                        @foreach (var ind in industries)
+                        @foreach (var b in banks)
                         {
-                            <button class="chip" @onclick="() => PickIndustry(ind)">@ind.Name · @ind.Code</button>
-                        }
-                    </div>
-                    <div>当前行业下的题库（点击填入）：</div>
-                    <div class="chips">
-                        @foreach (var b in BanksOfCurrentIndustry)
-                        {
-                            <button class="chip" @onclick="() => PickBank(b)">@b.BankName · @b.BankCode（@b.QuestionCount 题）</button>
+                            <button class="chip" @onclick="() => PickBank(b)">@b.IndustryName · @b.BankName（@b.QuestionCount 题）</button>
                         }
                     </div>
                 </div>
@@ -227,6 +250,16 @@
                         }
                     </ul>
                 </details>
+            }
+            @if (validation.TargetCounts.Count > 0)
+            {
+                <div class="meta-line">
+                    题型分布：
+                    @foreach (var kv in validation.TargetCounts)
+                    {
+                        <span class="target-badge">@kv.Key × @kv.Value</span>
+                    }
+                </div>
             }
 
             <div class="question-list">
@@ -312,7 +345,7 @@
     .page-head { display: flex; align-items: center; justify-content: space-between; }
     .card-panel { background: var(--bs-tertiary-bg); border-radius: .6rem; padding: 1.2rem; margin-top: 1rem; }
     .source-tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
-    .form-grid { display: grid; grid-template-columns: 130px 1fr; gap: .55rem .8rem; align-items: center; }
+    .form-grid { display: grid; grid-template-columns: 140px 1fr; gap: .55rem .8rem; align-items: center; }
     .form-grid .span-2 { grid-column: span 2; }
     .required { color: var(--bs-danger); }
     .field-note { font-size: .8rem; color: var(--bs-secondary-color); }
@@ -344,6 +377,7 @@
     .opt-mark { color: var(--bs-success); font-weight: 600; margin-left: .5rem; }
     .opt-exp { font-size: .82rem; color: var(--bs-secondary-color); margin-top: .15rem; }
     .q-analysis { margin-top: .4rem; font-size: .87rem; }
+    .target-badge { display: inline-block; background: var(--bs-secondary-bg); border-radius: 999px; padding: .05rem .55rem; margin-left: .4rem; font-size: .8rem; }
     .overwrite-toggle { font-size: .85rem; color: var(--bs-secondary-color); }
     .sticky-actions { position: sticky; bottom: 0; background: var(--bs-tertiary-bg); padding: .7rem 0; border-top: 1px solid var(--bs-border-color); }
 </style>
@@ -356,15 +390,18 @@
     private string? error;
 
     private List<QuizBankOverviewDto> banks = new();
+    private List<QuizIndustryProfileDto> profiles = new();
     private List<AiProviderInfo> providers = new();
 
-    private string industryCode = "tcm";
-    private string industryName = "中医";
+    private string industryCode = "";
+    private string industryName = "";
     private string bankCode = "";
     private string bankName = "";
     private string codePrefix = "ai";
     private string topic = "";
-    private string target = "formula";
+    private string target = "";
+    private string customTargetCode = "";
+    private string targetDescription = "";
     private string referenceScope = "";
     private int questionCount = 10;
     private int difficulty = 3;
@@ -382,13 +419,8 @@
     private bool overwriteExisting;
     private QuizBankImportResultDto? importResult;
 
-    private IReadOnlyList<(string Code, string Name)> industries => banks
-        .Select(b => (b.IndustryCode, b.IndustryName))
-        .Distinct()
-        .ToList();
-
-    private IEnumerable<QuizBankOverviewDto> BanksOfCurrentIndustry =>
-        banks.Where(b => string.Equals(b.IndustryCode, industryCode, StringComparison.OrdinalIgnoreCase));
+    private QuizIndustryProfileDto? SelectedProfile =>
+        profiles.FirstOrDefault(p => string.Equals(p.Code, industryCode, StringComparison.OrdinalIgnoreCase));
 
     private AiProviderInfo? SelectedProvider =>
         providers.FirstOrDefault(p => p.Id == providerId);
@@ -396,18 +428,40 @@
     protected override async Task OnInitializedAsync()
     {
         banks = await ApiService.GetLearnBanksAsync();
+        profiles = await ApiService.GetLearnIndustryProfilesAsync();
         providers = await ApiService.GetAiProvidersAsync();
+
         if (banks.Count > 0)
         {
             industryCode = banks[0].IndustryCode;
             industryName = banks[0].IndustryName;
         }
+        else
+        {
+            var general = profiles.FirstOrDefault(p => p.Code == "general") ?? profiles.FirstOrDefault();
+            industryCode = general?.Code ?? "general";
+            industryName = general?.Name ?? "通用知识";
+        }
+
+        ApplyIndustryProfile();
     }
 
-    private void PickIndustry((string Code, string Name) industry)
+    /// <summary>切换行业后：同步名称、题型默认取该画像第一个题型</summary>
+    private void ApplyIndustryProfile()
     {
-        industryCode = industry.Code;
-        industryName = industry.Name;
+        var profile = SelectedProfile;
+        if (profile != null)
+        {
+            industryName = profile.Name;
+            target = profile.Targets.FirstOrDefault()?.Code ?? "single_answer";
+        }
+        else
+        {
+            target = "single_answer";
+        }
+
+        customTargetCode = "";
+        targetDescription = "";
     }
 
     private void PickBank(QuizBankOverviewDto bank)
@@ -416,6 +470,7 @@
         industryName = bank.IndustryName;
         bankCode = bank.BankCode;
         bankName = bank.BankName;
+        ApplyIndustryProfile();
     }
 
     private async Task GenerateAsync()
@@ -433,6 +488,14 @@
             return;
         }
 
+        var effectiveTarget = target;
+        string? effectiveDescription = null;
+        if (target == "custom")
+        {
+            effectiveTarget = string.IsNullOrWhiteSpace(customTargetCode) ? "custom" : customTargetCode.Trim();
+            effectiveDescription = string.IsNullOrWhiteSpace(targetDescription) ? null : targetDescription.Trim();
+        }
+
         busy = true;
         try
         {
@@ -443,7 +506,8 @@
                 BankCode = bankCode.Trim(),
                 BankName = string.IsNullOrWhiteSpace(bankName) ? bankCode.Trim() : bankName.Trim(),
                 Topic = topic.Trim(),
-                Target = target,
+                Target = effectiveTarget,
+                TargetDescription = effectiveDescription,
                 QuestionCount = questionCount,
                 Difficulty = difficulty,
                 ReferenceScope = string.IsNullOrWhiteSpace(referenceScope) ? null : referenceScope.Trim(),

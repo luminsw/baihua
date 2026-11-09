@@ -114,4 +114,20 @@ public class LearnGenerateControllerTests
         var q1 = await db.QuizQuestions.SingleAsync(q => q.QuestionCode == "q_001");
         Assert.Equal("改后的题干", q1.Stem);
     }
+
+    [Fact]
+    public async Task Industries_ReturnsBuiltInProfiles()
+    {
+        var (controller, _) = Create();
+
+        var action = await controller.Industries();
+
+        var ok = Assert.IsType<OkObjectResult>(action.Result);
+        var profiles = Assert.IsType<List<QuizIndustryProfileDto>>(ok.Value);
+        Assert.Contains(profiles, p => p.Code == "tcm");
+        Assert.Contains(profiles, p => p.Code == "programming");
+        Assert.Contains(profiles, p => p.Code == "driving");
+        Assert.Contains(profiles, p => p.Code == "general");
+        Assert.All(profiles, p => Assert.NotEmpty(p.Targets));
+    }
 }

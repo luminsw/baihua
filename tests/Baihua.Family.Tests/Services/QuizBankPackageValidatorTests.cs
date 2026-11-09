@@ -27,8 +27,9 @@ public class QuizBankPackageValidatorTests
         Assert.Empty(result.Errors);
         Assert.Equal(2, result.ItemCount);
         Assert.Equal(3, result.QuestionCount);
-        Assert.Equal(1, result.FormulaQuestionCount);
-        Assert.Equal(1, result.PatternQuestionCount);
+        Assert.Equal(1, result.TargetCounts["formula"]);
+        Assert.Equal(1, result.TargetCounts["pattern"]);
+        Assert.Equal(1, result.TargetCounts["concept"]);
         Assert.Equal(new[] { "f_alpha", "f_beta" }, result.ItemCodes);
         Assert.Equal(new[] { "q_001", "q_002", "q_003" }, result.QuestionCodes);
     }
@@ -246,15 +247,43 @@ public class QuizBankPackageValidatorTests
     // ============ 非阻断的质量提示 ============
 
     [Fact]
-    public void Validate_UnknownTarget_IsOnlyWarning()
+    public void Validate_TargetOutsideIndustryProfile_IsOnlyWarning()
     {
         var package = ValidPackage();
         package.Questions[0].Target = "custom_target";
 
+        // 传入行业画像才做匹配检查；不传画像时不假定任何行业取值
+        var result = QuizBankPackageValidator.Validate(
+            package, QuizIndustryProfileCatalog.Resolve("tcm", "中医"));
+
+        Assert.True(result.IsValid);
+        Assert.Contains(result.Warnings, w => w.Contains("target 不在行业画像内"));
+        Assert.Equal(1, result.TargetCounts["custom_target"]);
+    }
+
+    [Fact]
+    public void Validate_TargetInsideIndustryProfile_NoTargetWarning()
+    {
+        var package = ValidPackage();
+
+        var result = QuizBankPackageValidator.Validate(
+            package, QuizIndustryProfileCatalog.Resolve("tcm", "中医"));
+
+        Assert.True(result.IsValid);
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("q_001") && w.Contains("target 不在行业画像内"));
+    }
+
+    [Fact]
+    public void Validate_WithoutProfile_DoesNotAssumeFormulaOrPattern()
+    {
+        var package = ValidPackage();
+        package.Questions[0].Target = "output";
+
         var result = QuizBankPackageValidator.Validate(package);
 
         Assert.True(result.IsValid);
-        Assert.Contains(result.Warnings, w => w.Contains("target 非标准值"));
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("target"));
+        Assert.Equal(1, result.TargetCounts["output"]);
     }
 
     [Fact]

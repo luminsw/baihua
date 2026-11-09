@@ -5,21 +5,21 @@ namespace Baihua.Modules.Family.Services;
 /// <summary>
 /// 题库包校验器：落库前对题库包做整体体检（AI 生成 / Agent 写入 / 手工导入共用）。
 ///
-/// 与 <see cref="QuizBankService.ImportPackageAsync(QuizBankPackage, QuizBankImportOptions, System.Threading.CancellationToken)"/> 的逐条 skip 不同，本校验器把问题分成：
-/// - Errors：结构或关键字段缺陷，严格模式下整体拒绝落库（避免"部分导入成功"的残缺题库）；
-/// - Warnings：可容忍但影响质量（缺区分点、选项数不足 4、target 非标准值等）。
+/// 与 <see cref="QuizBankService.ImportPackageAsync(QuizBankPackage, QuizBankImportOptions, System.Threading.CancellationToken)"/>
+/// 的逐条 skip 不同，本校验器把问题分成：
+/// - Errors：结构或关键字段缺陷，严格模式下整体拒绝落库；
+/// - Warnings：可容忍但影响质量（缺区分点、选项数不足 4、target 与行业画像不符等）。
 ///
-/// 校验只看包内自洽性，不访问数据库；跨库引用（itemCode 是否已在库内）由服务层判断。
+/// 行业无关：target 的合法性由传入的 <see cref="QuizIndustryProfileDto"/> 决定；
+/// 不传画像时只校验非空，不假定任何行业专用取值。
 /// </summary>
 public static class QuizBankPackageValidator
 {
     /// <summary>建议的单题选项数</summary>
     private const int RecommendedOptionCount = 4;
 
-    /// <summary>已知的提问目标（行业无关 schema 允许自定义，仅对标准值以外的给 warning）</summary>
-    private static readonly string[] KnownTargets = ["formula", "pattern"];
-
-    public static QuizBankValidationResultDto Validate(QuizBankPackage? package)
+    public static QuizBankValidationResultDto Validate(
+        QuizBankPackage? package, QuizIndustryProfileDto? profile = null)
     {
         var result = new QuizBankValidationResultDto();
         if (package is null)
@@ -37,7 +37,6 @@ public static class QuizBankPackageValidator
         if (string.IsNullOrWhiteSpace(industryName)) result.Errors.Add("缺少行业名称 industry.name");
         if (string.IsNullOrWhiteSpace(bankCode)) result.Errors.Add("缺少题库代码 bank.code");
         if (string.IsNullOrWhiteSpace(bankName)) result.Errors.Add("缺少题库名称 bank.name");
-        if (string.IsNullOrWhiteSpace(package.FormatVersion.ToString())) result.Errors.Add("缺少 formatVersion");
 
         var items = package.Items ?? [];
         var questions = package.Questions ?? [];
@@ -54,7 +53,7 @@ public static class QuizBankPackageValidator
         }
 
         ValidateItems(items, result);
-        ValidateQuestions(questions, result);
+        ValidateQuestions(questions, profile, result);
 
         return result;
     }
@@ -91,9 +90,14 @@ public static class QuizBankPackageValidator
         }
     }
 
-    private static void ValidateQuestions(List<QuizQuestionDto> questions, QuizBankValidationResultDto result)
+    private static void ValidateQuestions(
+        List<QuizQuestionDto> questions, QuizIndustryProfileDto? profile, QuizBankValidationResultDto result)
     {
         var seenCodes = new HashSet<string>(StringComparer.Ordinal);
+        var knownTargets = profile?.Targets
+            .Select(t => t.Code)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         for (var i = 0; i < questions.Count; i++)
         {
             var q = questions[i];
@@ -125,10 +129,16 @@ public static class QuizBankPackageValidator
             }
             else
             {
-                if (q.Target == "formula") result.FormulaQuestionCount++;
-                else if (q.Target == "pattern") result.PatternQuestionCount++;
-                else if (!KnownTargets.Contains(q.Target, StringComparer.OrdinalIgnoreCase))
-                    result.Warnings.Add($"{label}（{code}）target 非标准值：{q.Target}");
+                var target = q.Target.Trim();
+                result.TargetCounts[target] = result.TargetCounts.GetValueOrDefault(target) + 1;
+
+                // 仅当传入行业画像且题型既非画像内、也非 mixed 时提示（自定义题型是允许的）
+                if (knownTargets is { Count: > 0 }
+                    && !knownTargets.Contains(target)
+                    && !string.Equals(target, "mixed", StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Warnings.Add($"{label}（{code}）target 不在行业画像内：{target}（可视为自定义题型）");
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(q.QuestionType) &&

@@ -51,43 +51,19 @@ public class QuizBankPromptBuilderTests
         Assert.Contains("只输出一个 JSON 对象", prompt);
     }
 
-    [Fact]
-    public void Build_PatternTarget_SwitchesDescriptionAndRule()
-    {
-        var options = Options();
-        options.Target = "pattern";
-
-        var prompt = QuizBankPromptBuilder.Build(options);
-
-        Assert.Contains("选证型/病机", prompt);
-        Assert.Contains("options 的 content 必须是证型名/病机名", prompt);
-    }
-
-    [Fact]
-    public void Build_MixedTarget_DescribesMixedRule()
-    {
-        var options = Options();
-        options.Target = "mixed";
-
-        var prompt = QuizBankPromptBuilder.Build(options);
-
-        Assert.Contains("混合", prompt);
-        Assert.Contains("mixed 模式下逐题设置 target", prompt);
-    }
-
-    [Fact]
-    public void Build_UnknownTarget_FallsBackToFormula()
+[Fact]
+    public void Build_UnknownTargetWithoutDescription_UsesGenericCustomRule()
     {
         var options = Options();
         options.Target = "something-else";
 
         var prompt = QuizBankPromptBuilder.Build(options);
 
-        Assert.Contains("选方案", prompt);
-        Assert.DoesNotContain("选证型/病机", prompt);
+        Assert.Contains("自定义题型，按该字段字面含义出题", prompt);
     }
 
     [Fact]
+
     public void Build_WithoutReferenceScope_AddsNoFabricationInstruction()
     {
         var options = Options();
@@ -155,5 +131,80 @@ public class QuizBankPromptBuilderTests
         var prompt = QuizBankPromptBuilder.Build(options);
 
         Assert.Contains("随机选取的其他对象", prompt);
+    }
+
+    // ============ 全行业适配 ============
+
+    [Fact]
+    public void Build_ProgrammingIndustry_UsesProgrammingTermsOnly()
+    {
+        var options = Options();
+        options.IndustryCode = "programming";
+        options.IndustryName = "编程";
+        options.Target = "output";
+        options.Topic = "C# 异步与并发";
+
+        var prompt = QuizBankPromptBuilder.Build(options);
+
+        Assert.Contains("选输出结果", prompt);
+        Assert.Contains("options 的 content 必须是输出结果", prompt);
+        Assert.DoesNotContain("方剂", prompt);
+        Assert.DoesNotContain("证型", prompt);
+    }
+
+    [Fact]
+    public void Build_DrivingIndustry_UsesDrivingTerms()
+    {
+        var options = Options();
+        options.IndustryCode = "driving";
+        options.IndustryName = "驾照";
+        options.Target = "rule";
+
+        var prompt = QuizBankPromptBuilder.Build(options);
+
+        Assert.Contains("选法规条款", prompt);
+        Assert.DoesNotContain("方剂", prompt);
+        Assert.DoesNotContain("病机", prompt);
+    }
+
+    [Fact]
+    public void Build_UnregisteredIndustry_FallsBackToGeneralProfile()
+    {
+        var options = Options();
+        options.IndustryCode = "cooking";
+        options.IndustryName = "烹饪";
+        options.Target = "";
+
+        var prompt = QuizBankPromptBuilder.Build(options);
+
+        Assert.Contains("烹饪（代码 cooking）", prompt);
+        Assert.Contains("选正确答案", prompt);
+        Assert.DoesNotContain("方剂", prompt);
+        Assert.DoesNotContain("证型", prompt);
+    }
+
+    [Fact]
+    public void Build_ExplicitProfile_OverridesIndustryCode()
+    {
+        var options = Options();
+        options.IndustryCode = "whatever";
+        options.Target = "";
+        options.Profile = QuizIndustryProfileCatalog.Resolve("programming", "编程");
+
+        var prompt = QuizBankPromptBuilder.Build(options);
+
+        Assert.Contains("选概念", prompt);
+        Assert.Contains("\"itemType\": \"concept\"", prompt);
+        Assert.DoesNotContain("composition", prompt);
+    }
+
+    [Fact]
+    public void Build_TcmProfile_KeepsCompositionInSchema()
+    {
+        var prompt = QuizBankPromptBuilder.Build(Options());
+
+        Assert.Contains("\"composition\"", prompt);
+        Assert.Contains("\"decoction\"", prompt);
+        Assert.Contains("\"itemType\": \"formula\"", prompt);
     }
 }

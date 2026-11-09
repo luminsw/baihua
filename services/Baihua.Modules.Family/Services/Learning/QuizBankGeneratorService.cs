@@ -60,6 +60,7 @@ public class QuizBankGeneratorService
         var model = string.IsNullOrWhiteSpace(request.Model) ? provider.GetMainModel() : request.Model.Trim();
         if (string.IsNullOrWhiteSpace(model)) return Fail("所选 AI 提供商未配置模型");
 
+        var profile = QuizIndustryProfileCatalog.Resolve(request.IndustryCode, request.IndustryName);
         var batches = SplitBatches(request.QuestionCount, BatchSize);
         var merged = new QuizBankPackage
         {
@@ -104,6 +105,8 @@ public class QuizBankGeneratorService
                     ReferenceScope = request.ReferenceScope,
                     DistractorStrategy = request.DistractorStrategy,
                     CodePrefix = codePrefix,
+                    TargetDescription = request.TargetDescription,
+                    Profile = profile,
                 });
                 if (i == 0) promptUsed = prompt;
 
@@ -142,7 +145,7 @@ public class QuizBankGeneratorService
             return Fail($"AI 生成失败：{ex.Message}", promptUsed, raw.ToString(), model, batches.Count);
         }
 
-        var validation = QuizBankPackageValidator.Validate(merged);
+        var validation = QuizBankPackageValidator.Validate(merged, profile);
         return new QuizGeneratePreviewDto
         {
             Success = true,

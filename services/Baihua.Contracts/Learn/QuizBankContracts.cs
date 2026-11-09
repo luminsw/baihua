@@ -273,8 +273,9 @@ public class QuizBankValidationResultDto
     public List<string> Warnings { get; set; } = [];
     public int ItemCount { get; set; }
     public int QuestionCount { get; set; }
-    public int FormulaQuestionCount { get; set; }
-    public int PatternQuestionCount { get; set; }
+
+    /// <summary>按题型统计（行业无关：key 由行业画像定义，如 formula / rule / concept）</summary>
+    public Dictionary<string, int> TargetCounts { get; set; } = [];
     public List<string> ItemCodes { get; set; } = [];
     public List<string> QuestionCodes { get; set; } = [];
 }
@@ -311,6 +312,9 @@ public class QuizGenerateRequestDto
     /// <summary>题号前缀（默认 ai；追加到已有题库时建议用唯一前缀）</summary>
     public string CodePrefix { get; set; } = "ai";
 
+    /// <summary>自定义题型说明（target 不属于行业画像时，用于提示词描述该题型问什么）</summary>
+    public string? TargetDescription { get; set; }
+
     /// <summary>可选：指定 AI 提供商（留空用主 provider）</summary>
     public string? ProviderId { get; set; }
 
@@ -338,4 +342,55 @@ public class QuizBankImportRequestDto
 
     /// <summary>是否覆盖已存在的条目/题目（默认 false：append，只追加新代码）</summary>
     public bool OverwriteExisting { get; set; }
+}
+// ─────────────────────────────────────────────
+// 行业画像（题型与术语随行业变化，避免中医专用硬编码）
+// ─────────────────────────────────────────────
+
+/// <summary>行业画像中的题型选项</summary>
+public class QuizTargetOptionDto
+{
+    /// <summary>题型代码（写入 QuizQuestionDto.Target，如 formula / rule / output）</summary>
+    public string Code { get; set; } = "";
+
+    /// <summary>UI 显示文案（如「选方剂」）</summary>
+    public string Label { get; set; } = "";
+
+    /// <summary>给 AI 的题型说明（问什么、怎么问）</summary>
+    public string Description { get; set; } = "";
+
+    /// <summary>选项承载的对象类型（如「方剂名」「法规条款名」）</summary>
+    public string OptionKind { get; set; } = "";
+}
+
+/// <summary>
+/// 行业画像：驱动生成页的行业/题型下拉、提示词术语与校验告警。
+/// 未知行业使用「通用知识」画像；tcm 等已登记行业保持既有题型，兼容老数据。
+/// </summary>
+public class QuizIndustryProfileDto
+{
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+
+    /// <summary>条目类型建议（写入 QuizItemDto.ItemType）</summary>
+    public string ItemType { get; set; } = "concept";
+
+    /// <summary>条目称谓（提示词与 UI 用词，如「方剂/证型」「法规条款」）</summary>
+    public string ItemName { get; set; } = "知识条目";
+
+    /// <summary>生成主题输入框的占位提示</summary>
+    public string TopicPlaceholder { get; set; } = "";
+
+    /// <summary>参考范围输入框的占位提示</summary>
+    public string? ReferenceScopePlaceholder { get; set; }
+
+    /// <summary>content 建议字段（供提示词说明）</summary>
+    public List<string> ContentFields { get; set; } = [];
+
+    /// <summary>可选题型（至少一个）</summary>
+    public List<QuizTargetOptionDto> Targets { get; set; } = [];
+
+    /// <summary>是否内置画像（数据库中已有但未登记的行业为 false）</summary>
+    public bool BuiltIn { get; set; } = true;
 }

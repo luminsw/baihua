@@ -41,6 +41,47 @@ public class BaihuaLearnToolsTests
     }
 
     [Fact]
+    public async Task Industries_ReturnsBuiltInProfiles()
+    {
+        var (tools, _) = CreateTools();
+
+        var json = await tools.Industries();
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.True(doc.RootElement.GetProperty("ok").GetBoolean());
+        var industries = doc.RootElement.GetProperty("industries");
+        var codes = Enumerable.Range(0, industries.GetArrayLength())
+            .Select(i => industries[i].GetProperty("code").GetString())
+            .ToList();
+        Assert.Contains("tcm", codes);
+        Assert.Contains("programming", codes);
+        Assert.Contains("general", codes);
+
+        var tcm = Enumerable.Range(0, industries.GetArrayLength())
+            .Select(i => industries[i])
+            .First(p => p.GetProperty("code").GetString() == "tcm");
+        var targetCodes = Enumerable.Range(0, tcm.GetProperty("targets").GetArrayLength())
+            .Select(i => tcm.GetProperty("targets")[i].GetProperty("code").GetString())
+            .ToList();
+        Assert.Contains("formula", targetCodes);
+        Assert.Contains("pattern", targetCodes);
+    }
+
+    [Fact]
+    public void PromptTemplate_ProgrammingIndustry_UsesNeutralTerms()
+    {
+        var (tools, _) = CreateTools();
+
+        var json = tools.PromptTemplate(
+            "programming", "编程", "cs_ai", "C# 题库", "异步与并发", target: "debug");
+
+        using var doc = JsonDocument.Parse(json);
+        var prompt = doc.RootElement.GetProperty("prompt").GetString();
+        Assert.Contains("选原因 / 修复", prompt);
+        Assert.DoesNotContain("方剂", prompt);
+    }
+
+    [Fact]
     public async Task List_AfterImport_ReportsCounts()
     {
         var (tools, _) = CreateTools();

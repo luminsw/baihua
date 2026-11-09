@@ -717,6 +717,26 @@ namespace Baihua.Web.Services
             }
         }
 
+        /// <summary>行业画像列表（生成页行业/题型下拉）</summary>
+        public async Task<List<Baihua.Contracts.Learn.QuizIndustryProfileDto>> GetLearnIndustryProfilesAsync(
+            CancellationToken cancellationToken = default)
+        {
+            using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            quick.CancelAfter(QuickCallTimeout);
+            try
+            {
+                var response = await GetWithMetricsAsync("/api/learn/industries", quick.Token);
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadFromJsonAsync<List<Baihua.Contracts.Learn.QuizIndustryProfileDto>>(quick.Token)
+                       ?? new List<Baihua.Contracts.Learn.QuizIndustryProfileDto>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取行业画像失败");
+                return new List<Baihua.Contracts.Learn.QuizIndustryProfileDto>();
+            }
+        }
+
         /// <summary>校验题库包（粘贴模式 / 删除题目后复检），不落库</summary>
         public async Task<Baihua.Contracts.Learn.QuizBankValidationResultDto?> ValidateLearnPackageAsync(
             Baihua.Contracts.Learn.QuizBankPackage package, CancellationToken cancellationToken = default)

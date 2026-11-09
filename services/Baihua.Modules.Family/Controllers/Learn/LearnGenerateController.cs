@@ -43,17 +43,35 @@ public class LearnGenerateController : ControllerBase
         }
     }
 
+    /// <summary>行业画像列表（生成页行业/题型下拉）：内置画像 + 数据库中已有但未登记的行业</summary>
+    [HttpGet("industries")]
+    public async Task<ActionResult<List<QuizIndustryProfileDto>>> Industries(CancellationToken ct = default)
+    {
+        var overviews = await _quizBanks.GetOverviewsAsync(ct);
+        var existing = overviews
+            .Select(b => (Code: b.IndustryCode, Name: b.IndustryName))
+            .Distinct();
+        return Ok(QuizIndustryProfileCatalog.MergeWithExisting(existing));
+    }
+
     /// <summary>校验题库包（粘贴模式 / 删除题目后复检），不落库</summary>
     [HttpPost("validate")]
     public ActionResult<QuizBankValidationResultDto> Validate([FromBody] QuizBankPackage package)
-        => Ok(QuizBankPackageValidator.Validate(package));
+    {
+        var profile = package is null
+            ? null
+            : QuizIndustryProfileCatalog.Resolve(package.Industry?.Code, package.Industry?.Name);
+        return Ok(QuizBankPackageValidator.Validate(package, profile));
+    }
 
     /// <summary>导入题库包（默认 append 模式；Errors 非空时拒绝）</summary>
     [HttpPost("import")]
     public async Task<ActionResult<QuizBankImportResultDto>> Import(
         [FromBody] QuizBankImportRequestDto request, CancellationToken ct = default)
     {
-        var validation = QuizBankPackageValidator.Validate(request.Package);
+        var profile = QuizIndustryProfileCatalog.Resolve(
+            request.Package.Industry?.Code, request.Package.Industry?.Name);
+        var validation = QuizBankPackageValidator.Validate(request.Package, profile);
         if (!validation.IsValid)
         {
             return BadRequest(new

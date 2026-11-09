@@ -95,6 +95,27 @@ AI/Agent 产出 JSON  →  QuizBankPackageValidator 整体校验
 
 CLI 与历史批次导入保持默认 `OverwriteExisting = true`（行为不变）。
 
+## 2.5 行业画像（全行业适配，2026-11-09 追加）
+
+题库 schema 本身行业无关，但题型与术语此前写死为中医（`formula`=选方剂 / `pattern`=选证型）。
+现引入「行业画像」层，把行业差异收敛到一处：
+
+| 位置 | 作用 |
+|---|---|
+| `QuizIndustryProfileCatalog` | 内置画像 + 未登记行业兜底 |
+| `GET api/learn/industries` | 生成页行业/题型下拉数据源 |
+| `baihua_learn_industries`（MCP） | Agent 查询行业与可选题型 |
+| `QuizIndustryProfileDto` | 行业 code/name、题型 label/description/optionKind、条目称谓、输入提示 |
+
+**内置画像**：`general`（通用知识）、`tcm`（中医）、`driving`（驾照/交通法规）、`programming`（编程）、`english`（英语）、`math`（数学）、`law`（法律）、`medicine`（现代医学）。
+
+规则：
+- **中医画像保持 `formula` / `pattern` 原值**，既有 219 方 / 259 题数据与 `/learn` 页完全兼容。
+- 未登记行业自动使用「通用知识」画像（`single_answer` / `definition` / `application`），并保留用户填写的 code/name。
+- 题型可自定义：UI 选「自定义题型」填 code + 说明；MCP 传 `target` + `target_description`。
+- 校验器**仅在传入画像时**提示「target 不在行业画像内」，且只是 warning，不阻断。
+- 校验结果的题型统计改为 `targetCounts` 字典（原 `formulaQuestionCount` / `patternQuestionCount` 已移除）。
+
 ## 3. 阶段二（已完成）：UI 生成页
 
 ### 3.1 入口
@@ -186,6 +207,7 @@ WebUI 侧生成请求使用新增的 `FamilyApiAiLong` 客户端（15 分钟超�
 | MCP 工具单测（list / prompt_template / import / dry_run / append / export） | 全绿 |
 | 真实题库数据回归（219 方 / 259 题） | 通过，CLI 默认覆盖行为未变 |
 | `/learn/generate` playwright E2E | 粘贴 JSON → 校验预览 → 删除一题 → 确认导入 → 题库列表出现新库，全通过 |
+| 行业画像 | 8 个内置画像；E2E 断言切换行业后题型动态变化（编程→「选输出结果」、中医→「选方剂」） |
 
 已知限制：
 - AI 生成路径需用户已配置可用 provider；E2E 走「粘贴题库包」通道验证，不消耗 AI 额度。

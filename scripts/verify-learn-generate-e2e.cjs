@@ -53,6 +53,15 @@ const packageJson = JSON.stringify({
   const browser = await chromium.launch();
   const page = await browser.newPage();
 
+  // 项目全局 JS 会把 select 增强（data-enhanced），原生 select 被隐藏；
+  // 直接赋值 + 派发 change 事件即可触发 Blazor 的 @bind / @bind:after。
+  const setSelect = async (locator, value) => {
+    await locator.evaluate((el, v) => {
+      el.value = v;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, value);
+  };
+
   const tokenResp = await page.request.post('http://127.0.0.1:5177/api/auth/cli-token');
   const { token } = await tokenResp.json();
 
@@ -63,6 +72,34 @@ const packageJson = JSON.stringify({
   const hasTopicField = await page.locator('label:has-text("生成主题")').count();
   if (!hasTopicField) throw new Error('缺少生成主题字段');
   console.log('✓ 表单字段齐全');
+
+  // 行业画像：行业下拉应包含多行业；切换行业后题型动态变化
+  const industrySelect = page.locator('.form-grid select').first();
+  const industryOptions = await industrySelect.locator('option').allTextContents();
+  if (!industryOptions.some(t => t.includes('编程'))) {
+    throw new Error('行业下拉缺少编程画像：' + industryOptions.join(' | '));
+  }
+  if (!industryOptions.some(t => t.includes('驾照'))) {
+    throw new Error('行业下拉缺少驾照画像：' + industryOptions.join(' | '));
+  }
+  console.log('✓ 行业下拉含多行业画像（' + industryOptions.length + ' 项）');
+
+  await setSelect(industrySelect, 'programming');
+  await page.waitForTimeout(600);
+  const targetSelect = page.locator('.form-grid select').nth(1);
+  const programmingTargets = await targetSelect.locator('option').allTextContents();
+  if (!programmingTargets.some(t => t.includes('选输出结果'))) {
+    throw new Error('切换编程行业后题型未更新：' + programmingTargets.join(' | '));
+  }
+  console.log('✓ 切换行业后题型动态更新：', programmingTargets.slice(0, 3).join(' / '));
+
+  await setSelect(page.locator('.form-grid select').first(), 'tcm');
+  await page.waitForTimeout(500);
+  const tcmTargets = await page.locator('.form-grid select').nth(1).locator('option').allTextContents();
+  if (!tcmTargets.some(t => t.includes('选方剂'))) {
+    throw new Error('切回中医后题型未更新：' + tcmTargets.join(' | '));
+  }
+  console.log('✓ 切回中医题型：', tcmTargets.slice(0, 2).join(' / '));
 
   await page.click('button:has-text("粘贴题库包 JSON")');
   await page.waitForTimeout(400);

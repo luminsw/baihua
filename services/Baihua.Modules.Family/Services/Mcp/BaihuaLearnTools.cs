@@ -6,11 +6,12 @@ using ModelContextProtocol.Server;
 namespace Baihua.Modules.Family.Services.Mcp;
 
 /// <summary>
-/// 百花 MCP 工具：选择题题库（生成提示词 / 列举 / 导入 / 导出）。
+/// 百花 MCP 工具：选择题题库（行业画像 / 生成提示词 / 列举 / 导入 / 导出）。
 ///
 /// 设计意图：生成逻辑交给 Agent（DSH / Claude Code / Cursor 等），百花只保留不随时间变化的
-/// 「结构模板 + 校验 + 存储」。Agent 用 <c>baihua_learn_prompt_template</c> 拿到模板，
-/// 自己产出 JSON，再经 <c>baihua_learn_import_package</c> 校验落库。
+/// 「行业画像 + 结构模板 + 校验 + 存储」。Agent 先查 <c>baihua_learn_industries</c> 选题型，
+/// 再用 <c>baihua_learn_prompt_template</c> 拿到模板，自己产出 JSON，
+/// 最后经 <c>baihua_learn_import_package</c> 校验落库。
 /// </summary>
 [McpServerToolType]
 public sealed class BaihuaLearnTools
@@ -21,6 +22,24 @@ public sealed class BaihuaLearnTools
     public BaihuaLearnTools(QuizBankService quizBanks)
     {
         _quizBanks = quizBanks;
+    }
+
+    [McpServerTool(Name = "baihua_learn_industries"), Description("列出百花题库支持的行业画像（行业代码/名称/说明，以及该行业可选题型 target 的代码、显示名、说明、选项承载对象）。生成题目前先调它确定 industry_code 与 target；未登记的行业也可用，会回退到「通用知识」画像。")]
+    public async Task<string> Industries()
+    {
+        try
+        {
+            var overviews = await _quizBanks.GetOverviewsAsync();
+            var existing = overviews
+                .Select(b => (Code: b.IndustryCode, Name: b.IndustryName))
+                .Distinct();
+            var profiles = QuizIndustryProfileCatalog.MergeWithExisting(existing);
+            return JsonSerializer.Serialize(new { ok = true, industries = profiles }, JsonOpts);
+        }
+        catch (Exception ex)
+        {
+            return Fail(ex);
+        }
     }
 
     [McpServerTool(Name = "baihua_learn_list"), Description("列出百花题库（行业与题库的代码/名称/条目数/题目数）。生成新题目前先调它，避免 industry_code / bank_code 与既有题库冲突。")]
@@ -48,11 +67,12 @@ public sealed class BaihuaLearnTools
         }
     }
 
-    [McpServerTool(Name = "baihua_learn_prompt_template"), Description("生成一份「题库生成提示词模板」（含 JSON 结构与硬性规则）。把返回的 prompt 交给当前 AI（你自己），按模板产出题库包 JSON，再调用 baihua_learn_import_package 写入百花。参数：industry_code/industry_name（行业代码与名称，如 tcm/中医）、bank_code/bank_name（题库代码与名称）、topic（生成主题与要求，必填）、target（formula=选方案 / pattern=选证型或病机 / mixed=混合，默认 formula）、question_count（题量，默认 10，最大 50）、difficulty（1-5，默认 3）、reference_scope（可选：参考范围，如某本书某篇章或知识库 id）、distractor_strategy（same_scope=同范围干扰项，推荐；random=随机）、code_prefix（题号前缀，默认 ai；追加到已有题库时请换一个唯一前缀）。")]
+    [McpServerTool(Name = "baihua_learn_prompt_template"), Description("生成一份「题库生成提示词模板」（含行业化题型说明、JSON 结构与硬性规则）。把返回的 prompt 交给当前 AI（你自己），按模板产出题库包 JSON，再调用 baihua_learn_import_package 写入百花。参数：industry_code/industry_name（行业代码与名称，如 tcm/中医、driving/驾照、programming/编程；未登记行业会自动用通用画像）、bank_code/bank_name（题库代码与名称）、topic（生成主题与要求，必填）、target（题型：先经 baihua_learn_industries 查询该行业的 target 代码；留空=该行业第一个题型；mixed=在画像题型间混合；也可传自定义题型代码，此时用 target_description 说明它问什么）、question_count（题量，默认 10，最大 50）、difficulty（1-5，默认 3）、reference_scope（可选：参考范围，如某本书某篇章或知识库 id）、distractor_strategy（same_scope=同范围干扰项，推荐；random=随机）、code_prefix（题号前缀，默认 ai；追加到已有题库时请换一个唯一前缀）。")]
     public string PromptTemplate(
         string industry_code, string industry_name, string bank_code, string bank_name, string topic,
-        string target = "formula", int question_count = 10, int difficulty = 3,
-        string? reference_scope = null, string distractor_strategy = "same_scope", string code_prefix = "ai")
+        string target = "", int question_count = 10, int difficulty = 3,
+        string? reference_scope = null, string distractor_strategy = "same_scope",
+        string code_prefix = "ai", string? target_description = null)
     {
         try
         {
@@ -67,6 +87,7 @@ public sealed class BaihuaLearnTools
                 BankName = bank_name,
                 Topic = topic,
                 Target = target,
+                TargetDescription = target_description,
                 QuestionCount = question_count,
                 Difficulty = difficulty,
                 ReferenceScope = reference_scope,
@@ -81,7 +102,7 @@ public sealed class BaihuaLearnTools
         }
     }
 
-    [McpServerTool(Name = "baihua_learn_import_package"), Description("把一份 JSON 题库包写入百花（先整体校验、再落库）。package_json 为完整题库包 JSON 字符串（结构见 baihua_learn_prompt_template）。append_only 默认 true：已存在的条目/题目原样保留、只追加新代码，避免覆盖人工整理的题库；明确要覆盖时传 false。dry_run=true 只校验并返回统计、不落库。校验有错误时默认拒绝写入（返回 errors/warnings）；force=true 可跳过错误强制写入（危险）。返回校验结果、导入计数与 warnings。")]
+    [McpServerTool(Name = "baihua_learn_import_package"), Description("把一份 JSON 题库包写入百花（先整体校验、再落库）。package_json 为完整题库包 JSON 字符串（结构见 baihua_learn_prompt_template）。append_only 默认 true：已存在的条目/题目原样保留、只追加新代码，避免覆盖人工整理的题库；明确要覆盖时传 false。dry_run=true 只校验并返回统计、不落库。校验会按题目所属行业的画像检查题型是否匹配（不匹配只告警，不阻断）。校验有错误时默认拒绝写入（返回 errors/warnings）；force=true 可跳过错误强制写入（危险）。返回校验结果、导入计数与 warnings。")]
     public async Task<string> ImportPackage(
         string package_json, bool append_only = true, bool dry_run = false, bool force = false)
     {
@@ -103,7 +124,8 @@ public sealed class BaihuaLearnTools
 
         try
         {
-            var validation = QuizBankPackageValidator.Validate(package);
+            var profile = QuizIndustryProfileCatalog.Resolve(package.Industry?.Code, package.Industry?.Name);
+            var validation = QuizBankPackageValidator.Validate(package, profile);
             if (!validation.IsValid && !force)
             {
                 return JsonSerializer.Serialize(new
