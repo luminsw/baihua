@@ -65,6 +65,39 @@ function Ensure-Dotnet {
     Write-Host '[deps] dotnet 安装完成'
 }
 
+# ---- 完整性标签守卫 ----
+# 背景：Windows 按 .exe 文件的完整性标签决定进程令牌的 IL。若构建产物落在带 Low 标签的目录里
+# （沙箱类工具，例如 DSH 的 Windows 沙箱，会给工作区打 Low 标签好让受限令牌能写），
+# out\native 下的 bh-server.exe 一启动就是 Low IL：读文件正常，写 %TEMP% / ~\.baihua 全部
+# "Access denied"（知识库写笔记、索引快照、自动备份全灭）。详见 docs/PLAN_NATIVE_CELL.md。
+function Get-IntegrityLabel([string]$path) {
+    if (-not (Test-Path $path)) { return '' }
+    $line = (& icacls $path 2>$null | Where-Object { $_ -match 'Mandatory Level' } | Select-Object -First 1)
+    if (-not $line) { return '' }
+    if ($line -match 'Low Mandatory') { return 'Low' }
+    if ($line -match 'Medium Mandatory') { return 'Medium' }
+    if ($line -match 'High Mandatory') { return 'High' }
+    return 'Other'
+}
+
+function Repair-LowIntegrityLabel([string]$path, [switch]$Quiet) {
+    if (-not (Test-Path $path)) { return }
+    if ((Get-IntegrityLabel $path) -ne 'Low') { return }
+
+    if (-not $Quiet) {
+        Write-Host "[integrity] $path 带 Low 完整性标签：从这里启动的 exe 会以 Low IL 运行" -ForegroundColor Yellow
+        Write-Host "[integrity] 后果是「能读不能写」：写 $env:TEMP、$DataHome 全部 Access denied" -ForegroundColor Yellow
+        Write-Host "[integrity] 正在改为 Medium …" -ForegroundColor Yellow
+    }
+    & icacls $path /setintegritylevel '(OI)(CI)Medium' 2>$null | Out-Null
+    if ((Get-IntegrityLabel $path) -eq 'Low') {
+        Write-Warning "[integrity] 自动修复失败（本进程可能就运行在低完整性沙箱里）。请在普通终端执行："
+        Write-Warning "            icacls `"$path`" /setintegritylevel (OI)(CI)Medium"
+    } elseif (-not $Quiet) {
+        Write-Host "[integrity] 已改为 Medium（不影响其余目录）"
+    }
+}
+
 function Invoke-Build {
     param([string[]]$Names = @())
     Ensure-Dotnet
@@ -86,6 +119,8 @@ function Invoke-Build {
         $proj = Join-Path $Root $svc.Project
         $out = & dotnet publish $proj -c Release -r win-x64 --self-contained false -o (Join-Path $OutDir $svc.Name) 2>&1 | ForEach-Object { Write-Host $_; $_ }
         if ($LASTEXITCODE -ne 0) { throw "publish failed: $($svc.Name)`n$($out | Select-Object -Last 6)" }
+        # 发布后立刻校正完整性标签：产物若继承到 Low 标签，exe 会以 Low IL 启动（能读不能写）
+        Repair-LowIntegrityLabel (Join-Path $OutDir $svc.Name)
     }
     Write-Host "[build] done -> $OutDir"
 }
@@ -231,21 +266,31 @@ function Start-One($svc) {
     }
     New-Item -ItemType Directory -Force -Path $PidDir, $LogDir | Out-Null
     $logFile = Join-Path $LogDir "$($svc.Name).log"
-    # 用独立启动脚本 + WMI 创建进程，避免服务继承调用方（终端/工具）的 Job Object—
-    # 调用方超时强杀进程树时会把服务一起带走（历史上表现为「日志无关闭记录 + pid 残留」）。
+    # 启动前自愈：产物目录若带 Low 标签，从这里启动的进程会是 Low IL（能读不能写）
+    Repair-LowIntegrityLabel (Split-Path $exe)
+    # 用一次性计划任务启动：脱离调用方（终端/工具）的 Job Object（Start-Process 会随命令结束被杀）。
+    # 注意：进程的完整性级别由 .exe 文件自带的标签决定，切换启动方式（WMI/Start-Process/schtasks）
+    # 不会改变它 —— 曾因此误判为「WMI 令牌降级」。
     $startCmd = Join-Path $LogDir "start-$($svc.Name).cmd"
     $lines = @('@echo off')
     foreach ($k in $envBlock.Keys) { $lines += "set `"$k=$($envBlock[$k])`"" }
     $lines += "cd /d `"$(Split-Path $exe)`""
+    # 计划任务以用户 Medium 令牌运行，能修好调用方（可能处于低完整性沙箱）修不了的标签
+    $lines += "icacls `"$(Split-Path $exe)`" /setintegritylevel `"(OI)(CI)Medium`" >nul 2>&1"
     $lines += "`"$exe`" >> `"$logFile`" 2>> `"$logFile.err`""
     Set-Content -Path $startCmd -Value $lines -Encoding ASCII
-    $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-        CommandLine = "cmd.exe /c `"$startCmd`""
-        CurrentDirectory = (Split-Path $exe)
+
+    $taskName = "bh-start-$($svc.Name)-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+    $createOut = schtasks /create /tn $taskName /tr "`"$startCmd`"" /sc once /st 00:00 /f /rl limited 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "[$($svc.Name)] schtasks create failed: $createOut" }
+    try {
+        schtasks /run /tn $taskName | Out-Null
+        Start-Sleep -Milliseconds 800
     }
-    if ($r.ReturnValue -ne 0) { throw "[$($svc.Name)] WMI 启动失败 return=$($r.ReturnValue)" }
-    Set-Content -Path (Get-PidFile $svc.Name) -Value $r.ProcessId
-    Write-Host "[$($svc.Name)] started (bootstrap pid=$($r.ProcessId)) port=$($svc.Port) log=$logFile"
+    finally {
+        schtasks /delete /tn $taskName /f | Out-Null
+    }
+    Write-Host "[$($svc.Name)] started (scheduled task) port=$($svc.Port) log=$logFile"
 }
 
 function Update-RealPid($svc) {

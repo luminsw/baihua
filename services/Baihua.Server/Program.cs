@@ -596,6 +596,12 @@ foreach (var module in modules)
 // 带重试：k8s/compose 下后端与 PostgreSQL 是并行启动的（没有启动顺序保证），
 // 数据库晚就绪几秒就永久留下"没建表"的半残状态，因此启动期必须重试而不是一次性尝试。
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
+
+// 启动最早处自检：进程完整性级别 + 临时目录写探针。
+// Low IL（多因构建产物目录被打了 Low 标签）会让「读正常、写全被拒」，先把原因摆进日志。
+Baihua.Core.Security.WindowsIntegrityGuard.LogSelfCheck(
+    logger, app.Services.GetRequiredService<IHostEnvironment>().ContentRootPath);
+
 {
     const int maxAttempts = 20;
     for (var attempt = 1; attempt <= maxAttempts; attempt++)
