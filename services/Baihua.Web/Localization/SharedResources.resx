@@ -3681,6 +3681,9 @@
   <data name="Nav_DailyCard" xml:space="preserve">
     <value>每日卡片</value>
   </data>
+  <data name="Nav_QuizLearning" xml:space="preserve">
+    <value>题库学习</value>
+  </data>
   <data name="Nav_Achievements" xml:space="preserve">
     <value>成就</value>
   </data>
