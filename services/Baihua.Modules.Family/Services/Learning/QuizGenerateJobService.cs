@@ -36,6 +36,13 @@ public sealed class QuizGenerateJobService
         CleanupExpired();
         var id = Guid.NewGuid().ToString("N")[..12];
         var entry = new JobEntry(id, request);
+
+        // 入队即预置批次数：否则单批任务在 AI 返回前一直是 0/0，UI 只能显示 0%
+        entry.TotalBatches = IsAutoCount(request)
+            ? 1
+            : Math.Max(1, (int)Math.Ceiling(request.QuestionCount / (double)QuizBankGeneratorService.BatchSize));
+        entry.Message = entry.TotalBatches > 1 ? $"排队中（共 {entry.TotalBatches} 批）" : "排队中";
+
         _jobs[id] = entry;
         if (!_queue.Writer.TryWrite(id))
         {
@@ -79,7 +86,9 @@ public sealed class QuizGenerateJobService
 
         entry.Status = "running";
         entry.StartedAt = DateTime.UtcNow;
-        entry.Message = "生成中…";
+        entry.Message = entry.TotalBatches > 1
+            ? $"AI 生成中（0/{entry.TotalBatches} 批）"
+            : "AI 生成中…";
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(entry.Cts.Token, stoppingToken);
         try
@@ -148,6 +157,9 @@ public sealed class QuizGenerateJobService
             .Select(e => e.Id);
         foreach (var id in removable) _jobs.TryRemove(id, out _);
     }
+
+    private static bool IsAutoCount(QuizGenerateRequestDto request)
+        => string.Equals(request.QuestionCountMode, "auto", StringComparison.OrdinalIgnoreCase);
 
     private static QuizGenerateJobDto ToDto(JobEntry e) => new()
     {

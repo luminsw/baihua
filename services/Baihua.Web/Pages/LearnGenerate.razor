@@ -205,15 +205,21 @@
                             <div class="progress-fill" style="width:@(currentJob.ProgressPercent)%"></div>
                         </div>
                         <div class="meta-line">
-                            @currentJob.CompletedBatches / @currentJob.TotalBatches 批 · @(currentJob.ProgressPercent)%
-                            · 可以关闭页面，任务会在后台继续
+                            @if (currentJob.TotalBatches <= 1)
+                            {
+                                <span>AI 生成中 · 已用时 @ElapsedText · 通常 30–120 秒 · 可以关闭页面，任务会在后台继续</span>
+                            }
+                            else
+                            {
+                                <span>@currentJob.CompletedBatches / @currentJob.TotalBatches 批 · @(currentJob.ProgressPercent)% · 已用时 @ElapsedText · 可以关闭页面，任务会在后台继续</span>
+                            }
                         </div>
                     </div>
                 }
 
                 @if (recentJobs.Count > 0)
                 {
-                    <details class="advanced">
+                    <details class="recent-jobs">
                         <summary>最近生成任务（@recentJobs.Count）</summary>
                         <div class="job-list">
                             @foreach (var job in recentJobs)
@@ -395,14 +401,22 @@
     .form-grid { display: grid; grid-template-columns: 140px 1fr; gap: .55rem .8rem; align-items: center; }
     .form-grid .span-2 { grid-column: span 2; }
     .required { color: var(--bs-danger); }
-    .advanced { margin-top: 1rem; font-size: .9rem; }
-    .advanced summary { cursor: pointer; color: var(--bs-secondary-color); }
+    .advanced, .recent-jobs { margin-top: 1rem; font-size: .9rem; }
+    .advanced summary, .recent-jobs summary { cursor: pointer; color: var(--bs-secondary-color); }
     .advanced .form-grid { margin-top: .6rem; }
     .job-card { margin-top: 1rem; background: var(--bs-body-bg); border-radius: .5rem; padding: .9rem 1rem; }
     .job-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
     .job-title { font-weight: 600; }
     .progress-track { height: .5rem; background: var(--bs-secondary-bg); border-radius: 999px; overflow: hidden; margin: .6rem 0 .4rem; }
     .progress-fill { height: 100%; background: var(--bs-primary); transition: width .3s ease; }
+    .progress-track.indeterminate .progress-fill {
+        width: 35%;
+        animation: progress-indeterminate 1.2s ease-in-out infinite;
+    }
+    @@keyframes progress-indeterminate {
+        0% { margin-left: -35%; }
+        100% { margin-left: 100%; }
+    }
     .job-list { display: flex; flex-direction: column; gap: .4rem; margin-top: .6rem; }
     .job-row { display: flex; align-items: center; gap: .6rem; font-size: .85rem; flex-wrap: wrap; }
     .job-status { border-radius: 999px; padding: .05rem .55rem; background: var(--bs-secondary-bg); font-size: .78rem; }
@@ -487,6 +501,21 @@
     private CancellationTokenSource? pollCts;
 
     private bool IsJobRunning => currentJob is { Status: "queued" or "running" };
+
+    /// <summary>已用时（轮询每 2 秒刷新一次）</summary>
+    private string ElapsedText
+    {
+        get
+        {
+            if (currentJob is null) return "";
+            var start = currentJob.StartedAt ?? currentJob.CreatedAt;
+            var elapsed = DateTime.UtcNow - start;
+            if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
+            return elapsed.TotalMinutes >= 1
+                ? $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒"
+                : $"{elapsed.Seconds} 秒";
+        }
+    }
 
     private QuizIndustryProfileDto? SelectedProfile =>
         profiles.FirstOrDefault(p => string.Equals(p.Code, industryCode, StringComparison.OrdinalIgnoreCase));

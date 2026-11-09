@@ -167,4 +167,28 @@ public class QuizGenerateJobServiceTests
 
         Assert.Null(service.Get("no-such-job"));
     }
+
+    // ============ 批次预置（避免单批任务全程 0%） ============
+
+    [Fact]
+    public void Enqueue_PresetsTotalBatches()
+    {
+        var service = CreateService(new FakeGenerator());
+
+        Assert.Equal(1, service.Get(service.Enqueue(new() { Topic = "t", QuestionCount = 10 }))!.TotalBatches);
+        Assert.Equal(1, service.Get(service.Enqueue(new() { Topic = "t", QuestionCount = 3 }))!.TotalBatches);
+        Assert.Equal(3, service.Get(service.Enqueue(new() { Topic = "t", QuestionCount = 25 }))!.TotalBatches);
+        Assert.Equal(3, service.Get(service.Enqueue(new() { Topic = "t", QuestionCount = 30 }))!.TotalBatches);
+    }
+
+    [Fact]
+    public void Enqueue_AutoMode_UsesSingleBatch()
+    {
+        var service = CreateService(new FakeGenerator());
+
+        var id = service.Enqueue(new() { Topic = "t", QuestionCount = 30, QuestionCountMode = "auto" });
+
+        Assert.Equal(1, service.Get(id)!.TotalBatches);
+        Assert.Contains("排队中", service.Get(id)!.Message);
+    }
 }

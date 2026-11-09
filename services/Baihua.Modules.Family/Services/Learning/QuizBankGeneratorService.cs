@@ -19,13 +19,19 @@ namespace Baihua.Modules.Family.Services;
 public class QuizBankGeneratorService : IQuizBankGenerator
 {
     /// <summary>单批题量：10 题约 6k tokens 输出，兼顾质量与截断风险</summary>
-    private const int BatchSize = 10;
+    public const int BatchSize = 10;
 
     /// <summary>单批最大输出 tokens</summary>
     private const int MaxOutputTokens = 8000;
 
     /// <summary>自适应题量（单批 8-30 题）输出上限</summary>
     private const int AutoMaxOutputTokens = 16000;
+
+    /// <summary>固定题量单批 AI 调用硬超时（分钟）</summary>
+    private const int BatchTimeoutMinutes = 4;
+
+    /// <summary>自适应单批 AI 调用硬超时（分钟）——输出更大、耗时更长</summary>
+    private const int AutoTimeoutMinutes = 8;
 
     /// <summary>解析失败时的重试约束</summary>
     private const string RetrySuffix =
@@ -126,7 +132,8 @@ public class QuizBankGeneratorService : IQuizBankGenerator
                 if (i == 0) promptUsed = prompt;
 
                 var text = await CompleteAsync(provider, model, prompt,
-                    isAutoCount ? AutoMaxOutputTokens : MaxOutputTokens, ct);
+                    isAutoCount ? AutoMaxOutputTokens : MaxOutputTokens,
+                    isAutoCount ? AutoTimeoutMinutes : BatchTimeoutMinutes, ct);
                 raw.AppendLine(text);
 
                 var package = QuizBankResponseParser.Parse(text);
@@ -134,7 +141,8 @@ public class QuizBankGeneratorService : IQuizBankGenerator
                 {
                     _logger.LogInformation("题库生成第 {Batch} 批解析失败，追加约束重试一次", i + 1);
                     text = await CompleteAsync(provider, model, prompt + RetrySuffix,
-                        isAutoCount ? AutoMaxOutputTokens : MaxOutputTokens, ct);
+                        isAutoCount ? AutoMaxOutputTokens : MaxOutputTokens,
+                        isAutoCount ? AutoTimeoutMinutes : BatchTimeoutMinutes, ct);
                     raw.AppendLine(text);
                     package = QuizBankResponseParser.Parse(text);
                 }
@@ -158,6 +166,13 @@ public class QuizBankGeneratorService : IQuizBankGenerator
         {
             throw;
         }
+        catch (TimeoutException ex)
+        {
+            _logger.LogWarning(ex, "题库生成单批超时");
+            return Fail(
+                $"{ex.Message}。请减少题量、改用固定题量分批生成，或稍后重试。",
+                promptUsed, raw.ToString(), model, batches.Count);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "题库生成调用 AI 失败（Provider={ProviderId}, Model={Model}）", provider.Id, model);
@@ -178,14 +193,27 @@ public class QuizBankGeneratorService : IQuizBankGenerator
     }
 
     private async Task<string> CompleteAsync(
-        AiProviderConfig provider, string model, string prompt, int maxOutputTokens, CancellationToken ct)
+        AiProviderConfig provider, string model, string prompt, int maxOutputTokens,
+        int timeoutMinutes, CancellationToken ct)
     {
         var messages = new List<ChatMessage> { new(ChatRole.User, prompt) };
         // 结构化输出求确定性（低温），避免同一参数每次生成风格漂移
         var options = new ChatOptions { MaxOutputTokens = maxOutputTokens, Temperature = 0.3f };
-        var response = await _ai.GetChatResponseWithAutoStartAsync(
-            provider, model, messages, options, ct, operation: "quiz", useCache: false);
-        return response.Text ?? "";
+
+        // 单批硬超时：provider 不返回时 HTTP 长连接可能无限等待（曾出现任务永久 running）
+        using var batchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        batchCts.CancelAfter(TimeSpan.FromMinutes(timeoutMinutes));
+
+        try
+        {
+            var response = await _ai.GetChatResponseWithAutoStartAsync(
+                provider, model, messages, options, batchCts.Token, operation: "quiz", useCache: false);
+            return response.Text ?? "";
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"单批生成超过 {timeoutMinutes} 分钟未返回");
+        }
     }
 
     /// <summary>把总题量拆成每批不超过 <paramref name="size"/> 的批次（公开以便回归测试与复用）</summary>
