@@ -1049,4 +1049,105 @@ public class QuizBankServiceTest
             SelectedKey = key,
             LearnerId = learnerId,
         });
+
+    // ============ 删除题库（题库下线：条目/题目/答题记录一并清理） ============
+
+    [Fact]
+    public async Task DeleteBankAsync_RemovesBankWithItemsQuestionsAndAttempts()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+        await service.ImportPackageAsync(QuizBankTestSupport.CreateSamplePackage());
+        await QuizBankTestSupport.SeedLearnerAsync(options, learnerId: 1);
+        await SubmitAsync(service, "q_001", "B", 1);
+        await SubmitAsync(service, "q_002", "C", 1);
+
+        var result = await service.DeleteBankAsync(QuizBankTestSupport.BankCode);
+
+        Assert.Equal(QuizBankTestSupport.BankCode, result.BankCode);
+        Assert.Equal("经方测试库", result.BankName);
+        Assert.Equal(2, result.ItemsDeleted);
+        Assert.Equal(3, result.QuestionsDeleted);
+        Assert.Equal(2, result.AttemptsDeleted);
+
+        await using var db = new FamilyDbContext(options);
+        Assert.Equal(0, await db.QuizBanks.CountAsync());
+        Assert.Equal(0, await db.QuizItems.CountAsync());
+        Assert.Equal(0, await db.QuizQuestions.CountAsync());
+        Assert.Equal(0, await db.QuizAttempts.CountAsync());
+
+        // 该行业下已无题库 → 行业一并清理（生成页下拉不出现孤立行业）
+        Assert.True(result.IndustryRemoved);
+        Assert.Equal(0, await db.QuizIndustries.CountAsync());
+
+        Assert.Empty(await service.GetOverviewsAsync());
+    }
+
+    [Fact]
+    public async Task DeleteBankAsync_OtherBanksUnaffected_IndustryKept()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+        await service.ImportPackageAsync(QuizBankTestSupport.CreateSamplePackage());
+
+        // 同行业第二个题库
+        var second = QuizBankTestSupport.CreateSamplePackage();
+        second.Bank = new QuizBankInfo { Code = "jf_second", Name = "第二题库", Version = "v1" };
+        second.Items = [new QuizItemDto { ItemCode = "f_gamma", ItemType = "formula", Name = "方丙" }];
+        second.Questions = [QuizBankTestSupport.NewQuestion("s_q_001", itemCode: "f_gamma")];
+        await service.ImportPackageAsync(second);
+
+        var result = await service.DeleteBankAsync(QuizBankTestSupport.BankCode);
+
+        Assert.Equal(2, result.ItemsDeleted);
+        Assert.Equal(3, result.QuestionsDeleted);
+        Assert.Equal(0, result.AttemptsDeleted);
+        Assert.False(result.IndustryRemoved);
+
+        await using var db = new FamilyDbContext(options);
+        Assert.Equal(1, await db.QuizBanks.CountAsync());
+        Assert.Equal("jf_second", (await db.QuizBanks.SingleAsync()).Code);
+        Assert.Equal(1, await db.QuizItems.CountAsync());
+        Assert.Equal(1, await db.QuizQuestions.CountAsync());
+        Assert.Equal(1, await db.QuizIndustries.CountAsync());
+
+        // 剩下的题库仍可正常刷题
+        var views = await service.DrawQuestionsAsync("jf_second", 10);
+        Assert.Equal("s_q_001", Assert.Single(views).QuestionCode);
+    }
+
+    [Fact]
+    public async Task DeleteBankAsync_UnknownBank_Throws()
+    {
+        var service = QuizBankTestSupport.CreateService(QuizBankTestSupport.CreateInMemoryOptions());
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteBankAsync("ghost"));
+        Assert.Contains("题库不存在", ex.Message);
+    }
+
+    [Fact]
+    public async Task DeleteBankAsync_BlankCode_Throws()
+    {
+        var service = QuizBankTestSupport.CreateService(QuizBankTestSupport.CreateInMemoryOptions());
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteBankAsync("  "));
+        Assert.Contains("题库代码不能为空", ex.Message);
+    }
+
+    [Fact]
+    public async Task DeleteBankAsync_ThenReimport_SameBankRecreated()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+        await service.ImportPackageAsync(QuizBankTestSupport.CreateSamplePackage());
+        await service.DeleteBankAsync(QuizBankTestSupport.BankCode);
+
+        // 删库后重新导入同一包：应重新建库建行（不是「已存在」误判）
+        var result = await service.ImportPackageAsync(QuizBankTestSupport.CreateSamplePackage());
+
+        Assert.Equal(2, result.ItemsImported);
+        Assert.Equal(3, result.QuestionsImported);
+        var overviews = await service.GetOverviewsAsync();
+        Assert.Equal(3, Assert.Single(overviews).QuestionCount);
+    }
 }

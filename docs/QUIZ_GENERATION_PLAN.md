@@ -174,7 +174,7 @@ WebUI 侧生成请求使用新增的 `FamilyApiAiLong` 客户端（15 分钟超�
 
 - 提示词模板必须复用阶段一的 `QuizBankPromptBuilder`，保证 MCP 与 UI 产出结构一致
 - `questionCode` 强制带用户可见的唯一前缀（默认 `ai`），避免撞车
-- 分批生成时按 item 分组多次调用，最后合并成一个包再校验
+- 分批生成：按题量每批 10 题逐批调用，最后合并成一个包再整体校验
 - 预览页必须展示 `errors`，有 error 时禁止「确认导入」（除非管理员显式强制）
 
 ## 4. 风险与红线
@@ -247,7 +247,7 @@ WebUI 侧生成请求使用新增的 `FamilyApiAiLong` 客户端（15 分钟超�
 - `QuizGenerateRequestDto.QuestionCountMode`：`fixed`（默认）/ `auto`。
 - UI 题量下拉新增首选「自适应（由 AI 按知识点覆盖决定 8-30 题）」并设为默认。
 - 提示词改为「先规划覆盖该主题所需的知识点，再为每个知识点生成 1-3 题；总题数 8-30，覆盖完整性优先于数量」，并追加硬性规则「每个主要知识点至少 1 题，不为凑数生成重复题」。
-- 自适应模式只跑单批（不分批，避免重复覆盖），单批输出上限提高到 16000 tokens；固定模式仍按 10 题分批。
+- 自适应题量按 **3 批 × 10 题（上限 30）** 分批：每批提示只覆盖该主题对应部分、不跨批重复；单批输出上限 16000 tokens；固定模式仍按 10 题分批。
 - MCP 侧 `question_count = 0` 表示自适应。
 ## 9. 生成改为后台任务（2026-11-09 追加）
 
@@ -276,3 +276,93 @@ WebUI 侧生成请求使用新增的 `FamilyApiAiLong` 客户端（15 分钟超�
 **问题**：`bh.ps1` 用 `Start-Process -RedirectStandardOutput` 启动服务，调用方（如 CodeArts 工具的 background 命令）在 timeout 到期时会**强制终止整个进程树**，把 bh-server/bh-webui 一并杀死。现场指纹：应用日志无关闭记录、`pids/*.pid` 残留、无 .NET 崩溃事件。
 
 **修复**：`Start-One` 改用 WMI `Win32_Process.Create` + 临时启动脚本（含环境变量）分离启动；服务不继承调用方 Job Object；端口就绪后按端口反查真实 pid 写入 pid 文件（`Stop-One` 已有的端口 fallback 仍保留）。
+## 11. 生成稳定性修复（2026-11-09 追加）
+
+真实生成大题库时暴露并修复的三个问题：
+
+| 问题 | 现象 | 修复 |
+|---|---|---|
+| OpenAI SDK 默认网络超时 100 秒、内部重试 4 次 | 10 题以上长 JSON 整批超时（`Retry failed after 4 tries`），任务拖延数分钟后失败 | `OpenAIClientOptions.NetworkTimeout` 提高到 **3 分钟**（shim 与直连两处） |
+| 取消令牌在 shim 链路不生效 | 任务可能永久 `running`，`CancelAfter` 无法中断底层调用 | **`Task.WhenAny(调用, 超时)` 硬兜底**，每批 4 分钟；超时返回可操作提示 |
+| 自定义题型时 schema 仍显示画像默认 target | 中医画像下生成「穴位题」会被误导回「选方剂」 | schema 的 `target` 显示实际题型（`mixed` 才列画像全部题型） |
+
+**真实数据验证（2026-11-09）**：用提示词「结合《针灸大成》和当前大学的针灸教材来设计题目，覆盖最重要最有用的知识点，提升临床能力和疗效」→ `deepseek-flash` 分 3 批生成 **30 条目 / 30 题**（自定义题型 `acupoint`），append 导入「针灸大成」（`bank_f335fe`）；`/learn` 列表出现该题库、统计 30 题、刷题页为真实针灸题（俞募配穴法，4 个穴位组合选项）。
+
+> 注意：任务 `succeeded` 只代表**预览结果**已生成，必须在预览页点「确认导入」才算落库。
+## 12. 收尾：自动打开结果定位 + 题库删除 + 一轮 review 优化（2026-11-09 追加）
+
+### 12.1 「关闭页面后重开不自动打开」的真正原因：CLI Token 5 分钟过期
+
+上一轮交接文档把该问题记成「自动化 E2E 不稳定」，怀疑过渲染管线、代理、超时、响应体积（均已排除）。
+实测根因与界面无关：
+
+```
+POST /api/auth/cli-token → token 有效期 5 分钟（AuthService.CliTokenExpiryMinutes）
+真实自适应生成耗时 6-8 分钟 → E2E 在生成完成后用同一个 token 打开新页面
+→ 中间件 ValidateCliToken 失败 → 重定向 /login?returnUrl=...
+→ 没有 .preview-q、没有 .alert-error；日志只有 LogDebug（默认级别看不到）
+→ 看起来就是「页面停在表单、自动打开没生效」
+```
+
+复现证据：`node` 脚本取 token 后等 330 秒再打开，最终 URL 为 `/login?returnUrl=%2Flearn%2Fgenerate%3Fcli-token%3D...`。
+结论：**生成页的自动打开逻辑本身没问题**（短脚本、全新浏览器、多题量均验证通过），是 E2E 脚本拿过期 token 复用了。
+
+修复（测试侧）：`scripts/verify-learn-adaptive-e2e.cjs` 在重开页面时**重新获取 token**，并在注释里写明这个坑。
+产品侧同时给自动打开加了可诊断性：进入生成页会 `LogInformation` 记录「自动打开了哪个任务、几分钟前完成」，
+没有候选任务时 `LogDebug` 记录判定依据（避免下次再把「无候选」误判成渲染问题）。
+
+### 12.2 显式 job 深链（不再只靠「最近 30 分钟」推断）
+
+- 生成页支持 `?job=<jobId>`（`[SupplyParameterFromQuery]`）：任务管理页点某条生成任务直接跳到
+  `/learn/generate?job=xxx` 精确打开该任务，不再「猜最近一条」。
+- 无 `job` 参数时仍自动打开「最近 30 分钟内成功」的结果（关页面再回菜单也能接上），
+  并新增「本页没在跟这条任务、但收到成功推送 → 直接打开」分支（例如从别的标签页发起）。
+- 「返回修改」只压掉**当前打开的那一条**任务（`openedJobId`），不再误伤其它任务。
+
+### 12.3 新增：删除题库
+
+删除是管理动作，因此：
+
+| 层 | 实现 |
+|---|---|
+| 契约 | `QuizBankDeleteResultDto`：题库代码/名称 + 条目数/题目数/答题记录数 + 是否连带删除行业 |
+| 服务 | `QuizBankService.DeleteBankAsync`：**显式逐级删除**（答题记录 → 题目 → 条目 → 题库），返回精确计数；该行业下已无题库时一并删除，避免生成页出现孤立行业 |
+| 端点 | `DELETE api/learn/banks/{bankCode}`，只挂 `api/learn`（管理面板域），**不挂 `mg/learn`** —— 移动端同步域不得具备删库能力 |
+| WebUI | `/learn` 题库卡片加「🗑 删除」：站内两步确认（先变「确认删除」，再点执行，与全站自定义确认一致，不用原生 confirm），删除前提示「N 条目 / M 道题 / 答题记录将一并删除且不可撤销」，删除后显示计数 |
+| 测试 | 服务层 5 例（连删/不影响同行业其它库/未知库/空代码/删后重新导入可重建）+ 控制器 2 例（计数 + 404）+ E2E（导入 → 列表出现 → 两步确认删除 → 列表与后端都不再有） |
+
+不提供 MCP 删除工具：Agent 一旦误调就会清掉人工整理的题库，删除只由人类在管理面板操作。
+
+### 12.4 本轮 review 的其它优化
+
+| 位置 | 问题 | 处理 |
+|---|---|---|
+| `/tasks` | 点生成任务忽略 `jobId`，只跳到生成页 | 改为 `/learn/generate?job=<id>` 深链 |
+| `/tasks` | 「隐藏已完成」对生成任务不生效 | 新增 `VisibleLearnJobs()`，与普通任务同一口径 |
+| `/learn` | 导出按钮固定导出 `banks[0]`（多题库时导错库） | 导出按钮移到每张题库卡片上 |
+| `/learn` | 导出链接指向 `/api/learn/...`，但 **WebUI 没有 API 反向代理**，浏览器点了必然 404（旧实现也是坏的，只是没人点过） | `Baihua.Web` 新增 `GET /api/learn/banks/{code}/export`：用登录 Cookie 鉴权、经 `_longHttpClient` 代取后端文件后以附件回给浏览器；E2E 断言真实下载到 JSON |
+| `/learn` | 无题库时看不到「去生成」入口 | 生成入口移出 `else` 分支，始终可见 |
+| 生成器 | 跨批合并 `AddRange` 不去重，AI 忽略题号前缀时产生重复题号（导入时静默跳过/覆盖） | 新增 `MergeBatch`：按 code 去重并计入 warnings，预览页可见「第 N 批有 K 条重复已丢弃」 |
+| 生成器 | 固定题量批次也用 16000 tokens 上限（超配） | 统一 8000（每批 ≤10 题足够），删掉多余常量 |
+| 生成器 | 规划知识点阶段最长 3 分钟，UI 一直停在 0% | 规划阶段上报进度「正在规划知识点…」 |
+| 任务表 | 取消「排队中」的任务要先等 Worker 取到才变状态（UI 先闪「生成中」） | 排队中取消立即置 `canceled` 并推送，Worker 取到后直接跳过 |
+| 生成页 | 「返回修改」用「第一条成功任务」当 dismissed，可能压错任务 | 用实际打开的 `openedJobId` |
+| 生成页 | Hub 是 fire-and-forget，页面在连接建立期间关闭会泄漏连接 | 加 `disposed` 标记，晚到的连接立即释放 |
+
+### 12.5 验证（本轮，2026-11-09 16:1x）
+
+- `dotnet build services/BaiHua.slnx -c Release`：0 错误。
+- 单测（本机 testhost 无法 `OpenProcess` 父进程，仍用反射执行器跑同一测试程序集）：
+  `PASS 291, FAIL 0, SKIP 1`（SKIP 为需要 xunit fixture 的 `Fam22SettingsRouteTests`，反射无法注入构造参数）。
+  新增用例：删库 5 例（连删/不影响同行业其它库/未知库/空代码/删后重新导入可重建）、控制器删除 2 例、
+  跨批去重 4 例、排队任务取消 1 例。
+- `scripts/verify-learn-generate-e2e.cjs`（不耗 AI，可随时重跑、自行清理）：
+  粘贴包 → 校验预览 → 删一题 → 导入 → 列表出现 → **真实下载导出 JSON（1768 字节）** → 两步确认删除 → 后端列表不再有。
+- `scripts/verify-learn-adaptive-e2e.cjs`（真实 AI，约 6 分钟）：自适应两阶段生成 **30 条目 / 30 题（5 批，deepseek-flash）**
+  → `/tasks` 合并列表 → 关闭页面后（新 token）重开**自动打开 30 题结果** → 点任务行走 `?job=` 深链**精确打开同一任务** → `/tasks` 显示已完成。
+- 数据核对：真实库未受影响（经方 259 题 / 219 条目、针灸大成 30 题 / 30 条目；行业仅 `tcm`）。
+- 已知环境坑（非代码问题，供后续参考）：
+  - `bh build-restart server` 依赖调用方 shell 的 `PG_PASSWORD`（native cell 不管理 PG）；缺失时服务起不来，
+    表现为 `28P01 password authentication failed`。本机值在系统环境变量里（`HKLM\SYSTEM\...\Environment`），
+    也可从任意管理员 shell 的 `$env:PG_PASSWORD` 读取。
+  - WebUI 的 CLI Token 只有 5 分钟，长任务 E2E 重开页面必须重新取 token（见 12.1）。

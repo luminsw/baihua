@@ -374,6 +374,29 @@ public class QuizGenerateRequestDto
     public string? Model { get; set; }
 }
 
+/// <summary>
+/// 删除题库的结果（同时下线该题库的条目 / 题目 / 答题记录）。
+/// <para>返回删除计数而不是只返回 204：UI 需要明确告知用户「连答题记录一起删了多少」，
+/// 这类不可撤销操作必须可核对。</para>
+/// </summary>
+public class QuizBankDeleteResultDto
+{
+    public string BankCode { get; set; } = "";
+    public string BankName { get; set; } = "";
+
+    /// <summary>删除的知识条目数</summary>
+    public int ItemsDeleted { get; set; }
+
+    /// <summary>删除的题目数</summary>
+    public int QuestionsDeleted { get; set; }
+
+    /// <summary>删除的答题记录数（家庭成员历史作答，随题目一并清理）</summary>
+    public int AttemptsDeleted { get; set; }
+
+    /// <summary>行业下已无题库时，行业是否一并删除（避免生成页出现孤立行业）</summary>
+    public bool IndustryRemoved { get; set; }
+}
+
 /// <summary>生成预览结果：成功时含题库包与校验结果，不落库；解析失败时保留原始响应供排查</summary>
 public class QuizGeneratePreviewDto
 {
@@ -496,4 +519,20 @@ public class QuizGenerateJobSummaryDto
 public class QuizGenerateJobCreatedDto
 {
     public string JobId { get; set; } = "";
+}
+// ─────────────────────────────────────────────
+// 自适应题量：知识点规划（先规划、再按知识点分批出题）
+// ─────────────────────────────────────────────
+
+/// <summary>知识点规划结果：由 AI 决定需要覆盖哪些知识点（数量决定总题量）</summary>
+public class QuizTopicPlanDto
+{
+    public List<QuizTopicDto> Topics { get; set; } = [];
+}
+
+/// <summary>单个知识点</summary>
+public class QuizTopicDto
+{
+    public string Title { get; set; } = "";
+    public List<string> KeyPoints { get; set; } = [];
 }

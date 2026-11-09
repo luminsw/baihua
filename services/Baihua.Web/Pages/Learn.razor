@@ -17,28 +17,43 @@
             <h2>选择题库</h2>
             @if (banks.Count == 0)
             {
-                <p class="learn-empty">暂无可用题库（请先导入题库包）。</p>
+                <p class="learn-empty">暂无可用题库（可以 AI 生成，或导入题库包）。</p>
             }
             else
             {
                 <div class="bank-list">
                     @foreach (var bank in banks)
                     {
-                        <button class="bank-card btn" @onclick="() => SelectBankAsync(bank)">
-                            <div class="bank-name">@bank.IndustryName · @bank.BankName</div>
-                            <div class="bank-meta">
-                                <span>@bank.ItemCount 条目</span>
-                                <span>@bank.QuestionCount 道题</span>
-                                <span>v@(string.IsNullOrEmpty(bank.Version) ? "-" : bank.Version)</span>
+                        var pendingDelete = pendingDeleteBankCode == bank.BankCode;
+                        <div class="bank-card @(pendingDelete ? "pending-delete" : "")">
+                            <button class="bank-select btn" @onclick="() => SelectBankAsync(bank)">
+                                <div class="bank-name">@bank.IndustryName · @bank.BankName</div>
+                                <div class="bank-meta">
+                                    <span>@bank.ItemCount 条目</span>
+                                    <span>@bank.QuestionCount 道题</span>
+                                    <span>v@(string.IsNullOrEmpty(bank.Version) ? "-" : bank.Version)</span>
+                                </div>
+                            </button>
+                            <div class="bank-actions">
+                                <a class="btn btn-sm btn-outline-secondary"
+                                   href="/api/learn/banks/@Uri.EscapeDataString(bank.BankCode)/export"
+                                   title="导出题库包（供花阁/花记）">⬇ 导出</a>
+                                <button class="btn btn-sm @(pendingDelete ? "btn-danger" : "btn-outline-danger")"
+                                        disabled="@deleting" @onclick="() => DeleteBankAsync(bank)">
+                                    @(pendingDelete ? "确认删除" : "🗑 删除")
+                                </button>
                             </div>
-                        </button>
+                        </div>
                     }
                 </div>
-                <div class="export-row">
-                    <a class="btn btn-primary" href="/learn/generate">✨ AI 生成题库</a>
-                    <a class="btn btn-outline-secondary" href="/api/learn/banks/@banks[0].BankCode/export" target="_blank">⬇ 导出题库包（供花阁/花记）</a>
-                </div>
             }
+            @if (!string.IsNullOrWhiteSpace(bankNotice))
+            {
+                <div class="bank-notice">@bankNotice</div>
+            }
+            <div class="export-row">
+                <a class="btn btn-primary" href="/learn/generate">✨ AI 生成题库</a>
+            </div>
         </div>
     }
     else if (stage == Stage.Learner)
@@ -238,7 +253,12 @@
 <style>
     .learn-page { max-width: 860px; margin: 0 auto; padding: 1rem; }
     .bank-list { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
-    .bank-card { text-align: left; padding: .9rem 1.2rem; }
+    .bank-card { display: flex; flex-direction: column; gap: .25rem; padding: .9rem 1.2rem; border: 1px solid var(--bs-border-color); border-radius: .5rem; background: var(--bs-body-bg); }
+    .bank-card.pending-delete { border-color: var(--bs-danger); background: rgba(220, 53, 69, .06); }
+    .bank-select { text-align: left; padding: 0; border: 0; background: none; }
+    .bank-select:hover .bank-name { text-decoration: underline; }
+    .bank-actions { display: flex; gap: .4rem; justify-content: flex-end; }
+    .bank-notice { margin: .25rem 0 .75rem; padding: .5rem .8rem; border-left: 3px solid var(--bs-warning); background: var(--bs-tertiary-bg); font-size: .9rem; white-space: pre-wrap; }
     .bank-name { font-size: 1.05rem; font-weight: 600; }
     .bank-meta { display: flex; gap: 1rem; color: var(--bs-secondary-color); font-size: .85rem; margin-top: .25rem; }
     .player-select { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
@@ -301,6 +321,9 @@
 
     private bool aiLoading;
     private string? aiAnalysis;
+    private string? pendingDeleteBankCode;
+    private bool deleting;
+    private string? bankNotice;
 
     protected override async Task OnInitializedAsync()
     {
@@ -309,10 +332,57 @@
 
     private async Task SelectBankAsync(QuizBankOverviewDto bank)
     {
+        pendingDeleteBankCode = null;
+        bankNotice = null;
         selectedBankCode = bank.BankCode;
         learners = await ApiService.GetLearnersAsync();
         bankStats = await ApiService.GetLearnBankStatsAsync(bank.BankCode);
         stage = Stage.Learner;
+    }
+
+    /// <summary>
+    /// 删除题库（两步确认：先点「删除」变成「确认删除」，再点才真正删除——全站不用原生 confirm）。
+    /// 删除会连条目/题目/答题记录一起清理，因此必须让用户看清将要删掉什么。
+    /// </summary>
+    private async Task DeleteBankAsync(QuizBankOverviewDto bank)
+    {
+        if (deleting) return;
+
+        if (pendingDeleteBankCode != bank.BankCode)
+        {
+            pendingDeleteBankCode = bank.BankCode;
+            bankNotice = $"将删除「{bank.IndustryName} · {bank.BankName}」：{bank.ItemCount} 条目、{bank.QuestionCount} 道题，以及这些题的答题记录（不可撤销）。再点一次「确认删除」执行。";
+            return;
+        }
+
+        deleting = true;
+        try
+        {
+            var result = await ApiService.DeleteLearnBankAsync(bank.BankCode);
+            if (result is null)
+            {
+                bankNotice = "删除失败（后端不可用，或题库已不存在）";
+                pendingDeleteBankCode = null;
+                return;
+            }
+
+            bankNotice = $"已删除「{result.BankName}」：{result.ItemsDeleted} 条目、{result.QuestionsDeleted} 道题、{result.AttemptsDeleted} 条答题记录"
+                + (result.IndustryRemoved ? "；该行业下已无题库，行业也一并删除。" : "。");
+            pendingDeleteBankCode = null;
+
+            // 刷新题库列表（删除后可能已为空）
+            banks = await ApiService.GetLearnBanksAsync();
+            if (banks.Count == 0) stage = Stage.Banks;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "删除题库失败：{BankCode}", bank.BankCode);
+            bankNotice = "删除失败：" + ex.Message;
+        }
+        finally
+        {
+            deleting = false;
+        }
     }
 
     private QuizBankStatsDto? StatsFor(int learnerId) =>
@@ -417,10 +487,11 @@
         stage = Stage.Learner;
     }
 
-    private Task BackToBanks()
+    private async Task BackToBanks()
     {
+        // 回到题库选择时刷新列表：其它标签页可能刚生成/删除了题库
+        banks = await ApiService.GetLearnBanksAsync();
         stage = Stage.Banks;
-        return Task.CompletedTask;
     }
 
     private string OptionClass(QuizOptionDto opt) => opt.IsCorrect ? "right"

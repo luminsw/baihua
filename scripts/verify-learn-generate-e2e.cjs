@@ -5,6 +5,7 @@ const { chromium } = require('playwright');
 const stamp = Date.now().toString().slice(-8);
 const INDUSTRY = 'e2e_ind';
 const BANK = 'e2e_' + stamp;
+const BANK_NAME = 'E2E 测试题库 ' + stamp;
 
 function makeQuestion(code, itemCode, stem, analysis) {
   return {
@@ -30,7 +31,7 @@ function makeQuestion(code, itemCode, stem, analysis) {
 const packageJson = JSON.stringify({
   formatVersion: 1,
   industry: { code: INDUSTRY, name: 'E2E 测试行业' },
-  bank: { code: BANK, name: 'E2E 测试题库 ' + stamp, version: 'v1', description: 'playwright 自动验证' },
+  bank: { code: BANK, name: BANK_NAME, version: 'v1', description: 'playwright 自动验证' },
   items: [
     {
       itemCode: 'e2e_item_1',
@@ -66,7 +67,13 @@ const packageJson = JSON.stringify({
   const { token } = await tokenResp.json();
 
   await page.goto(`http://127.0.0.1:5177/learn/generate?cli-token=${token}`, { waitUntil: 'networkidle' });
-  await page.waitForSelector('.source-tabs', { timeout: 20000 });
+  await page.waitForSelector('.source-tabs, .preview-q', { timeout: 20000 });
+  if ((await page.locator('.preview-q').count()) > 0) {
+    // 最近有生成成功的任务时会自动打开结果：先回到表单再走粘贴通道
+    await page.click('button:has-text("返回修改")');
+    await page.waitForSelector('.source-tabs', { timeout: 20000 });
+    console.log('✓ 已从自动打开的历史结果返回表单');
+  }
   console.log('✓ 生成页渲染');
 
   const hasTopicField = await page.locator('label:has-text("生成主题")').count();
@@ -155,15 +162,56 @@ const packageJson = JSON.stringify({
   await page.goto(`http://127.0.0.1:5177/learn?cli-token=${token}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('.bank-card', { timeout: 20000 });
   const bankCards = await page.locator('.bank-name').allTextContents();
-  if (!bankCards.some(t => t.includes('E2E 测试题库'))) {
+  if (!bankCards.some(t => t.includes(BANK_NAME))) {
     throw new Error('题库列表未出现新建的 E2E 题库：' + bankCards.join(' | '));
   }
   console.log('✓ 题库列表已出现新建题库');
 
-  await page.screenshot({ path: 'tmp-learn-generate.png', fullPage: true });
-  console.log('✓ 截图已存 tmp-learn-generate.png');
+  // 导出题库包（WebUI 端点代取后端文件）：浏览器点击应直接下载 JSON
+  const exportLink = page.locator('.bank-card', { hasText: BANK_NAME }).locator('a:has-text("导出")');
+  const [download] = await Promise.all([page.waitForEvent('download'), exportLink.click()]);
+  const downloadPath = await download.path();
+  const downloadSize = downloadPath ? require('fs').statSync(downloadPath).size : 0;
+  if (!download.suggestedFilename().endsWith('.json')) {
+    throw new Error('导出文件名不是 .json：' + download.suggestedFilename());
+  }
+  if (downloadSize < 100) throw new Error('导出内容过小：' + downloadSize + ' 字节');
+  console.log('✓ 导出题库包：', download.suggestedFilename(), downloadSize, '字节');
+
+  // 删除题库（两步确认）：顺带清掉本次 E2E 写入的数据
+  const card = page.locator('.bank-card', { hasText: BANK_NAME });
+  if (await card.count() !== 1) throw new Error('未找到本次 E2E 题库卡片');
+  await card.locator('button:has-text("删除")').click();
+  await page.waitForTimeout(400);
+  const confirmBtn = card.locator('button:has-text("确认删除")');
+  if (await confirmBtn.count() !== 1) throw new Error('删除按钮未进入二次确认状态');
+  const notice = await page.locator('.bank-notice').textContent();
+  if (!notice.includes('不可撤销')) throw new Error('删除前未提示不可撤销：' + notice);
+  console.log('✓ 删除二次确认：', notice.replace(/\s+/g, ' ').trim().slice(0, 60));
+
+  await confirmBtn.click();
+  await page.waitForTimeout(2500);
+  const afterDelete = await page.locator('.bank-name').allTextContents();
+  if (afterDelete.some(t => t.includes(BANK_NAME))) {
+    throw new Error('删除后题库仍在列表：' + afterDelete.join(' | '));
+  }
+  const deleteNotice = (await page.locator('.bank-notice').textContent()).replace(/\s+/g, ' ').trim();
+  if (!deleteNotice.includes('已删除')) throw new Error('删除后未显示结果提示：' + deleteNotice);
+  console.log('✓ 题库已删除：', deleteNotice.slice(0, 80));
+
+  // 后端确实没了（列表接口与导出接口都不再返回该题库）
+  const banksResp = await page.request.get('http://127.0.0.1:8788/api/learn/banks');
+  const remainingBanks = await banksResp.json();
+  if (remainingBanks.some(b => b.bankCode === BANK)) throw new Error('后端仍存在已删除的题库');
+  console.log('✓ 后端题库列表已不含该题库');
+
+  const shot = require('path').join(require('os').tmpdir(), 'verify-learn-generate.png');
+  await page.screenshot({ path: shot, fullPage: true });
+  console.log('✓ 截图已存', shot);
 
   await browser.close();
-  console.log(`\n=== /learn/generate 端到端验证全部通过 ===`);
-  console.log(`E2E 写入：industry=${INDUSTRY} bank=${BANK}`);
+  console.log(`\n=== /learn/generate 端到端验证全部通过（含删除题库） ===`);
+  console.log(`E2E 已自行清理：industry=${INDUSTRY} bank=${BANK}`);
 })().catch(e => { console.error('✗ 验证失败：', e.message); process.exit(1); });
+
+

@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Baihua.Contracts.Learn;
+using Baihua.Core.Hubs;
+using Microsoft.AspNetCore.SignalR;
 
 namespace Baihua.Modules.Family.Services;
 
@@ -23,11 +25,30 @@ public sealed class QuizGenerateJobService
         new UnboundedChannelOptions { SingleReader = true });
     private readonly IQuizBankGenerator _generator;
     private readonly ILogger<QuizGenerateJobService> _logger;
+    private readonly IHubContext<TaskProgressHub>? _hubContext;
 
-    public QuizGenerateJobService(IQuizBankGenerator generator, ILogger<QuizGenerateJobService> logger)
+    public QuizGenerateJobService(
+        IQuizBankGenerator generator,
+        ILogger<QuizGenerateJobService> logger,
+        IHubContext<TaskProgressHub>? hubContext = null)
     {
         _generator = generator;
         _logger = logger;
+        _hubContext = hubContext;
+    }
+
+    /// <summary>推送任务状态（Web 端订阅 LearnJobUpdated 后实时刷新，无需前端轮询）</summary>
+    private async Task NotifyAsync(JobEntry entry)
+    {
+        if (_hubContext is null) return;
+        try
+        {
+            await _hubContext.Clients.All.SendAsync("LearnJobUpdated", ToSummary(entry));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "推送题库生成任务状态失败 job={JobId}", entry.Id);
+        }
     }
 
     /// <summary>创建任务并立即返回 jobId（不等待生成）</summary>
@@ -50,6 +71,7 @@ public sealed class QuizGenerateJobService
             entry.Error = "任务队列不可用";
             entry.CompletedAt = DateTime.UtcNow;
         }
+        _ = NotifyAsync(entry);
         return id;
     }
 
@@ -71,6 +93,18 @@ public sealed class QuizGenerateJobService
     {
         if (!_jobs.TryGetValue(jobId, out var entry)) return false;
         if (entry.Status is "succeeded" or "failed" or "canceled") return false;
+
+        // 排队中的任务：直接置终态并通知，不必等 Worker 取到它（否则 UI 会先闪一下「生成中」）
+        if (entry.Status == "queued")
+        {
+            entry.Status = "canceled";
+            entry.Message = "已取消";
+            entry.ProgressPercent = 0;
+            entry.CompletedAt = DateTime.UtcNow;
+            _ = NotifyAsync(entry);
+            return true;
+        }
+
         entry.Cts.Cancel();
         return true;
     }
@@ -89,6 +123,7 @@ public sealed class QuizGenerateJobService
         entry.Message = entry.TotalBatches > 1
             ? $"AI 生成中（0/{entry.TotalBatches} 批）"
             : "AI 生成中…";
+        _ = NotifyAsync(entry);
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(entry.Cts.Token, stoppingToken);
         try
@@ -101,6 +136,7 @@ public sealed class QuizGenerateJobService
                     ? 0
                     : (int)Math.Round(p.CompletedBatches * 100.0 / p.TotalBatches);
                 entry.Message = p.Message;
+                _ = NotifyAsync(entry);
             });
 
             var result = await _generator.PreviewAsync(entry.Request, progress, linked.Token);
@@ -133,6 +169,7 @@ public sealed class QuizGenerateJobService
         finally
         {
             entry.CompletedAt = DateTime.UtcNow;
+            _ = NotifyAsync(entry);
         }
     }
 

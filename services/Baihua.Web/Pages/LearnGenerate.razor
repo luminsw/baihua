@@ -1,9 +1,12 @@
 @page "/learn/generate"
-@implements IDisposable
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IAsyncDisposable
 @inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.SettingsService SettingsService
+@inject NavigationManager Navigation
 @inject Microsoft.Extensions.Logging.ILogger<LearnGenerate> Logger
 @using System.Text.Json
+@using Microsoft.AspNetCore.Http.Connections
+@using Microsoft.AspNetCore.SignalR.Client
 @using Baihua.Contracts.Learn
 @using Baihua.Web.Services
 
@@ -499,10 +502,26 @@
     private QuizGenerateJobDto? currentJob;
     private List<QuizGenerateJobSummaryDto> recentJobs = new();
     private CancellationTokenSource? pollCts;
+    private HubConnection? hubConnection;
+    private string? dismissedJobId;
+
+    /// <summary>当前正在预览的任务 id（用于「返回修改」精确记忆本次结果，而不是猜最近一条）</summary>
+    private string? openedJobId;
+
+    /// <summary>销毁标记：Hub 连接是 fire-and-forget，晚到的连接必须自行关闭，否则泄漏连接</summary>
+    private bool disposed;
+
+    /// <summary>
+    /// 显式任务地址（<c>/learn/generate?job=xxx</c>）：由任务管理页点某条生成任务带入，
+    /// 直接打开该任务结果，不再依赖「最近 30 分钟」的推断。
+    /// </summary>
+    [Parameter, SupplyParameterFromQuery(Name = "job")]
+    public string? JobId { get; set; }
+
 
     private bool IsJobRunning => currentJob is { Status: "queued" or "running" };
 
-    /// <summary>已用时（轮询每 2 秒刷新一次）</summary>
+    /// <summary>已用时（每次推送/轮询刷新时重算）</summary>
     private string ElapsedText
     {
         get
@@ -546,6 +565,56 @@
         recentJobs = await ApiService.ListLearnGenerateJobsAsync();
         var active = recentJobs.FirstOrDefault(j => j.Status is "queued" or "running");
         if (active is not null) _ = StartPollingAsync(active.JobId);
+
+        _ = StartHubConnectionAsync();
+
+        await AutoOpenAsync(active);
+    }
+
+    /// <summary>
+    /// 打开本应显示的任务：
+    /// 1. 显式 <c>?job=</c>（任务页跳转）——精确打开，不做推断；
+    /// 2. 否则自动打开最近 30 分钟内成功、且用户没主动「返回修改」的结果（关掉页面再回来不用重新找）。
+    /// </summary>
+    private async Task AutoOpenAsync(QuizGenerateJobSummaryDto? active)
+    {
+        if (!string.IsNullOrWhiteSpace(JobId))
+        {
+            Logger.LogInformation("按 job 参数打开生成任务 {JobId}", JobId);
+            await OpenJobAsync(JobId!);
+            return;
+        }
+
+        var candidates = recentJobs
+            .Where(j => j.Status == "succeeded"
+                        && j.CompletedAt is { } completedAt
+                        && DateTime.UtcNow - completedAt < TimeSpan.FromMinutes(30))
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            // 记录一次判定依据：历史上这里「静默不打开」被误判成渲染/超时问题，浪费了排查
+            Logger.LogDebug(
+                "生成页未自动打开结果：recentJobs={Count}（运行中={Active}），30 分钟内成功任务=0",
+                recentJobs.Count, active?.JobId ?? "无");
+            return;
+        }
+
+        var target = candidates[0];
+        if (target.JobId == dismissedJobId) return;
+
+        Logger.LogInformation(
+            "自动打开最近生成的题库结果 {JobId}（{BankName}，{Minutes:0.#} 分钟前完成）",
+            target.JobId, target.BankName, (DateTime.UtcNow - (target.CompletedAt ?? DateTime.UtcNow)).TotalMinutes);
+
+        try
+        {
+            await OpenJobAsync(target.JobId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "自动打开最近生成结果失败 job={JobId}", target.JobId);
+        }
     }
 
     /// <summary>切换行业后：同步名称、题型默认取该画像第一个题型</summary>
@@ -664,7 +733,7 @@
                 await InvokeAsync(StateHasChanged);
 
                 if (job.Status is "succeeded" or "failed" or "canceled") break;
-                await Task.Delay(TimeSpan.FromSeconds(2), token);
+                await Task.Delay(TimeSpan.FromSeconds(10), token);
             }
         }
         catch (OperationCanceledException)
@@ -680,7 +749,7 @@
         {
             try
             {
-                await InvokeAsync(() =>
+                await InvokeAsync(async () =>
                 {
                     if (currentJob is { Status: "succeeded" } && currentJob.Result is { } result)
                     {
@@ -699,7 +768,7 @@
                         currentJob = null;
                     }
 
-                    _ = LoadRecentJobsAsync();
+                    await LoadRecentJobsAsync();
                     StateHasChanged();
                 });
             }
@@ -713,7 +782,10 @@
     private async Task LoadRecentJobsAsync()
     {
         recentJobs = await ApiService.ListLearnGenerateJobsAsync();
-        try { await InvokeAsync(StateHasChanged); } catch (ObjectDisposedException) { }
+        // 调用方可能已在渲染上下文（OnAfterRender/InvokeAsync 内），此处不能再嵌套 InvokeAsync（会自等待死锁）
+        try { StateHasChanged(); }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private async Task CancelJobAsync()
@@ -743,21 +815,12 @@
 
         if (job.Status is "queued" or "running")
         {
+            currentJob = job;
             _ = StartPollingAsync(jobId);
             return;
         }
 
-        if (job.Status == "succeeded" && job.Result is { } result)
-        {
-            package = result.Package;
-            validation = result.Validation;
-            modelUsed = result.ModelUsed;
-            batchCount = result.BatchCount;
-        }
-        else
-        {
-            error = job.Error ?? "任务已结束但没有可用结果";
-        }
+        await HandleFinalJobAsync(job);
     }
 
     private static string StatusText(string status) => status switch
@@ -770,10 +833,130 @@
         _ => status,
     };
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
+        disposed = true;
         pollCts?.Cancel();
         pollCts?.Dispose();
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+            hubConnection = null;
+        }
+    }
+
+    /// <summary>连接 Server 的任务推送 Hub（浏览器侧无需轮询，状态变更即时刷新）</summary>
+    private async Task StartHubConnectionAsync()
+    {
+        try
+        {
+            var backend = BaihuaEndpointHelper.NormalizeOutboundBaseUrl(SettingsService.BackendUrl);
+            var pageBase = Navigation.BaseUri.TrimEnd('/');
+            if (IsLoopbackUrl(backend) && !IsLoopbackUrl(pageBase)) backend = pageBase;
+            var hubUrl = $"{backend}/hubs/task-progress";
+
+            var connection = new HubConnectionBuilder()
+                .WithUrl(hubUrl, o =>
+                {
+                    o.Transports = HttpTransportType.WebSockets;
+                    o.SkipNegotiation = true;
+                    o.HttpMessageHandlerFactory = _ => new SocketsHttpHandler { UseProxy = false };
+                })
+                .WithServerTimeout(TimeSpan.FromSeconds(15))
+                .WithKeepAliveInterval(TimeSpan.FromSeconds(10))
+                .WithAutomaticReconnect()
+                .Build();
+
+            connection.On<QuizGenerateJobSummaryDto>("LearnJobUpdated", summary =>
+            {
+                _ = InvokeAsync(() => ApplyJobSummaryAsync(summary));
+            });
+
+            await connection.StartAsync();
+
+            // 连接建立期间页面可能已关闭：此时必须立刻释放这条连接，否则连接常驻
+            if (disposed)
+            {
+                await connection.DisposeAsync();
+                return;
+            }
+
+            hubConnection = connection;
+            Logger.LogInformation("生成页已连接任务推送 Hub");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "生成页任务推送 Hub 连接失败，继续使用兜底轮询");
+        }
+    }
+
+    private static bool IsLoopbackUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+        return uri.IsLoopback || uri.Host is "localhost" or "127.0.0.1";
+    }
+
+    /// <summary>收到推送：更新当前任务与最近列表；终态时拉一次详情（含结果）</summary>
+    private async Task ApplyJobSummaryAsync(QuizGenerateJobSummaryDto summary)
+    {
+        var index = recentJobs.FindIndex(j => j.JobId == summary.JobId);
+        if (index >= 0) recentJobs[index] = summary;
+        else recentJobs.Insert(0, summary);
+
+        if (currentJob is null || currentJob.JobId != summary.JobId)
+        {
+            switch (summary.Status)
+            {
+                case "queued" or "running":
+                    _ = StartPollingAsync(summary.JobId);
+                    break;
+                case "succeeded" when package is null && summary.JobId != dismissedJobId:
+                    // 本页没在跟这条任务（例如从别的标签页发起，或本页刚刷新）：
+                    // 生成成功即自动打开结果——这是本页的核心体验，不依赖轮询先建立 currentJob。
+                    var done = await ApiService.GetLearnGenerateJobAsync(summary.JobId);
+                    if (done is not null) await HandleFinalJobAsync(done);
+                    return;
+            }
+            StateHasChanged();
+            return;
+        }
+
+        currentJob.Status = summary.Status;
+        currentJob.ProgressPercent = summary.ProgressPercent;
+        currentJob.Message = summary.Message;
+        currentJob.Error = summary.Error;
+        StateHasChanged();
+
+        if (summary.Status is "succeeded" or "failed" or "canceled")
+        {
+            var job = await ApiService.GetLearnGenerateJobAsync(summary.JobId);
+            if (job is not null) await HandleFinalJobAsync(job);
+        }
+    }
+
+    private async Task HandleFinalJobAsync(QuizGenerateJobDto job)
+    {
+        if (job.Status == "succeeded" && job.Result is { } result)
+        {
+            package = result.Package;
+            validation = result.Validation;
+            modelUsed = result.ModelUsed;
+            batchCount = result.BatchCount;
+            currentJob = null;
+            openedJobId = job.JobId;
+        }
+        else if (job.Status == "failed")
+        {
+            error = job.Error ?? "生成失败";
+            currentJob = job;
+        }
+        else if (job.Status == "canceled")
+        {
+            currentJob = null;
+        }
+
+        await LoadRecentJobsAsync();
+        StateHasChanged();
     }
 
     private async Task ValidatePasteAsync()
@@ -856,6 +1039,9 @@
         error = null;
         modelUsed = null;
         batchCount = 0;
+        // 用户主动返回修改：不再对「刚看的这条结果」自动打开（只压这一条，不影响其它任务）
+        if (openedJobId is not null) dismissedJobId = openedJobId;
+        openedJobId = null;
         return Task.CompletedTask;
     }
 
@@ -868,6 +1054,7 @@
         modelUsed = null;
         batchCount = 0;
         currentJob = null;
+        openedJobId = null;
         overwriteExisting = false;
         return Task.CompletedTask;
     }

@@ -90,6 +90,23 @@ public class LearnGenerateController : ControllerBase
         return Ok(QuizIndustryProfileCatalog.MergeWithExisting(existing));
     }
 
+    /// <summary>
+    /// 删除题库（连同条目 / 题目 / 答题记录）。
+    /// <para>只挂 api/learn（管理面板域）——删除是管理动作，移动端同步域（mg/learn）不得暴露。</para>
+    /// </summary>
+    [HttpDelete("banks/{bankCode}")]
+    public async Task<ActionResult<QuizBankDeleteResultDto>> DeleteBank(string bankCode, CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _quizBanks.DeleteBankAsync(bankCode, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
+
     /// <summary>校验题库包（粘贴模式 / 删除题目后复检），不落库</summary>
     [HttpPost("validate")]
     public ActionResult<QuizBankValidationResultDto> Validate([FromBody] QuizBankPackage package)

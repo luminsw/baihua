@@ -21,14 +21,29 @@ public class QuizBankGeneratorService : IQuizBankGenerator
     /// <summary>单批题量：10 题约 6k tokens 输出，兼顾质量与截断风险</summary>
     public const int BatchSize = 10;
 
-    /// <summary>单批最大输出 tokens</summary>
+    /// <summary>
+    /// 单批最大输出 tokens（每批最多 10 题，约 6-8k 输出）。
+    /// 自适应分批后每批只有 6 题，同样够用——统一上限避免无谓的超长输出配额。
+    /// </summary>
     private const int MaxOutputTokens = 8000;
 
-    /// <summary>自适应题量（单批 8-30 题）输出上限</summary>
-    private const int AutoMaxOutputTokens = 16000;
-
-    /// <summary>自适应模式总题量上限（按 10 题/批分 3 批）</summary>
+    /// <summary>自适应模式回退时的总题量上限（规划失败按 10 题/批分 3 批）</summary>
     private const int AutoMaxQuestions = 30;
+
+    /// <summary>知识点规划阶段最大输出 tokens</summary>
+    private const int PlanMaxOutputTokens = 2000;
+
+    /// <summary>知识点规划阶段超时（分钟）</summary>
+    private const int PlanTimeoutMinutes = 3;
+
+    /// <summary>最多采纳的知识点数（控制总题量与批次数）</summary>
+    private const int MaxPlanTopics = 15;
+
+    /// <summary>每批覆盖的知识点数</summary>
+    private const int TopicsPerBatch = 3;
+
+    /// <summary>按知识点分批时每批题量</summary>
+    private const int QuestionsPerBatch = 6;
 
     /// <summary>固定题量单批 AI 调用硬超时（分钟）</summary>
     private const int BatchTimeoutMinutes = 4;
@@ -80,10 +95,6 @@ public class QuizBankGeneratorService : IQuizBankGenerator
         if (string.IsNullOrWhiteSpace(model)) return Fail("所选 AI 提供商未配置模型");
 
         var profile = QuizIndustryProfileCatalog.Resolve(industryCode, request.IndustryName);
-        // 自适应：按 10 题/批、最多 3 批（上限 30）——每批输出可控、有进度，避免单次长输出撞网络超时
-        var batches = isAutoCount
-            ? SplitBatches(AutoMaxQuestions, BatchSize)
-            : SplitBatches(request.QuestionCount, BatchSize);
         var merged = new QuizBankPackage
         {
             FormatVersion = 1,
@@ -104,13 +115,57 @@ public class QuizBankGeneratorService : IQuizBankGenerator
         var promptUsed = "";
         var fallbackPrompt = "";
         var raw = new StringBuilder();
+        var totalBatches = 1;
+        var duplicateWarnings = new List<string>();
 
         try
         {
-            for (var i = 0; i < batches.Count; i++)
+            // 自适应：先规划知识点（数量决定总题量），再按知识点分批出题；固定题量直接按 10 题分批
+            List<BatchSpec> batchSpecs;
+            if (isAutoCount)
             {
-                var count = batches[i];
-                var batchPrefix = batches.Count == 1
+                // 规划阶段最长 3 分钟，期间必须给用户可见进度，否则 UI 一直停在 0%
+                progress?.Report(new QuizGenerateProgress(0, 1, "正在规划知识点…"));
+
+                var planPrompt = QuizBankPromptBuilder.BuildPlanPrompt(
+                    string.IsNullOrWhiteSpace(request.IndustryName) ? industryCode : request.IndustryName.Trim(),
+                    topic, request.ReferenceScope);
+                var planText = await CompleteAsync(provider, model, planPrompt,
+                    PlanMaxOutputTokens, PlanTimeoutMinutes, ct);
+                raw.AppendLine(planText);
+
+                var plan = QuizTopicPlanParser.Parse(planText);
+                var topics = plan is { Topics.Count: > 0 }
+                    ? plan.Topics.Take(MaxPlanTopics).ToList()
+                    : null;
+
+                if (topics is null)
+                {
+                    _logger.LogInformation("知识点规划解析失败，回退到 3 批 × 10 题");
+                    batchSpecs = SplitBatches(AutoMaxQuestions, BatchSize)
+                        .Select(n => new BatchSpec(n, null, "auto"))
+                        .ToList();
+                }
+                else
+                {
+                    batchSpecs = Chunk(topics, TopicsPerBatch)
+                        .Select(g => new BatchSpec(QuestionsPerBatch, g, "fixed"))
+                        .ToList();
+                }
+            }
+            else
+            {
+                batchSpecs = SplitBatches(request.QuestionCount, BatchSize)
+                    .Select(n => new BatchSpec(n, null, "fixed"))
+                    .ToList();
+            }
+
+            totalBatches = batchSpecs.Count;
+
+            for (var i = 0; i < batchSpecs.Count; i++)
+            {
+                var spec = batchSpecs[i];
+                var batchPrefix = batchSpecs.Count == 1
                     ? codePrefix
                     : $"{codePrefix}_b{i + 1}";
 
@@ -122,21 +177,22 @@ public class QuizBankGeneratorService : IQuizBankGenerator
                     BankName = request.BankName,
                     Topic = topic,
                     Target = request.Target,
-                    QuestionCount = count,
-                    QuestionCountMode = isAutoCount ? "auto" : "fixed",
+                    QuestionCount = spec.Count,
+                    QuestionCountMode = spec.CountMode,
                     Difficulty = request.Difficulty,
                     ReferenceScope = request.ReferenceScope,
                     DistractorStrategy = request.DistractorStrategy,
                     CodePrefix = batchPrefix,
                     TargetDescription = request.TargetDescription,
                     BatchIndex = i + 1,
-                    BatchCount = batches.Count,
+                    BatchCount = batchSpecs.Count,
+                    Topics = spec.Topics,
                     Profile = profile,
                 });
                 if (i == 0) promptUsed = prompt;
 
                 var text = await CompleteAsync(provider, model, prompt,
-                    isAutoCount ? AutoMaxOutputTokens : MaxOutputTokens,
+                    MaxOutputTokens,
                     BatchTimeoutMinutes, ct);
                 raw.AppendLine(text);
 
@@ -145,7 +201,7 @@ public class QuizBankGeneratorService : IQuizBankGenerator
                 {
                     _logger.LogInformation("题库生成第 {Batch} 批解析失败，追加约束重试一次", i + 1);
                     text = await CompleteAsync(provider, model, prompt + RetrySuffix,
-                        isAutoCount ? AutoMaxOutputTokens : MaxOutputTokens,
+                        MaxOutputTokens,
                         BatchTimeoutMinutes, ct);
                     raw.AppendLine(text);
                     package = QuizBankResponseParser.Parse(text);
@@ -156,14 +212,19 @@ public class QuizBankGeneratorService : IQuizBankGenerator
                     // 保留最后一份提示词，供用户改用「粘贴题库包」方式人工修正
                     fallbackPrompt = prompt + RetrySuffix;
                     return Fail(
-                        $"AI 返回内容无法解析为题库包（第 {i + 1}/{batches.Count} 批）。已保留原始响应，可改用「粘贴题库包」方式修正后导入。",
-                        promptUsed, raw.ToString(), model, batches.Count, fallbackPrompt);
+                        $"AI 返回内容无法解析为题库包（第 {i + 1}/{totalBatches} 批）。已保留原始响应，可改用「粘贴题库包」方式修正后导入。",
+                        promptUsed, raw.ToString(), model, totalBatches, fallbackPrompt);
                 }
 
-                merged.Items.AddRange(package.Items ?? []);
-                merged.Questions.AddRange(package.Questions ?? []);
+                var skipped = MergeBatch(merged, package);
+                if (skipped > 0)
+                {
+                    _logger.LogWarning("第 {Batch} 批有 {Count} 条代码与已生成内容重复，已丢弃", i + 1, skipped);
+                    duplicateWarnings.Add($"第 {i + 1} 批有 {skipped} 条代码与已生成内容重复，已自动丢弃");
+                }
+
                 progress?.Report(new QuizGenerateProgress(
-                    i + 1, batches.Count, $"已完成第 {i + 1}/{batches.Count} 批"));
+                    i + 1, totalBatches, $"已完成第 {i + 1}/{totalBatches} 批"));
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -175,15 +236,16 @@ public class QuizBankGeneratorService : IQuizBankGenerator
             _logger.LogWarning(ex, "题库生成单批超时");
             return Fail(
                 $"{ex.Message}。请减少题量、改用固定题量分批生成，或稍后重试。",
-                promptUsed, raw.ToString(), model, batches.Count);
+                promptUsed, raw.ToString(), model, totalBatches);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "题库生成调用 AI 失败（Provider={ProviderId}, Model={Model}）", provider.Id, model);
-            return Fail($"AI 生成失败：{ex.Message}", promptUsed, raw.ToString(), model, batches.Count);
+            return Fail($"AI 生成失败：{ex.Message}", promptUsed, raw.ToString(), model, totalBatches);
         }
 
         var validation = QuizBankPackageValidator.Validate(merged, profile);
+        validation.Warnings.AddRange(duplicateWarnings);
         return new QuizGeneratePreviewDto
         {
             Success = true,
@@ -192,7 +254,7 @@ public class QuizBankGeneratorService : IQuizBankGenerator
             Validation = validation,
             RawResponse = Truncate(raw.ToString(), 20000),
             ModelUsed = model,
-            BatchCount = batches.Count,
+            BatchCount = totalBatches,
         };
     }
 
@@ -231,6 +293,56 @@ public class QuizBankGeneratorService : IQuizBankGenerator
         {
             throw new TimeoutException($"单批生成超过 {timeoutMinutes} 分钟未返回");
         }
+    }
+
+    /// <summary>单个生成批次：题量 + （自适应两阶段时）本批覆盖的知识点 + 题量模式</summary>
+    private sealed record BatchSpec(int Count, List<QuizTopicDto>? Topics, string CountMode);
+
+    /// <summary>
+    /// 把一批生成结果并入总包：按 code 去重，只保留第一次出现的条目/题目。
+    /// <para>每批都要求不同的代码前缀，但 AI 偶尔会忽略前缀换批重复同一题号；
+    /// 直接 AddRange 会产生重复题号，导入时后者被 append 模式跳过、overwrite 模式静默覆盖，
+    /// 用户看到的是「题少了」却没有任何提示。</para>
+    /// </summary>
+    /// <returns>被丢弃的重复条数（条目 + 题目）</returns>
+    internal static int MergeBatch(QuizBankPackage merged, QuizBankPackage batch)
+    {
+        var skipped = 0;
+
+        var itemCodes = merged.Items.Select(i => i.ItemCode).ToHashSet(StringComparer.Ordinal);
+        foreach (var item in batch.Items ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(item.ItemCode) && !itemCodes.Add(item.ItemCode))
+            {
+                skipped++;
+                continue;
+            }
+            merged.Items.Add(item);
+        }
+
+        var questionCodes = merged.Questions.Select(q => q.QuestionCode).ToHashSet(StringComparer.Ordinal);
+        foreach (var question in batch.Questions ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(question.QuestionCode) && !questionCodes.Add(question.QuestionCode))
+            {
+                skipped++;
+                continue;
+            }
+            merged.Questions.Add(question);
+        }
+
+        return skipped;
+    }
+
+    /// <summary>按 size 分组（用于把知识点清单切成每批可覆盖的组）</summary>
+    private static List<List<QuizTopicDto>> Chunk(List<QuizTopicDto> topics, int size)
+    {
+        var groups = new List<List<QuizTopicDto>>();
+        for (var i = 0; i < topics.Count; i += size)
+        {
+            groups.Add(topics.GetRange(i, Math.Min(size, topics.Count - i)));
+        }
+        return groups;
     }
 
     /// <summary>把总题量拆成每批不超过 <paramref name="size"/> 的批次（公开以便回归测试与复用）</summary>

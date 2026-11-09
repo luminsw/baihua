@@ -761,20 +761,30 @@ namespace Baihua.Web.Services
         public async Task<Baihua.Contracts.Learn.QuizGenerateJobDto?> GetLearnGenerateJobAsync(
             string jobId, CancellationToken cancellationToken = default)
         {
-            using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            quick.CancelAfter(QuickCallTimeout);
-            try
+            // 任务详情包含完整题库包（可能上百 KB）：用长超时客户端 + 失败重试，
+            // 避免偶发的连接取消导致「完成后无法自动打开结果」。
+            for (var attempt = 1; attempt <= 3; attempt++)
             {
-                var response = await GetWithMetricsAsync(
-                    $"/api/learn/generate/jobs/{Uri.EscapeDataString(jobId)}", quick.Token);
-                if (!response.IsSuccessStatusCode) return null;
-                return await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizGenerateJobDto>(quick.Token);
+                var started = DateTime.UtcNow;
+                using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                quick.CancelAfter(LongHttpTimeout);
+                try
+                {
+                    var response = await GetWithMetricsAsync(
+                        $"/api/learn/generate/jobs/{Uri.EscapeDataString(jobId)}", quick.Token, _longHttpClient);
+                    if (!response.IsSuccessStatusCode) return null;
+                    return await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizGenerateJobDto>(quick.Token);
+                }
+                catch (Exception ex)
+                {
+                    var elapsed = (int)(DateTime.UtcNow - started).TotalMilliseconds;
+                    _logger.LogWarning(ex, "查询题库生成任务失败（第 {Attempt} 次，{ElapsedMs}ms）：{JobId}",
+                        attempt, elapsed, jobId);
+                    if (attempt >= 3 || cancellationToken.IsCancellationRequested) return null;
+                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "查询题库生成后台任务失败：{JobId}", jobId);
-                return null;
-            }
+            return null;
         }
 
         /// <summary>最近的后台生成任务</summary>
@@ -877,6 +887,63 @@ namespace Baihua.Web.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "导入题库包失败");
+                return null;
+            }
+        }
+
+        /// <summary>删除题库（连条目/题目/答题记录；不可撤销）</summary>
+        public async Task<Baihua.Contracts.Learn.QuizBankDeleteResultDto?> DeleteLearnBankAsync(
+            string bankCode, CancellationToken cancellationToken = default)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            linked.CancelAfter(LongHttpTimeout);
+            try
+            {
+                var response = await DeleteWithMetricsAsync(
+                    $"/api/learn/banks/{Uri.EscapeDataString(bankCode)}", linked.Token);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("删除题库失败：{BankCode} HTTP {Status}", bankCode, (int)response.StatusCode);
+                    return null;
+                }
+                return await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizBankDeleteResultDto>(
+                    cancellationToken: linked.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "删除题库失败：{BankCode}", bankCode);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 取题库包导出文件（供 WebUI 的 /api/learn/banks/{code}/export 端点回给浏览器）。
+        /// 返回文件名 + 原始字节；题库不存在或后端不可用返回 null。
+        /// </summary>
+        public async Task<(string FileName, byte[] Content)?> ExportLearnBankPackageAsync(
+            string bankCode, CancellationToken cancellationToken = default)
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            linked.CancelAfter(LongHttpTimeout);
+            try
+            {
+                var response = await GetWithMetricsAsync(
+                    $"/api/learn/banks/{Uri.EscapeDataString(bankCode)}/export", linked.Token, _longHttpClient);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("导出题库失败：{BankCode} HTTP {Status}", bankCode, (int)response.StatusCode);
+                    return null;
+                }
+
+                var content = await response.Content.ReadAsByteArrayAsync(linked.Token);
+                var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+                    ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                    ?? $"quizbank-{bankCode}.json";
+                return (fileName, content);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "导出题库失败：{BankCode}", bankCode);
                 return null;
             }
         }

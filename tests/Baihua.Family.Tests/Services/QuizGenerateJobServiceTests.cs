@@ -191,4 +191,38 @@ public class QuizGenerateJobServiceTests
         Assert.Equal(1, service.Get(id)!.TotalBatches);
         Assert.Contains("排队中", service.Get(id)!.Message);
     }
+
+    // ============ 取消排队中的任务（不等 Worker 取到它） ============
+
+    [Fact]
+    public async Task Cancel_QueuedJob_TerminatesImmediately_AndWorkerSkipsIt()
+    {
+        var called = false;
+        var fake = new FakeGenerator
+        {
+            Handler = (_, _, _) =>
+            {
+                called = true;
+                return Task.FromResult(new QuizGeneratePreviewDto { Success = true });
+            },
+        };
+        var service = CreateService(fake);
+        var jobId = service.Enqueue(Request());
+
+        Assert.True(service.Cancel(jobId));
+
+        // 立即进入终态：UI 不会先闪一下「生成中」
+        var job = service.Get(jobId)!;
+        Assert.Equal("canceled", job.Status);
+        Assert.Equal("已取消", job.Message);
+        Assert.NotNull(job.CompletedAt);
+
+        // Worker 之后取到该任务时直接跳过，不会真的调 AI
+        await service.ExecuteAsync(jobId, CancellationToken.None);
+        Assert.False(called);
+        Assert.Equal("canceled", service.Get(jobId)!.Status);
+
+        // 已结束的任务不再可取消
+        Assert.False(service.Cancel(jobId));
+    }
 }

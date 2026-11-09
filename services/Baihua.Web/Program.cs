@@ -293,11 +293,19 @@ var baihuaServerBaseUrl = builder.Configuration["BaihuaServer:BaseUrl"]
     ?? "http://127.0.0.1:8788/";
 builder.Services.AddTransient<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
+// 局域网直连后端：禁用系统代理（Windows WPAD/代理会让本地请求异常变慢甚至超时）
+static HttpMessageHandler CreateNoProxyHandler() => new SocketsHttpHandler
+{
+    UseProxy = false,
+    PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+};
+
 builder.Services.AddHttpClient("FamilyApi", client =>
 {
     client.BaseAddress = new Uri(baihuaServerBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
-}).AddPolicyHandler(retryPolicy)
+}).ConfigurePrimaryHttpMessageHandler(() => CreateNoProxyHandler())
+ .AddPolicyHandler(retryPolicy)
  .AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
 // 长耗时接口（AI 分析类，如股票建议）：避开 30s 硬超时
@@ -305,27 +313,31 @@ builder.Services.AddHttpClient("FamilyApiLong", client =>
 {
     client.BaseAddress = new Uri(baihuaServerBaseUrl);
     client.Timeout = TimeSpan.FromMinutes(5);
-}).AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
+}).ConfigurePrimaryHttpMessageHandler(() => CreateNoProxyHandler())
+ .AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
 // 超长耗时接口（题库批量生成：30 题分 3 批 + 解析失败重试，单次可能超过 5 分钟）
 builder.Services.AddHttpClient("FamilyApiAiLong", client =>
 {
     client.BaseAddress = new Uri(baihuaServerBaseUrl);
     client.Timeout = TimeSpan.FromMinutes(15);
-}).AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
+}).ConfigurePrimaryHttpMessageHandler(() => CreateNoProxyHandler())
+ .AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
 builder.Services.AddHttpClient("AiApi", client =>
 {
     client.BaseAddress = new Uri(baihuaServerBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
-}).AddPolicyHandler(retryPolicy)
+}).ConfigurePrimaryHttpMessageHandler(() => CreateNoProxyHandler())
+ .AddPolicyHandler(retryPolicy)
  .AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
 builder.Services.AddHttpClient("VaultApi", client =>
 {
     client.BaseAddress = new Uri(baihuaServerBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
-}).AddPolicyHandler(retryPolicy)
+}).ConfigurePrimaryHttpMessageHandler(() => CreateNoProxyHandler())
+ .AddPolicyHandler(retryPolicy)
  .AddHttpMessageHandler<Baihua.Web.Middleware.MetricsRecordingHandler>();
 
 
@@ -450,6 +462,18 @@ app.MapPost("/api/auth/logout", (HttpContext context, Baihua.Web.Services.AuthSe
     }
     context.Response.Cookies.Delete(Baihua.Web.Services.AuthService.AuthCookieName, new CookieOptions { Path = "/" });
     return Results.Ok(new { success = true });
+});
+
+// 题库包导出：WebUI 没有 API 反向代理，浏览器直接点 /api/learn/... 会 404，
+// 所以由 WebUI 代取后端文件再回给浏览器（带登录 Cookie 鉴权，与页面同一个域）。
+app.MapGet("/api/learn/banks/{bankCode}/export", async (
+    string bankCode, Baihua.Web.Services.IApiService api) =>
+{
+    var exported = await api.ExportLearnBankPackageAsync(bankCode);
+    IResult result = exported is null
+        ? Results.NotFound(new { error = "题库不存在或后端不可用" })
+        : Results.File(exported.Value.Content, "application/json", exported.Value.FileName);
+    return result;
 });
 
 // 请求统计 API

@@ -142,4 +142,39 @@ public class LearnGenerateControllerTests
         Assert.Contains(profiles, p => p.Code == "general");
         Assert.All(profiles, p => Assert.NotEmpty(p.Targets));
     }
+
+    // ============ 删除题库（管理动作，只挂 api/learn） ============
+
+    [Fact]
+    public async Task DeleteBank_ExistingBank_ReturnsCountsAndRemovesRows()
+    {
+        var (controller, options) = Create();
+        await controller.Import(new QuizBankImportRequestDto
+        {
+            Package = QuizBankTestSupport.CreateSamplePackage(),
+        });
+
+        var action = await controller.DeleteBank(QuizBankTestSupport.BankCode);
+
+        var ok = Assert.IsType<OkObjectResult>(action.Result);
+        var result = Assert.IsType<QuizBankDeleteResultDto>(ok.Value);
+        Assert.Equal(QuizBankTestSupport.BankCode, result.BankCode);
+        Assert.Equal(2, result.ItemsDeleted);
+        Assert.Equal(3, result.QuestionsDeleted);
+        Assert.True(result.IndustryRemoved);
+
+        await using var db = new FamilyDbContext(options);
+        Assert.Equal(0, await db.QuizBanks.CountAsync());
+        Assert.Equal(0, await db.QuizQuestions.CountAsync());
+    }
+
+    [Fact]
+    public async Task DeleteBank_UnknownBank_ReturnsNotFound()
+    {
+        var (controller, _) = Create();
+
+        var action = await controller.DeleteBank("ghost_bank");
+
+        Assert.IsType<NotFoundObjectResult>(action.Result);
+    }
 }

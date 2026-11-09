@@ -184,6 +184,8 @@ namespace Baihua.Web.Services
         Task<List<Baihua.Contracts.Learn.QuizIndustryProfileDto>> GetLearnIndustryProfilesAsync(CancellationToken cancellationToken = default);
         Task<Baihua.Contracts.Learn.QuizBankValidationResultDto?> ValidateLearnPackageAsync(Baihua.Contracts.Learn.QuizBankPackage package, CancellationToken cancellationToken = default);
         Task<Baihua.Contracts.Learn.QuizBankImportResultDto?> ImportLearnPackageAsync(Baihua.Contracts.Learn.QuizBankPackage package, bool overwriteExisting = false, CancellationToken cancellationToken = default);
+        Task<Baihua.Contracts.Learn.QuizBankDeleteResultDto?> DeleteLearnBankAsync(string bankCode, CancellationToken cancellationToken = default);
+        Task<(string FileName, byte[] Content)?> ExportLearnBankPackageAsync(string bankCode, CancellationToken cancellationToken = default);
         Task<List<LeaderboardEntryDto>> GetLeaderboardAsync(string type, string? vaultId = null);
         Task<DashboardDataDto> GetDashboardAsync(string? vaultId = null, int? learnerId = null);
         Task<CheckinDataDto> GetCheckinDataAsync(string? vaultId = null);

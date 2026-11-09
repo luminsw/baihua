@@ -248,6 +248,53 @@ public class QuizBankService
         return result;
     }
 
+    /// <summary>
+    /// 删除题库（不可撤销）：连同其知识条目、题目与答题记录一并清理。
+    /// <para>显式逐级删除而不依赖数据库级级联：InMemory（测试）与 PostgreSQL 行为一致，
+    /// 且能返回精确的删除计数供 UI 核对。</para>
+    /// <para>行业在本库删除后已无任何题库时一并删除，避免生成页下拉出现孤立行业。</para>
+    /// </summary>
+    public async Task<QuizBankDeleteResultDto> DeleteBankAsync(string bankCode, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(bankCode))
+            throw new InvalidOperationException("题库代码不能为空");
+
+        using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var bank = await db.QuizBanks.SingleOrDefaultAsync(x => x.Code == bankCode, ct)
+            ?? throw new InvalidOperationException($"题库不存在：{bankCode}");
+
+        var result = new QuizBankDeleteResultDto { BankCode = bank.Code, BankName = bank.Name };
+
+        // 1. 答题记录（先删子表，避免外键悬挂）
+        var attempts = await db.QuizAttempts.Where(a => a.BankId == bank.Id).ToListAsync(ct);
+        db.QuizAttempts.RemoveRange(attempts);
+
+        // 2. 题目 → 3. 条目 → 4. 题库
+        var questions = await db.QuizQuestions.Where(q => q.BankId == bank.Id).ToListAsync(ct);
+        db.QuizQuestions.RemoveRange(questions);
+
+        var items = await db.QuizItems.Where(i => i.BankId == bank.Id).ToListAsync(ct);
+        db.QuizItems.RemoveRange(items);
+
+        db.QuizBanks.Remove(bank);
+        await db.SaveChangesAsync(ct);
+
+        result.AttemptsDeleted = attempts.Count;
+        result.QuestionsDeleted = questions.Count;
+        result.ItemsDeleted = items.Count;
+
+        // 5. 行业清理（该行业已无题库）
+        var industry = await db.QuizIndustries.SingleOrDefaultAsync(i => i.Id == bank.IndustryId, ct);
+        if (industry is not null && !await db.QuizBanks.AnyAsync(b => b.IndustryId == industry.Id, ct))
+        {
+            db.QuizIndustries.Remove(industry);
+            await db.SaveChangesAsync(ct);
+            result.IndustryRemoved = true;
+        }
+
+        return result;
+    }
+
     /// <summary>导出题库包（百花→花阁/花记 的交换文件）</summary>
     public async Task<QuizBankPackage> ExportPackageAsync(string industryCode, string bankCode, CancellationToken ct = default)
     {

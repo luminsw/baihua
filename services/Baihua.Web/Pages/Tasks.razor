@@ -19,32 +19,6 @@
 
 <h1>📊 @L["Tasks_Title"]</h1>
 
-@if (learnJobs.Count > 0)
-{
-    <div class="learn-jobs">
-        <div class="learn-jobs-head">
-            <h2>🧠 题库生成任务</h2>
-            <a href="/learn/generate" class="btn btn-sm btn-outline-primary">去生成页</a>
-        </div>
-        @foreach (var job in learnJobs)
-        {
-            <div class="learn-job-row">
-                <span class="learn-job-status @job.Status">@LearnJobStatusText(job.Status)</span>
-                <span class="learn-job-name">@(string.IsNullOrWhiteSpace(job.BankName) ? job.Topic : job.BankName)</span>
-                @if (job.Status is "queued" or "running")
-                {
-                    <span class="learn-job-progress">@job.ProgressPercent%</span>
-                }
-                else if (!string.IsNullOrWhiteSpace(job.Error))
-                {
-                    <span class="learn-job-error">@job.Error</span>
-                }
-                <span class="learn-job-time">@job.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
-            </div>
-        }
-    </div>
-}
-
 
 <div class="task-controls">
     <span class="connection-status">
@@ -108,7 +82,7 @@
         <span>@L["Tasks_Loading"]</span>
     </div>
 }
-else if (!tasks.Any())
+else if (!tasks.Any() && learnJobs.Count == 0)
 {
     <div class="no-tasks">
         <span>📋</span>
@@ -118,6 +92,32 @@ else if (!tasks.Any())
 else
 {
     <div class="task-list">
+        @foreach (var job in VisibleLearnJobs())
+        {
+            <div class="task-item clickable" @onclick="() => OpenLearnJobAsync(job.JobId)">
+                <div class="task-header">
+                    <div class="task-title-section">
+                        <span class="task-type">🧠 题库生成</span>
+                        <span class="task-title-badge">📚 @(string.IsNullOrWhiteSpace(job.BankName) ? job.Topic : job.BankName)</span>
+                    </div>
+                    <span class="task-status status-@LearnJobStatusClass(job.Status)">@LearnJobStatusText(job.Status)</span>
+                </div>
+                <div class="task-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: @job.ProgressPercent%"></div>
+                    </div>
+                    <span class="progress-text">@job.ProgressPercent%</span>
+                </div>
+                <div class="task-message">@job.Message</div>
+                @if (!string.IsNullOrWhiteSpace(job.Error))
+                {
+                    <div class="task-error">❌ @job.Error</div>
+                }
+                <div class="task-detail-info">
+                    <small class="text-muted">@job.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm") · 点击查看</small>
+                </div>
+            </div>
+        }
         @foreach (var task in (hideCompleted ? tasks.Where(t => t.StatusText != "Success") : tasks))
         {
             <div class="task-item @(task.StatusText == "Success" ? "clickable" : "")" 
@@ -393,6 +393,17 @@ else
             .WithAutomaticReconnect()
             .Build();
 
+        _hubConnection.On<QuizGenerateJobSummaryDto>("LearnJobUpdated", summary =>
+        {
+            _ = InvokeAsync(() =>
+            {
+                var index = learnJobs.FindIndex(j => j.JobId == summary.JobId);
+                if (index >= 0) learnJobs[index] = summary;
+                else learnJobs.Insert(0, summary);
+                StateHasChanged();
+            });
+        });
+
         _hubConnection.On<object>("TaskUpdated", async _ =>
         {
             // 防抖：延迟 500ms 再刷新，合并短时间内多次更新
@@ -537,6 +548,28 @@ else
         "canceled" => "已取消",
         _ => status,
     };
+
+    private static string LearnJobStatusClass(string status) => status switch
+    {
+        "queued" => "pending",
+        "running" => "running",
+        "succeeded" => "success",
+        "failed" => "failed",
+        "canceled" => "cancelled",
+        _ => "pending",
+    };
+
+    /// <summary>生成任务同样遵守「隐藏已完成」筛选（与普通任务列表口径一致）</summary>
+    private List<QuizGenerateJobSummaryDto> VisibleLearnJobs()
+        => hideCompleted
+            ? learnJobs.Where(j => j.Status is not ("succeeded" or "canceled")).ToList()
+            : learnJobs;
+
+    private void OpenLearnJobAsync(string jobId)
+    {
+        // 带 job 参数：生成页直接打开这一条任务（不再靠「最近 30 分钟」推断是哪条）
+        Navigation.NavigateTo($"/learn/generate?job={Uri.EscapeDataString(jobId)}");
+    }
 
     private void OnTaskClick(TaskInfo task)
     {

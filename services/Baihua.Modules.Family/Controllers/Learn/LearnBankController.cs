@@ -52,12 +52,14 @@ public class LearnBankController : ControllerBase
     /// <summary>随机抽题（作答前不泄露正确项）</summary>
     [HttpGet("banks/{bankCode}/questions")]
     public async Task<ActionResult<List<Contracts.Learn.QuizQuestionViewDto>>> DrawQuestions(
-        string bankCode, [FromQuery] int count = 10, [FromQuery] int excludeAnswered = 0, CancellationToken ct = default)
+        string bankCode, [FromQuery] int count = 10, CancellationToken ct = default)
     {
         if (count is < 1 or > 50)
             return BadRequest(new { error = "抽题数量须在 1-50 之间" });
         try
         {
+            // 注：原 excludeAnswered 参数从未实现（也没有任何端在使用），已移除——
+            // 保留一个「接受但忽略」的参数会让人以为「已刷过的题会被排除」。
             return Ok(await _quizBankService.DrawQuestionsAsync(bankCode, count, null, ct));
         }
         catch (InvalidOperationException ex)

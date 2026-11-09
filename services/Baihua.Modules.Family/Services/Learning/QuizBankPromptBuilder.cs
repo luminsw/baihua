@@ -44,6 +44,36 @@ public static class QuizBankPromptBuilder
         public string CodePrefix { get; set; } = "ai";
         /// <summary>行业画像（为空时按 IndustryCode 自动解析）</summary>
         public QuizIndustryProfileDto? Profile { get; set; }
+        /// <summary>本批要覆盖的知识点（自适应两阶段生成使用；为空则按主题自由覆盖）</summary>
+        public List<QuizTopicDto>? Topics { get; set; }
+    }
+
+    /// <summary>
+    /// 自适应题量的第一阶段提示词：让 AI 先规划需要覆盖的知识点清单。
+    /// 知识点数量由内容决定（6-15 个），后续按知识点分批出题，总题量随知识点数量自适应。
+    /// </summary>
+    public static string BuildPlanPrompt(
+        string industryName, string topic, string? referenceScope)
+    {
+        var reference = string.IsNullOrWhiteSpace(referenceScope)
+            ? "未指定（基于该行业公认的基础知识）"
+            : referenceScope.Trim();
+
+        return $$"""
+你是「百花题库」的内容规划助手。请为下面的主题规划覆盖所需的**知识点清单**（只输出 JSON，不要任何解释）。
+
+## 主题
+- 行业：{{industryName}}
+- 主题/要求：{{topic}}
+- 参考范围：{{reference}}
+
+## 要求
+1. 只输出一个 JSON 对象：{"topics":[{"title":"知识点名称","keyPoints":["要点1","要点2"]}]}
+2. 知识点数量由内容覆盖需要决定，控制在 **6-15 个**；按重要度从高到低排序。
+3. 每个知识点给 1-3 条 keyPoints，要具体、可直接用于出题，不要空泛。
+4. 覆盖该主题最重要、最有用的内容；不要为凑数拆分或重复。
+5. 不要输出 Markdown 代码块，不要输出 JSON 以外的任何文字。
+""";
     }
 
     public static string Build(Options options)
@@ -83,6 +113,17 @@ public static class QuizBankPromptBuilder
         sb.AppendLine($"- 题库：{bankName}（代码 {bankCode}）");
         sb.AppendLine($"- 主题/要求：{topic}");
         sb.AppendLine($"- 题型：{DescribeTarget(target, profile, options.TargetDescription)}");
+
+        if (options.Topics is { Count: > 0 })
+        {
+            sb.AppendLine("- 本批只覆盖以下知识点（不要扩展到其它知识点，也不要与其它批次重复）：");
+            var topicIndex = 1;
+            foreach (var t in options.Topics)
+            {
+                sb.AppendLine($"  {topicIndex}. {t.Title}：{string.Join("；", t.KeyPoints)}");
+                topicIndex++;
+            }
+        }
         if (isAutoCount && options.BatchCount > 1)
             sb.AppendLine($"- 题目数量：本批 {questionCount} 题（全库分 {options.BatchCount} 批生成，这是第 {options.BatchIndex} 批；只覆盖该主题的第 {options.BatchIndex} 部分知识点，不要与其它批次重复）");
         else if (isAutoCount)

@@ -1,3 +1,4 @@
+using Baihua.Contracts.Learn;
 using Baihua.Modules.Family.Services;
 using Xunit;
 
@@ -236,5 +237,73 @@ public class QuizBankPromptBuilderTests
         Assert.Contains("题目数量：12", prompt);
         Assert.DoesNotContain("题目数量：自适应", prompt);
         Assert.DoesNotContain("每个主要知识点至少 1 题", prompt);
+    }
+
+    // ============ 自适应分批 / 自定义题型 ============
+
+    [Fact]
+    public void Build_AutoBatchMode_DescribesBatchScope()
+    {
+        var options = Options();
+        options.QuestionCountMode = "auto";
+        options.QuestionCount = 10;
+        options.BatchIndex = 2;
+        options.BatchCount = 3;
+
+        var prompt = QuizBankPromptBuilder.Build(options);
+
+        Assert.Contains("本批 10 题", prompt);
+        Assert.Contains("这是第 2 批", prompt);
+        Assert.Contains("只覆盖该主题的第 2 部分知识点", prompt);
+        Assert.Contains("14. 分批生成：本批只覆盖第 2/3 部分知识点", prompt);
+    }
+
+    [Fact]
+    public void Build_CustomTarget_ShowsCustomTargetInSchema()
+    {
+        var options = Options();
+        options.Target = "acupoint";
+        options.TargetDescription = "给出病症，选出主穴/配穴或针灸治法";
+
+        var prompt = QuizBankPromptBuilder.Build(options);
+
+        Assert.Contains("\"target\": \"acupoint\"", prompt);
+        Assert.DoesNotContain("\"target\": \"formula / pattern\"", prompt);
+        Assert.Contains("acupoint（给出病症，选出主穴/配穴或针灸治法）", prompt);
+    }
+
+    // ============ 自适应两阶段：知识点规划 ============
+
+    [Fact]
+    public void BuildPlanPrompt_ContainsTopicSchemaAndRange()
+    {
+        var prompt = QuizBankPromptBuilder.BuildPlanPrompt(
+            "中医", "结合《针灸大成》与教材覆盖核心知识点", "伤寒论·太阳篇");
+
+        Assert.Contains("中医", prompt);
+        Assert.Contains("针灸大成", prompt);
+        Assert.Contains("伤寒论·太阳篇", prompt);
+        Assert.Contains("6-15 个", prompt);
+        Assert.Contains("\"topics\"", prompt);
+        Assert.Contains("不要输出 JSON 以外的任何文字", prompt);
+    }
+
+    [Fact]
+    public void Build_WithTopics_ListsOnlyThoseTopics()
+    {
+        var options = Options();
+        options.QuestionCountMode = "fixed";
+        options.QuestionCount = 6;
+        options.Topics =
+        [
+            new QuizTopicDto { Title = "俞募配穴", KeyPoints = ["胃病取中脘+胃俞"] },
+            new QuizTopicDto { Title = "原络配穴", KeyPoints = ["肺病取太渊+偏历"] },
+        ];
+
+        var prompt = QuizBankPromptBuilder.Build(options);
+
+        Assert.Contains("本批只覆盖以下知识点", prompt);
+        Assert.Contains("1. 俞募配穴：胃病取中脘+胃俞", prompt);
+        Assert.Contains("2. 原络配穴：肺病取太渊+偏历", prompt);
     }
 }
