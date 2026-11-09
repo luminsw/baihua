@@ -446,3 +446,54 @@ public class QuizIndustryProfileDto
     /// <summary>是否内置画像（数据库中已有但未登记的行业为 false）</summary>
     public bool BuiltIn { get; set; } = true;
 }
+// ─────────────────────────────────────────────
+// 后台生成任务（页面可关闭，任务继续执行）
+// ─────────────────────────────────────────────
+
+/// <summary>后台生成任务状态</summary>
+public class QuizGenerateJobDto
+{
+    public string JobId { get; set; } = "";
+
+    /// <summary>queued / running / succeeded / failed / canceled</summary>
+    public string Status { get; set; } = "queued";
+
+    /// <summary>0-100</summary>
+    public int ProgressPercent { get; set; }
+
+    public int CompletedBatches { get; set; }
+    public int TotalBatches { get; set; }
+    public string Message { get; set; } = "";
+
+    public string? BankName { get; set; }
+    public string? Topic { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+
+    /// <summary>成功时的生成结果（题库包 + 校验），仍需用户预览确认后导入</summary>
+    public QuizGeneratePreviewDto? Result { get; set; }
+
+    public string? Error { get; set; }
+}
+
+/// <summary>后台任务列表项（不含完整结果，避免列表响应过大）</summary>
+public class QuizGenerateJobSummaryDto
+{
+    public string JobId { get; set; } = "";
+    public string Status { get; set; } = "queued";
+    public int ProgressPercent { get; set; }
+    public string Message { get; set; } = "";
+    public string? BankName { get; set; }
+    public string? Topic { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string? Error { get; set; }
+}
+
+/// <summary>创建后台任务的响应</summary>
+public class QuizGenerateJobCreatedDto
+{
+    public string JobId { get; set; } = "";
+}

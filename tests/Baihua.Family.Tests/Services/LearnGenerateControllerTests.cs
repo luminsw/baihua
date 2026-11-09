@@ -1,8 +1,10 @@
 using Baihua.Contracts.Learn;
 using Baihua.Data;
 using Baihua.Modules.Family.Controllers;
+using Baihua.Modules.Family.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Baihua.Family.Tests.Services;
@@ -13,12 +15,22 @@ namespace Baihua.Family.Tests.Services;
 /// </summary>
 public class LearnGenerateControllerTests
 {
+    private sealed class NoopGenerator : IQuizBankGenerator
+    {
+        public Task<QuizGeneratePreviewDto> PreviewAsync(
+            QuizGenerateRequestDto request,
+            IProgress<QuizGenerateProgress>? progress,
+            CancellationToken ct = default)
+            => Task.FromResult(new QuizGeneratePreviewDto { Success = false, Error = "not used" });
+    }
+
     private static (LearnGenerateController Controller, DbContextOptions<FamilyDbContext> Options) Create()
     {
         var options = QuizBankTestSupport.CreateInMemoryOptions();
         var service = QuizBankTestSupport.CreateService(options);
         // validate / import 不使用 generator，测试时传 null 以隔离 AI 依赖
-        return (new LearnGenerateController(service, null!), options);
+        return (new LearnGenerateController(service, null!,
+            new QuizGenerateJobService(new NoopGenerator(), NullLogger<QuizGenerateJobService>.Instance)), options);
     }
 
     [Fact]

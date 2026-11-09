@@ -249,3 +249,30 @@ WebUI 侧生成请求使用新增的 `FamilyApiAiLong` 客户端（15 分钟超�
 - 提示词改为「先规划覆盖该主题所需的知识点，再为每个知识点生成 1-3 题；总题数 8-30，覆盖完整性优先于数量」，并追加硬性规则「每个主要知识点至少 1 题，不为凑数生成重复题」。
 - 自适应模式只跑单批（不分批，避免重复覆盖），单批输出上限提高到 16000 tokens；固定模式仍按 10 题分批。
 - MCP 侧 `question_count = 0` 表示自适应。
+## 9. 生成改为后台任务（2026-11-09 追加）
+
+**问题**：原 `POST api/learn/generate/preview` 是同步长请求（最长 15 分钟），页面关闭/刷新会取消 Blazor circuit 并连带取消后端生成；请求线程也被长时间占用。
+
+**方案**：任务化 + 进度轮询，生成在后台继续，页面可关闭。
+
+| 部分 | 设计 |
+|---|---|
+| 契约 | `QuizGenerateJobDto`（jobId/status/progress/message/result/error/时间戳）、`QuizGenerateJobSummaryDto`（列表轻量项）、`QuizGenerateJobCreatedDto` |
+| 状态 | `queued → running → succeeded / failed / canceled`；结果仍为 `QuizGeneratePreviewDto`（题库包+校验），**不自动入库** |
+| 存储 | 进程内 `ConcurrentDictionary`，保留 2 小时、最多 50 条；重启丢失（预览结果本就需要用户确认，可接受） |
+| 队列 | `Channel<string>` + `BackgroundService` 单消费者，**全局单并发**（避免同时打爆 AI provider） |
+| 进度 | Generator 每批完成回调 `IProgress<QuizGenerateProgress>`（第 i/n 批），任务表换算百分比 |
+| 端点 | `POST api/learn/generate/jobs`（立即返回 jobId）、`GET .../jobs/{id}`、`GET .../jobs?limit=10`、`POST .../jobs/{id}/cancel`；旧同步端点保留兼容 |
+| UI | 创建任务后显示进度并每 2s 轮询；页面关闭不影响任务；重新进入 `/learn/generate` 自动恢复运行中任务并展示最近任务列表 |
+| 超时 | 由后台任务自己的 CancellationToken 控制；不再依赖页面 HTTP 请求超时 |
+
+**验证**：
+- 单测（注入 fake `IQuizBankGenerator`）：状态流转、进度、失败、取消、列表、过期清理；
+- E2E：页面渲染 / 最近任务区 / 粘贴通道回归；
+- 手工 API 全链路：创建真实任务后不保持请求，轮询到完成，验证结果可预览导入（证明关页面不影响）。
+
+## 10. 运维：bh 启动与调用方 Job Object 隔离（2026-11-09 追加）
+
+**问题**：`bh.ps1` 用 `Start-Process -RedirectStandardOutput` 启动服务，调用方（如 CodeArts 工具的 background 命令）在 timeout 到期时会**强制终止整个进程树**，把 bh-server/bh-webui 一并杀死。现场指纹：应用日志无关闭记录、`pids/*.pid` 残留、无 .NET 崩溃事件。
+
+**修复**：`Start-One` 改用 WMI `Win32_Process.Create` + 临时启动脚本（含环境变量）分离启动；服务不继承调用方 Job Object；端口就绪后按端口反查真实 pid 写入 pid 文件（`Stop-One` 已有的端口 fallback 仍保留）。

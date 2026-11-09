@@ -16,11 +16,14 @@ public class LearnGenerateController : ControllerBase
 {
     private readonly QuizBankService _quizBanks;
     private readonly QuizBankGeneratorService _generator;
+    private readonly QuizGenerateJobService _jobs;
 
-    public LearnGenerateController(QuizBankService quizBanks, QuizBankGeneratorService generator)
+    public LearnGenerateController(
+        QuizBankService quizBanks, QuizBankGeneratorService generator, QuizGenerateJobService jobs)
     {
         _quizBanks = quizBanks;
         _generator = generator;
+        _jobs = jobs;
     }
 
     /// <summary>AI 生成预览（不落库）：返回题库包 + 校验结果 + 提示词 + 原始响应</summary>
@@ -43,6 +46,38 @@ public class LearnGenerateController : ControllerBase
             return StatusCode(StatusCodes.Status499ClientClosedRequest);
         }
     }
+
+    /// <summary>创建后台生成任务：立即返回 jobId，页面关闭后任务继续执行</summary>
+    [HttpPost("generate/jobs")]
+    public ActionResult<QuizGenerateJobCreatedDto> CreateJob([FromBody] QuizGenerateRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Topic))
+            return BadRequest(new { error = "生成主题不能为空" });
+        if (!string.Equals(request.QuestionCountMode, "auto", StringComparison.OrdinalIgnoreCase)
+            && request.QuestionCount is < 1 or > 30)
+            return BadRequest(new { error = "题量须在 1-30 之间" });
+
+        var jobId = _jobs.Enqueue(request);
+        return Accepted(new QuizGenerateJobCreatedDto { JobId = jobId });
+    }
+
+    /// <summary>查询后台任务状态与结果</summary>
+    [HttpGet("generate/jobs/{jobId}")]
+    public ActionResult<QuizGenerateJobDto> GetJob(string jobId)
+    {
+        var job = _jobs.Get(jobId);
+        return job is null ? NotFound(new { error = "任务不存在或已过期" }) : Ok(job);
+    }
+
+    /// <summary>最近的后台任务（页面重新进入时恢复/查看）</summary>
+    [HttpGet("generate/jobs")]
+    public ActionResult<List<QuizGenerateJobSummaryDto>> ListJobs([FromQuery] int limit = 10)
+        => Ok(_jobs.ListRecent(limit));
+
+    /// <summary>取消后台任务</summary>
+    [HttpPost("generate/jobs/{jobId}/cancel")]
+    public IActionResult CancelJob(string jobId)
+        => _jobs.Cancel(jobId) ? Ok(new { ok = true }) : NotFound(new { error = "任务不存在或已结束" });
 
     /// <summary>行业画像列表（生成页行业/题型下拉）：内置画像 + 数据库中已有但未登记的行业</summary>
     [HttpGet("industries")]

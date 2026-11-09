@@ -229,12 +229,28 @@ function Start-One($svc) {
         $envBlock['WEBUI_CONFIG_DIR'] = $DataHome
         $envBlock['BaihuaServer__BaseUrl'] = 'http://127.0.0.1:8788/'
     }
-    foreach ($k in $envBlock.Keys) { Set-Item -Path ('Env:' + $k) -Value $envBlock[$k] }
     New-Item -ItemType Directory -Force -Path $PidDir, $LogDir | Out-Null
     $logFile = Join-Path $LogDir "$($svc.Name).log"
-    $p = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err" -PassThru -WindowStyle Hidden
-    Set-Content -Path (Get-PidFile $svc.Name) -Value $p.Id
-    Write-Host "[$($svc.Name)] started pid=$($p.Id) port=$($svc.Port) log=$logFile"
+    # 用独立启动脚本 + WMI 创建进程，避免服务继承调用方（终端/工具）的 Job Object—
+    # 调用方超时强杀进程树时会把服务一起带走（历史上表现为「日志无关闭记录 + pid 残留」）。
+    $startCmd = Join-Path $LogDir "start-$($svc.Name).cmd"
+    $lines = @('@echo off')
+    foreach ($k in $envBlock.Keys) { $lines += "set `"$k=$($envBlock[$k])`"" }
+    $lines += "cd /d `"$(Split-Path $exe)`""
+    $lines += "`"$exe`" >> `"$logFile`" 2>> `"$logFile.err`""
+    Set-Content -Path $startCmd -Value $lines -Encoding ASCII
+    $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine = "cmd.exe /c `"$startCmd`""
+        CurrentDirectory = (Split-Path $exe)
+    }
+    if ($r.ReturnValue -ne 0) { throw "[$($svc.Name)] WMI 启动失败 return=$($r.ReturnValue)" }
+    Set-Content -Path (Get-PidFile $svc.Name) -Value $r.ProcessId
+    Write-Host "[$($svc.Name)] started (bootstrap pid=$($r.ProcessId)) port=$($svc.Port) log=$logFile"
+}
+
+function Update-RealPid($svc) {
+    $conn = Get-NetTCPConnection -LocalPort $svc.Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($conn) { Set-Content -Path (Get-PidFile $svc.Name) -Value $conn.OwningProcess }
 }
 
 function Start-Services {
@@ -244,7 +260,7 @@ function Start-Services {
     $ok = $true
     foreach ($svc in $Services) {
         if (-not (Wait-Port $svc.Port 60)) { Write-Warning "[$($svc.Name)] port $($svc.Port) not ready in 60s"; $ok = $false }
-        else { Write-Host "[$($svc.Name)] ready on $($svc.Port)" }
+        else { Update-RealPid $svc; Write-Host "[$($svc.Name)] ready on $($svc.Port)" }
     }
     if ($ok) { Write-Host "[start] all services up. WebUI: http://localhost:5177" }
 }
@@ -262,7 +278,8 @@ function Stop-One($svc) {
         }
         Remove-Item $pf -Force -ErrorAction SilentlyContinue
     }
-    if (-not $stopped -and (Test-PortOpen $svc.Port)) {
+    # 端口兜底：bootstrap pid 可能是 cmd，真实服务 pid 不同，必须再按端口确认一次
+    if (Test-PortOpen $svc.Port) {
         $conn = Get-NetTCPConnection -LocalPort $svc.Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($conn) { Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue; Write-Host "[$($svc.Name)] stopped by port pid=$($conn.OwningProcess)" }
     }

@@ -16,7 +16,7 @@ namespace Baihua.Modules.Family.Services;
 /// - 解析失败重试一次（追加「只输出 JSON」约束），仍失败则保留原始响应供人工修正；
 /// - 生成结果必须经 <see cref="QuizBankPackageValidator"/> 校验，Errors 由预览页展示并阻止导入。
 /// </summary>
-public class QuizBankGeneratorService
+public class QuizBankGeneratorService : IQuizBankGenerator
 {
     /// <summary>单批题量：10 题约 6k tokens 输出，兼顾质量与截断风险</summary>
     private const int BatchSize = 10;
@@ -43,11 +43,16 @@ public class QuizBankGeneratorService
         _logger = logger;
     }
 
+    public Task<QuizGeneratePreviewDto> PreviewAsync(
+        QuizGenerateRequestDto request, CancellationToken ct = default)
+        => PreviewAsync(request, null, ct);
+
     /// <summary>
     /// 生成题库预览（不落库）。成功时返回题库包与校验结果；解析失败返回 Success=false 与原始响应。
+    /// <paramref name="progress"/> 每批完成时上报，供后台任务展示进度。
     /// </summary>
     public async Task<QuizGeneratePreviewDto> PreviewAsync(
-        QuizGenerateRequestDto request, CancellationToken ct = default)
+        QuizGenerateRequestDto request, IProgress<QuizGenerateProgress>? progress, CancellationToken ct = default)
     {
         var topic = request.Topic?.Trim() ?? "";
         if (topic.Length == 0) return Fail("生成主题不能为空");
@@ -145,6 +150,8 @@ public class QuizBankGeneratorService
 
                 merged.Items.AddRange(package.Items ?? []);
                 merged.Questions.AddRange(package.Questions ?? []);
+                progress?.Report(new QuizGenerateProgress(
+                    i + 1, batches.Count, $"已完成第 {i + 1}/{batches.Count} 批"));
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

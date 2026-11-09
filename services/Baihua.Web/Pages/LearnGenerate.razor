@@ -1,4 +1,5 @@
 @page "/learn/generate"
+@implements IDisposable
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject Baihua.Web.Services.IApiService ApiService
 @inject Microsoft.Extensions.Logging.ILogger<LearnGenerate> Logger
@@ -187,13 +188,52 @@
                 </div>
 
                 <div class="actions">
-                    <button class="btn btn-primary" @onclick="GenerateAsync" disabled="@busy">
-                        @(busy ? "AI 生成中…" : "开始生成预览")
+                    <button class="btn btn-primary" @onclick="GenerateAsync" disabled="@(busy || IsJobRunning)">
+                        @(IsJobRunning ? "后台生成中…" : "开始生成")
                     </button>
+                    <span class="field-note">任务在后台执行，可以关闭页面</span>
                 </div>
-                @if (busy)
+
+                @if (currentJob is { Status: "queued" or "running" })
                 {
-                    <p class="hint">生成中：10 题约 1-2 分钟；30 题分 3 批可能更久，请勿关闭页面。</p>
+                    <div class="job-card">
+                        <div class="job-head">
+                            <span class="job-title">@(currentJob!.Status == "queued" ? "排队中…" : currentJob.Message)</span>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="CancelJobAsync">取消任务</button>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" style="width:@(currentJob.ProgressPercent)%"></div>
+                        </div>
+                        <div class="meta-line">
+                            @currentJob.CompletedBatches / @currentJob.TotalBatches 批 · @(currentJob.ProgressPercent)%
+                            · 可以关闭页面，任务会在后台继续
+                        </div>
+                    </div>
+                }
+
+                @if (recentJobs.Count > 0)
+                {
+                    <details class="advanced">
+                        <summary>最近生成任务（@recentJobs.Count）</summary>
+                        <div class="job-list">
+                            @foreach (var job in recentJobs)
+                            {
+                                <div class="job-row">
+                                    <span class="job-status @job.Status">@StatusText(job.Status)</span>
+                                    <span class="job-topic">@(string.IsNullOrWhiteSpace(job.BankName) ? job.Topic : job.BankName)</span>
+                                    <span class="job-time">@job.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                                    @if (job.Status is "succeeded")
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenJobAsync(job.JobId)">查看结果</button>
+                                    }
+                                    else if (job.Status is "queued" or "running")
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ResumeJobAsync(job.JobId)">查看进度</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </details>
                 }
             }
             else
@@ -358,6 +398,19 @@
     .advanced { margin-top: 1rem; font-size: .9rem; }
     .advanced summary { cursor: pointer; color: var(--bs-secondary-color); }
     .advanced .form-grid { margin-top: .6rem; }
+    .job-card { margin-top: 1rem; background: var(--bs-body-bg); border-radius: .5rem; padding: .9rem 1rem; }
+    .job-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+    .job-title { font-weight: 600; }
+    .progress-track { height: .5rem; background: var(--bs-secondary-bg); border-radius: 999px; overflow: hidden; margin: .6rem 0 .4rem; }
+    .progress-fill { height: 100%; background: var(--bs-primary); transition: width .3s ease; }
+    .job-list { display: flex; flex-direction: column; gap: .4rem; margin-top: .6rem; }
+    .job-row { display: flex; align-items: center; gap: .6rem; font-size: .85rem; flex-wrap: wrap; }
+    .job-status { border-radius: 999px; padding: .05rem .55rem; background: var(--bs-secondary-bg); font-size: .78rem; }
+    .job-status.succeeded { background: rgba(25, 135, 84, .15); color: var(--bs-success); }
+    .job-status.failed { background: rgba(220, 53, 69, .12); color: var(--bs-danger); }
+    .job-status.running { background: rgba(13, 110, 253, .12); color: var(--bs-primary); }
+    .job-topic { flex: 1; min-width: 8rem; }
+    .job-time { color: var(--bs-secondary-color); font-size: .78rem; }
     .field-note { font-size: .8rem; color: var(--bs-secondary-color); }
     .hint { color: var(--bs-secondary-color); font-size: .9rem; margin: .5rem 0; }
     .hint-block { margin-top: 1rem; font-size: .85rem; }
@@ -429,6 +482,12 @@
     private bool overwriteExisting;
     private QuizBankImportResultDto? importResult;
 
+    private QuizGenerateJobDto? currentJob;
+    private List<QuizGenerateJobSummaryDto> recentJobs = new();
+    private CancellationTokenSource? pollCts;
+
+    private bool IsJobRunning => currentJob is { Status: "queued" or "running" };
+
     private QuizIndustryProfileDto? SelectedProfile =>
         profiles.FirstOrDefault(p => string.Equals(p.Code, industryCode, StringComparison.OrdinalIgnoreCase));
 
@@ -454,6 +513,10 @@
         }
 
         ApplyIndustryProfile();
+
+        recentJobs = await ApiService.ListLearnGenerateJobsAsync();
+        var active = recentJobs.FirstOrDefault(j => j.Status is "queued" or "running");
+        if (active is not null) _ = StartPollingAsync(active.JobId);
     }
 
     /// <summary>切换行业后：同步名称、题型默认取该画像第一个题型</summary>
@@ -485,7 +548,7 @@
 
     private async Task GenerateAsync()
     {
-        if (busy) return;
+        if (busy || IsJobRunning) return;
         error = null;
         if (string.IsNullOrWhiteSpace(topic))
         {
@@ -528,27 +591,160 @@
                 Model = string.IsNullOrWhiteSpace(model) ? null : model,
             };
 
-            var result = await ApiService.GenerateLearnPreviewAsync(request);
-            if (!result.Success)
+            var jobId = await ApiService.CreateLearnGenerateJobAsync(request);
+            if (string.IsNullOrWhiteSpace(jobId))
             {
-                error = result.Error ?? "生成失败";
+                error = "创建后台任务失败（后端不可用）";
                 return;
             }
 
-            package = result.Package;
-            validation = result.Validation;
-            modelUsed = result.ModelUsed;
-            batchCount = result.BatchCount;
+            await LoadRecentJobsAsync();
+            _ = StartPollingAsync(jobId);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "生成题库失败");
-            error = "生成失败：" + ex.Message;
+            Logger.LogError(ex, "创建题库生成任务失败");
+            error = "创建任务失败：" + ex.Message;
         }
         finally
         {
             busy = false;
         }
+    }
+
+    /// <summary>轮询后台任务；页面关闭后轮询停止，但服务端任务继续执行</summary>
+    private async Task StartPollingAsync(string jobId)
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+        pollCts = new CancellationTokenSource();
+        var token = pollCts.Token;
+
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                var job = await ApiService.GetLearnGenerateJobAsync(jobId, token);
+                if (job is null)
+                {
+                    error = "任务不存在或已过期";
+                    break;
+                }
+
+                currentJob = job;
+                await InvokeAsync(StateHasChanged);
+
+                if (job.Status is "succeeded" or "failed" or "canceled") break;
+                await Task.Delay(TimeSpan.FromSeconds(2), token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 页面关闭/切换任务：轮询停止，服务端任务不受影响
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "轮询题库生成任务失败");
+            error = "轮询任务状态失败：" + ex.Message;
+        }
+        finally
+        {
+            try
+            {
+                await InvokeAsync(() =>
+                {
+                    if (currentJob is { Status: "succeeded" } && currentJob.Result is { } result)
+                    {
+                        package = result.Package;
+                        validation = result.Validation;
+                        modelUsed = result.ModelUsed;
+                        batchCount = result.BatchCount;
+                        currentJob = null;
+                    }
+                    else if (currentJob is { Status: "failed" })
+                    {
+                        error = currentJob.Error ?? "生成失败";
+                    }
+                    else if (currentJob is { Status: "canceled" })
+                    {
+                        currentJob = null;
+                    }
+
+                    _ = LoadRecentJobsAsync();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException)
+            {
+                // 组件已销毁
+            }
+        }
+    }
+
+    private async Task LoadRecentJobsAsync()
+    {
+        recentJobs = await ApiService.ListLearnGenerateJobsAsync();
+        try { await InvokeAsync(StateHasChanged); } catch (ObjectDisposedException) { }
+    }
+
+    private async Task CancelJobAsync()
+    {
+        if (currentJob is null) return;
+        if (!await ApiService.CancelLearnGenerateJobAsync(currentJob.JobId))
+        {
+            error = "取消失败（任务可能已结束）";
+        }
+    }
+
+    private Task ResumeJobAsync(string jobId)
+    {
+        _ = StartPollingAsync(jobId);
+        return Task.CompletedTask;
+    }
+
+    private async Task OpenJobAsync(string jobId)
+    {
+        error = null;
+        var job = await ApiService.GetLearnGenerateJobAsync(jobId);
+        if (job is null)
+        {
+            error = "任务不存在或已过期";
+            return;
+        }
+
+        if (job.Status is "queued" or "running")
+        {
+            _ = StartPollingAsync(jobId);
+            return;
+        }
+
+        if (job.Status == "succeeded" && job.Result is { } result)
+        {
+            package = result.Package;
+            validation = result.Validation;
+            modelUsed = result.ModelUsed;
+            batchCount = result.BatchCount;
+        }
+        else
+        {
+            error = job.Error ?? "任务已结束但没有可用结果";
+        }
+    }
+
+    private static string StatusText(string status) => status switch
+    {
+        "queued" => "排队中",
+        "running" => "生成中",
+        "succeeded" => "已完成",
+        "failed" => "失败",
+        "canceled" => "已取消",
+        _ => status,
+    };
+
+    public void Dispose()
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
     }
 
     private async Task ValidatePasteAsync()
@@ -642,6 +838,7 @@
         error = null;
         modelUsed = null;
         batchCount = 0;
+        currentJob = null;
         overwriteExisting = false;
         return Task.CompletedTask;
     }

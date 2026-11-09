@@ -176,6 +176,10 @@ namespace Baihua.Web.Services
         Task<List<Baihua.Contracts.Learn.QuizQuestionViewDto>> DrawLearnQuestionsAsync(string bankCode, int count = 10, CancellationToken cancellationToken = default);
         Task<Baihua.Contracts.Learn.QuizAnswerResultDto?> SubmitLearnAnswerAsync(string bankCode, Baihua.Contracts.Learn.QuizAnswerSubmitDto submit, CancellationToken cancellationToken = default);
         Task<Baihua.Contracts.Learn.QuizGeneratePreviewDto> GenerateLearnPreviewAsync(Baihua.Contracts.Learn.QuizGenerateRequestDto request, CancellationToken cancellationToken = default);
+        Task<string?> CreateLearnGenerateJobAsync(Baihua.Contracts.Learn.QuizGenerateRequestDto request, CancellationToken cancellationToken = default);
+        Task<Baihua.Contracts.Learn.QuizGenerateJobDto?> GetLearnGenerateJobAsync(string jobId, CancellationToken cancellationToken = default);
+        Task<List<Baihua.Contracts.Learn.QuizGenerateJobSummaryDto>> ListLearnGenerateJobsAsync(int limit = 10, CancellationToken cancellationToken = default);
+        Task<bool> CancelLearnGenerateJobAsync(string jobId, CancellationToken cancellationToken = default);
         Task<Baihua.Contracts.Learn.QuizBankStatsBundleDto?> GetLearnBankStatsAsync(string bankCode, CancellationToken cancellationToken = default);
         Task<List<Baihua.Contracts.Learn.QuizIndustryProfileDto>> GetLearnIndustryProfilesAsync(CancellationToken cancellationToken = default);
         Task<Baihua.Contracts.Learn.QuizBankValidationResultDto?> ValidateLearnPackageAsync(Baihua.Contracts.Learn.QuizBankPackage package, CancellationToken cancellationToken = default);

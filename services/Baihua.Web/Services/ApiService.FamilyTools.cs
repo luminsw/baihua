@@ -737,6 +737,84 @@ namespace Baihua.Web.Services
             }
         }
 
+        /// <summary>创建后台生成任务（立即返回 jobId；页面关闭后任务继续）</summary>
+        public async Task<string?> CreateLearnGenerateJobAsync(
+            Baihua.Contracts.Learn.QuizGenerateRequestDto request, CancellationToken cancellationToken = default)
+        {
+            using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            quick.CancelAfter(QuickCallTimeout);
+            try
+            {
+                var response = await PostWithMetricsAsync("/api/learn/generate/jobs", JsonContent.Create(request), quick.Token);
+                if (!response.IsSuccessStatusCode) return null;
+                var created = await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizGenerateJobCreatedDto>(quick.Token);
+                return string.IsNullOrWhiteSpace(created?.JobId) ? null : created.JobId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "创建题库生成后台任务失败");
+                return null;
+            }
+        }
+
+        /// <summary>查询后台生成任务状态与结果</summary>
+        public async Task<Baihua.Contracts.Learn.QuizGenerateJobDto?> GetLearnGenerateJobAsync(
+            string jobId, CancellationToken cancellationToken = default)
+        {
+            using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            quick.CancelAfter(QuickCallTimeout);
+            try
+            {
+                var response = await GetWithMetricsAsync(
+                    $"/api/learn/generate/jobs/{Uri.EscapeDataString(jobId)}", quick.Token);
+                if (!response.IsSuccessStatusCode) return null;
+                return await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizGenerateJobDto>(quick.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "查询题库生成后台任务失败：{JobId}", jobId);
+                return null;
+            }
+        }
+
+        /// <summary>最近的后台生成任务</summary>
+        public async Task<List<Baihua.Contracts.Learn.QuizGenerateJobSummaryDto>> ListLearnGenerateJobsAsync(
+            int limit = 10, CancellationToken cancellationToken = default)
+        {
+            using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            quick.CancelAfter(QuickCallTimeout);
+            try
+            {
+                var response = await GetWithMetricsAsync($"/api/learn/generate/jobs?limit={Math.Clamp(limit, 1, 50)}", quick.Token);
+                if (!response.IsSuccessStatusCode) return new List<Baihua.Contracts.Learn.QuizGenerateJobSummaryDto>();
+                return await response.Content.ReadFromJsonAsync<List<Baihua.Contracts.Learn.QuizGenerateJobSummaryDto>>(quick.Token)
+                       ?? new List<Baihua.Contracts.Learn.QuizGenerateJobSummaryDto>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取题库生成任务列表失败");
+                return new List<Baihua.Contracts.Learn.QuizGenerateJobSummaryDto>();
+            }
+        }
+
+        /// <summary>取消后台生成任务</summary>
+        public async Task<bool> CancelLearnGenerateJobAsync(string jobId, CancellationToken cancellationToken = default)
+        {
+            using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            quick.CancelAfter(QuickCallTimeout);
+            try
+            {
+                var response = await PostWithMetricsAsync(
+                    $"/api/learn/generate/jobs/{Uri.EscapeDataString(jobId)}/cancel", null, quick.Token);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "取消题库生成任务失败：{JobId}", jobId);
+                return false;
+            }
+        }
+
         /// <summary>行业画像列表（生成页行业/题型下拉）</summary>
         public async Task<List<Baihua.Contracts.Learn.QuizIndustryProfileDto>> GetLearnIndustryProfilesAsync(
             CancellationToken cancellationToken = default)
