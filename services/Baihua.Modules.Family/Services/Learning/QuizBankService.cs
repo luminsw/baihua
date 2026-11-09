@@ -338,6 +338,68 @@ public class QuizBankService
             .ToList();
     }
 
+    /// <summary>
+    /// 题库统计（整体 + 各家庭成员）：总题数、已刷题数、已掌握、待复习、正确率、覆盖率、最近练习时间。
+    /// 统计口径：AnsweredCount / MasteredCount / WrongCount 按「每题最近一次作答」判定；
+    /// TotalAttempts / CorrectAttempts / Accuracy 按答题次数。
+    /// </summary>
+    public async Task<QuizBankStatsBundleDto> GetStatsAsync(string bankCode, CancellationToken ct = default)
+    {
+        using var db = await _dbFactory.CreateDbContextAsync(ct);
+        var bank = await db.QuizBanks.AsNoTracking().SingleOrDefaultAsync(x => x.Code == bankCode, ct)
+            ?? throw new InvalidOperationException($"题库不存在：{bankCode}");
+
+        var questionCount = await db.QuizQuestions.CountAsync(q => q.BankId == bank.Id, ct);
+        var attempts = await db.QuizAttempts.AsNoTracking()
+            .Where(a => a.BankId == bank.Id)
+            .Select(a => new AttemptRow(a.LearnerId, a.QuestionId, a.IsCorrect, a.AnsweredAt, a.Id))
+            .ToListAsync(ct);
+
+        var learnerNames = await db.LearnerProfiles.AsNoTracking()
+            .Select(l => new { l.Id, l.Name })
+            .ToDictionaryAsync(l => l.Id, l => (string?)l.Name, ct);
+
+        return new QuizBankStatsBundleDto
+        {
+            Overall = BuildStats(bankCode, null, null, questionCount, attempts),
+            Learners = attempts
+                .GroupBy(a => a.LearnerId)
+                .Select(g => BuildStats(
+                    bankCode, g.Key, learnerNames.GetValueOrDefault(g.Key), questionCount, g.ToList()))
+                .OrderByDescending(s => s.AnsweredCount)
+                .ToList(),
+        };
+    }
+
+    private static QuizBankStatsDto BuildStats(
+        string bankCode, int? learnerId, string? learnerName, int questionCount, List<AttemptRow> attempts)
+    {
+        var latestByQuestion = attempts
+            .GroupBy(a => a.QuestionId)
+            .Select(g => g.OrderByDescending(a => a.AnsweredAt).ThenByDescending(a => a.Id).First())
+            .ToList();
+
+        var total = attempts.Count;
+        var correct = attempts.Count(a => a.IsCorrect);
+        return new QuizBankStatsDto
+        {
+            BankCode = bankCode,
+            LearnerId = learnerId,
+            LearnerName = learnerName,
+            QuestionCount = questionCount,
+            AnsweredCount = latestByQuestion.Count,
+            MasteredCount = latestByQuestion.Count(a => a.IsCorrect),
+            WrongCount = latestByQuestion.Count(a => !a.IsCorrect),
+            TotalAttempts = total,
+            CorrectAttempts = correct,
+            Accuracy = total == 0 ? 0 : Math.Round(correct * 100.0 / total, 1),
+            Coverage = questionCount == 0 ? 0 : Math.Round(latestByQuestion.Count * 100.0 / questionCount, 1),
+            LastAnsweredAt = total == 0 ? null : attempts.Max(a => a.AnsweredAt),
+        };
+    }
+
+    private sealed record AttemptRow(int LearnerId, int QuestionId, bool IsCorrect, DateTime AnsweredAt, int Id);
+
     /// <summary>随机抽题（作答前不泄露正确项）</summary>
     public async Task<List<QuizQuestionViewDto>> DrawQuestionsAsync(
         string bankCode, int count, IReadOnlyCollection<string>? excludeQuestionCodes = null, CancellationToken ct = default)

@@ -932,4 +932,121 @@ public class QuizBankServiceTest
         await using var db = new FamilyDbContext(options);
         Assert.Equal(0, await db.QuizAttempts.CountAsync());
     }
+
+    // ============ 统计（总题数/已刷/掌握/待复习/正确率/覆盖率） ============
+
+    [Fact]
+    public async Task GetStatsAsync_NoAttempts_ReturnsZeroStats()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+        await service.ImportPackageAsync(QuizBankTestSupport.CreateSamplePackage());
+
+        var stats = await service.GetStatsAsync(QuizBankTestSupport.BankCode);
+
+        Assert.Equal(QuizBankTestSupport.BankCode, stats.Overall.BankCode);
+        Assert.Equal(3, stats.Overall.QuestionCount);
+        Assert.Equal(0, stats.Overall.AnsweredCount);
+        Assert.Equal(0, stats.Overall.MasteredCount);
+        Assert.Equal(0, stats.Overall.WrongCount);
+        Assert.Equal(0, stats.Overall.TotalAttempts);
+        Assert.Equal(0, stats.Overall.CorrectAttempts);
+        Assert.Equal(0, stats.Overall.Accuracy);
+        Assert.Equal(0, stats.Overall.Coverage);
+        Assert.Null(stats.Overall.LastAnsweredAt);
+        Assert.Empty(stats.Learners);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_LatestAttemptPerQuestion_DrivesMasteredAndWrong()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+        await service.ImportPackageAsync(QuizBankTestSupport.CreateSamplePackage());
+        await QuizBankTestSupport.SeedLearnerAsync(options, learnerId: 1);
+
+        // 第一次答对
+        await SubmitAsync(service, "q_001", "B", 1);
+        var afterCorrect = (await service.GetStatsAsync(QuizBankTestSupport.BankCode)).Overall;
+        Assert.Equal(3, afterCorrect.QuestionCount);
+        Assert.Equal(1, afterCorrect.AnsweredCount);
+        Assert.Equal(1, afterCorrect.MasteredCount);
+        Assert.Equal(0, afterCorrect.WrongCount);
+        Assert.Equal(1, afterCorrect.TotalAttempts);
+        Assert.Equal(1, afterCorrect.CorrectAttempts);
+        Assert.Equal(100, afterCorrect.Accuracy);
+        Assert.Equal(33.3, afterCorrect.Coverage);
+        Assert.NotNull(afterCorrect.LastAnsweredAt);
+
+        // 同一题再答错：仍只算 1 道已刷题，最近一次为错 → 待复习
+        await SubmitAsync(service, "q_001", "A", 1);
+        var afterWrong = (await service.GetStatsAsync(QuizBankTestSupport.BankCode)).Overall;
+        Assert.Equal(1, afterWrong.AnsweredCount);
+        Assert.Equal(0, afterWrong.MasteredCount);
+        Assert.Equal(1, afterWrong.WrongCount);
+        Assert.Equal(2, afterWrong.TotalAttempts);
+        Assert.Equal(50, afterWrong.Accuracy);
+
+        // 再答对：回到已掌握
+        await SubmitAsync(service, "q_001", "B", 1);
+        var afterReCorrect = (await service.GetStatsAsync(QuizBankTestSupport.BankCode)).Overall;
+        Assert.Equal(1, afterReCorrect.AnsweredCount);
+        Assert.Equal(1, afterReCorrect.MasteredCount);
+        Assert.Equal(0, afterReCorrect.WrongCount);
+        Assert.Equal(3, afterReCorrect.TotalAttempts);
+        Assert.Equal(66.7, afterReCorrect.Accuracy);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_GroupsByLearner()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+        await service.ImportPackageAsync(QuizBankTestSupport.CreateSamplePackage());
+        await QuizBankTestSupport.SeedLearnerAsync(options, learnerId: 1);
+        await QuizBankTestSupport.SeedLearnerAsync(options, learnerId: 2);
+
+        await SubmitAsync(service, "q_001", "B", 1);
+        await SubmitAsync(service, "q_001", "A", 2);
+
+        var bundle = await service.GetStatsAsync(QuizBankTestSupport.BankCode);
+
+        Assert.Equal(1, bundle.Overall.AnsweredCount);
+        Assert.Equal(0, bundle.Overall.MasteredCount);
+        Assert.Equal(1, bundle.Overall.WrongCount);
+        Assert.Equal(2, bundle.Overall.TotalAttempts);
+        Assert.Equal(50, bundle.Overall.Accuracy);
+
+        Assert.Equal(2, bundle.Learners.Count);
+        var learner1 = bundle.Learners.Single(s => s.LearnerId == 1);
+        Assert.Equal("小明", learner1.LearnerName);
+        Assert.Equal(1, learner1.MasteredCount);
+        Assert.Equal(0, learner1.WrongCount);
+        Assert.Equal(100, learner1.Accuracy);
+
+        var learner2 = bundle.Learners.Single(s => s.LearnerId == 2);
+        Assert.Equal(0, learner2.MasteredCount);
+        Assert.Equal(1, learner2.WrongCount);
+        Assert.Equal(0, learner2.Accuracy);
+    }
+
+    [Fact]
+    public async Task GetStatsAsync_UnknownBank_Throws()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.GetStatsAsync("ghost_bank"));
+        Assert.Contains("题库不存在", ex.Message);
+    }
+
+    private static Task<QuizAnswerResultDto> SubmitAsync(
+        QuizBankService service, string questionCode, string key, int learnerId)
+        => service.SubmitAnswerAsync(QuizBankTestSupport.BankCode, new QuizAnswerSubmitDto
+        {
+            QuestionCode = questionCode,
+            SelectedKey = key,
+            LearnerId = learnerId,
+        });
 }

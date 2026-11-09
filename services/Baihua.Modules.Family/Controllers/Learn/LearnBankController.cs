@@ -34,6 +34,21 @@ public class LearnBankController : ControllerBase
         return Ok(await _quizBankService.GetOverviewsAsync(ct));
     }
 
+    /// <summary>题库学习统计（整体 + 各家庭成员）：总题数、已刷、掌握、待复习、正确率、最近练习时间</summary>
+    [HttpGet("banks/{bankCode}/stats")]
+    public async Task<ActionResult<Contracts.Learn.QuizBankStatsBundleDto>> GetStats(
+        string bankCode, CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _quizBankService.GetStatsAsync(bankCode, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
+
     /// <summary>随机抽题（作答前不泄露正确项）</summary>
     [HttpGet("banks/{bankCode}/questions")]
     public async Task<ActionResult<List<Contracts.Learn.QuizQuestionViewDto>>> DrawQuestions(

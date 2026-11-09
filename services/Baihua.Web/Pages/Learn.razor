@@ -45,6 +45,38 @@
     {
         <div class="learn-setup">
             <h2>选择家庭成员</h2>
+            @if (bankStats != null)
+            {
+                <div class="bank-stats">
+                    <div class="stat">
+                        <span class="stat-value">@bankStats.Overall.QuestionCount</span>
+                        <span class="stat-label">总题数</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">@bankStats.Overall.AnsweredCount</span>
+                        <span class="stat-label">已刷 @(bankStats.Overall.Coverage)%</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">@bankStats.Overall.MasteredCount</span>
+                        <span class="stat-label">已掌握</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">@bankStats.Overall.WrongCount</span>
+                        <span class="stat-label">待复习</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">@(bankStats.Overall.Accuracy)%</span>
+                        <span class="stat-label">正确率</span>
+                    </div>
+                    @if (bankStats.Overall.LastAnsweredAt is { } last)
+                    {
+                        <div class="stat">
+                            <span class="stat-value">@last.ToLocalTime().ToString("MM-dd")</span>
+                            <span class="stat-label">最近练习</span>
+                        </div>
+                    }
+                </div>
+            }
             @if (learners.Count == 0)
             {
                 <p class="learn-empty">尚无家庭成员，请先在成就页创建学习者。</p>
@@ -55,7 +87,11 @@
                     @foreach (var l in learners)
                     {
                         <button class="btn @(selectedLearnerId == l.Id ? "btn-primary" : "btn-outline-primary")" @onclick="() => SelectLearnerAsync(l.Id)">
-                            @l.AvatarEmoji @l.Name
+                            <span>@l.AvatarEmoji @l.Name</span>
+                            @if (StatsFor(l.Id) is { } s)
+                            {
+                                <span class="player-stat">已刷 @s.AnsweredCount / @s.QuestionCount · @(s.Accuracy)%</span>
+                            }
                         </button>
                     }
                 </div>
@@ -206,6 +242,11 @@
     .bank-name { font-size: 1.05rem; font-weight: 600; }
     .bank-meta { display: flex; gap: 1rem; color: var(--bs-secondary-color); font-size: .85rem; margin-top: .25rem; }
     .player-select { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+    .player-stat { display: block; font-size: .75rem; opacity: .85; margin-top: .2rem; }
+    .bank-stats { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0 1rem; }
+    .bank-stats .stat { background: var(--bs-tertiary-bg); border-radius: .5rem; padding: .5rem .9rem; text-align: center; min-width: 5.5rem; }
+    .bank-stats .stat-value { display: block; font-size: 1.25rem; font-weight: 700; }
+    .bank-stats .stat-label { display: block; font-size: .78rem; color: var(--bs-secondary-color); }
     .learn-progress { display: flex; justify-content: space-between; color: var(--bs-secondary-color); margin-bottom: .75rem; }
     .learn-stem { background: var(--bs-tertiary-bg); border-radius: .5rem; padding: 1rem; margin-bottom: 1rem; }
     .stem-patient { font-weight: 600; margin-bottom: .5rem; }
@@ -243,6 +284,7 @@
     private List<LearnerDto> learners = new();
     private string selectedBankCode = "";
     private int selectedLearnerId;
+    private QuizBankStatsBundleDto? bankStats;
     private string sessionId = Guid.NewGuid().ToString("N")[..12];
 
     private List<QuizQuestionViewDto> questions = new();
@@ -269,8 +311,12 @@
     {
         selectedBankCode = bank.BankCode;
         learners = await ApiService.GetLearnersAsync();
+        bankStats = await ApiService.GetLearnBankStatsAsync(bank.BankCode);
         stage = Stage.Learner;
     }
+
+    private QuizBankStatsDto? StatsFor(int learnerId) =>
+        bankStats?.Learners.FirstOrDefault(s => s.LearnerId == learnerId);
 
     private async Task SelectLearnerAsync(int learnerId)
     {
@@ -364,10 +410,11 @@
         return Task.CompletedTask;
     }
 
-    private Task StartOverAsync()
+    private async Task StartOverAsync()
     {
+        // 一轮结束回到成员选择：刷新统计，让"已刷/正确率"反映刚才这轮
+        bankStats = await ApiService.GetLearnBankStatsAsync(selectedBankCode);
         stage = Stage.Learner;
-        return Task.CompletedTask;
     }
 
     private Task BackToBanks()

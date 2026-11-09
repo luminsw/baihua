@@ -212,3 +212,23 @@ WebUI 侧生成请求使用新增的 `FamilyApiAiLong` 客户端（15 分钟超�
 已知限制：
 - AI 生成路径需用户已配置可用 provider；E2E 走「粘贴题库包」通道验证，不消耗 AI 额度。
 - 当前环境 `dotnet test` 的 testhost 因 `OpenProcess` 权限问题无法启动（与代码无关），单测改用临时反射执行器运行。
+## 7. 题库学习统计（2026-11-09 追加）
+
+点开题库后展示统一口径的学习进度（Web 选学习者页 + 花记鸿蒙/安卓题库卡片与做题配置页）。
+
+| 指标 | 口径 |
+|---|---|
+| 总题数 `questionCount` | 题库题目总数 |
+| 已刷题数 `answeredCount` | 做过的不同题目数（去重） |
+| 已掌握 `masteredCount` | 每题「最近一次作答」为正确 |
+| 待复习 `wrongCount` | 每题「最近一次作答」为错误 |
+| 累计答题 `totalAttempts` | 答题次数（含重复） |
+| 正确率 `accuracy` | 答对次数 / 答题次数（0-100） |
+| 覆盖率 `coverage` | 已刷 / 总题数（0-100） |
+| 最近练习 `lastAnsweredAt` | 最近一次作答时间 |
+
+- 后端：`GET api/learn/banks/{bankCode}/stats` → `QuizBankStatsBundleDto`（整体 + 各家庭成员）；`QuizBankService.GetStatsAsync` 取出答题记录后在内存按题分组（取每题最近一次），避免 EF provider 差异。
+- Web `/learn`：选家庭成员页顶部统计卡 + 每个成员按钮显示「已刷 x / y · 正确率 z%」；每轮结束回到选择页时刷新。
+- 花记鸿蒙：`QuizRepository.getStats` 扩展 `answeredCount` / `masteredCount` / `accuracy`；`QuizListPage` 卡片与 `QuizStudyPage` 配置页展示。
+- 花记安卓：`QuizDao.getStats` 增加 `COUNT(DISTINCT questionCode)`；`QuizBankPage` 卡片与 `QuizPage` 配置页展示。
+- 移动端为离线判定，统计取本地 `quiz_attempts`，与 Web 端口径一致但数据源独立（不依赖服务端答题记录）。

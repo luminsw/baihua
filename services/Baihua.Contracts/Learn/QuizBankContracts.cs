@@ -233,6 +233,53 @@ public class QuizBankOverviewDto
     public int QuestionCount { get; set; }
 }
 
+/// <summary>
+/// 题库学习统计（统一口径）。
+/// <para>Web 端按家庭成员统计（LearnerId 有值）；移动端离线判定，使用本地 quiz_attempts 同口径统计。</para>
+/// <para>AnsweredCount / MasteredCount / WrongCount 均按「每题最近一次作答」判定。</para>
+/// </summary>
+public class QuizBankStatsDto
+{
+    public string BankCode { get; set; } = "";
+
+    public int? LearnerId { get; set; }
+    public string? LearnerName { get; set; }
+
+    /// <summary>题库总题数</summary>
+    public int QuestionCount { get; set; }
+
+    /// <summary>已刷题数（做过的不同题目数）</summary>
+    public int AnsweredCount { get; set; }
+
+    /// <summary>已掌握题数（最近一次作答正确）</summary>
+    public int MasteredCount { get; set; }
+
+    /// <summary>待复习错题数（最近一次作答错误）</summary>
+    public int WrongCount { get; set; }
+
+    /// <summary>累计答题次数（含重复作答）</summary>
+    public int TotalAttempts { get; set; }
+
+    /// <summary>累计答对次数</summary>
+    public int CorrectAttempts { get; set; }
+
+    /// <summary>正确率（按次数，0-100，保留 1 位小数）</summary>
+    public double Accuracy { get; set; }
+
+    /// <summary>覆盖率（AnsweredCount / QuestionCount，0-100，保留 1 位小数）</summary>
+    public double Coverage { get; set; }
+
+    /// <summary>最近一次练习时间</summary>
+    public DateTime? LastAnsweredAt { get; set; }
+}
+
+/// <summary>题库统计包：整体 + 各家庭成员（家庭成员项仅包含有作答记录者）</summary>
+public class QuizBankStatsBundleDto
+{
+    public QuizBankStatsDto Overall { get; set; } = new();
+    public List<QuizBankStatsDto> Learners { get; set; } = [];
+}
+
 /// <summary>导入结果</summary>
 public class QuizBankImportResultDto
 {

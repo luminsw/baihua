@@ -717,6 +717,26 @@ namespace Baihua.Web.Services
             }
         }
 
+        /// <summary>题库统计（整体 + 各家庭成员）：总题数、已刷、掌握、待复习、正确率</summary>
+        public async Task<Baihua.Contracts.Learn.QuizBankStatsBundleDto?> GetLearnBankStatsAsync(
+            string bankCode, CancellationToken cancellationToken = default)
+        {
+            using var quick = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            quick.CancelAfter(QuickCallTimeout);
+            try
+            {
+                var response = await GetWithMetricsAsync(
+                    $"/api/learn/banks/{Uri.EscapeDataString(bankCode)}/stats", quick.Token);
+                if (!response.IsSuccessStatusCode) return null;
+                return await response.Content.ReadFromJsonAsync<Baihua.Contracts.Learn.QuizBankStatsBundleDto>(quick.Token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "获取题库统计失败：{BankCode}", bankCode);
+                return null;
+            }
+        }
+
         /// <summary>行业画像列表（生成页行业/题型下拉）</summary>
         public async Task<List<Baihua.Contracts.Learn.QuizIndustryProfileDto>> GetLearnIndustryProfilesAsync(
             CancellationToken cancellationToken = default)
