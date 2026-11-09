@@ -38,6 +38,21 @@ $PSDefaultParameterValues['*:Encoding'] = 'utf8'
 ```
 配置后重启终端或重新打开 VS Code 即可生效。
 
+### 服务日志编码（native cell）
+
+`out\native\logs\{server,webui}.log` 是**控制台输出重定向**来的（`start-*.cmd` 里 `exe >> log 2>> log.err`），
+所以文件编码一度跟随启动上下文：从带 UTF-8 控制台的终端启动写 UTF-8，计划任务启动写系统 OEM 代码页（简中 936/GBK），
+同一个文件被两种编码追加，用 `Get-Content`（pwsh 7 默认 UTF-8）看就是一半乱码。
+
+现在的约定：**日志一律 UTF-8**，三处一起保证（2026-11-09 起）：
+
+- 服务进程内 `Console.OutputEncoding = UTF8(no BOM)`（`Baihua.Server` / `Baihua.Web` 启动第一行）；
+- `start-*.cmd` 生成时先 `chcp 65001 >nul`（子进程/原生输出同样 UTF-8）；
+- 新建日志文件带 UTF-8 BOM（记事本 / `powershell` 5.1 也能正确识别）。
+
+排查旧文件时：`bh logs <svc>` 会先按严格 UTF-8 解码、失败再回退 ANSI 代码页，两种都能看清；
+需要重新开始可直接把旧文件改名（服务停掉后 `Move-Item server.log server.log.mixed-<时间>.bak`，再让 bh 重建）。
+
 ### 项目目录结构
 
 ```

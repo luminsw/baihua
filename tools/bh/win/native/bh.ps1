@@ -273,6 +273,10 @@ function Start-One($svc) {
     # 不会改变它 —— 曾因此误判为「WMI 令牌降级」。
     $startCmd = Join-Path $LogDir "start-$($svc.Name).cmd"
     $lines = @('@echo off')
+    # 控制台代码页钉死 UTF-8：计划任务启动的进程默认拿到系统 OEM 代码页（简中 936/GBK），
+    # 会把中文日志写成 GBK 字节，与其它运行方式写入的 UTF-8 字节混进同一个 .log（乱码一半）。
+    # 服务进程内部也设了 Console.OutputEncoding；这里再保证子进程/原生输出同样是 UTF-8。
+    $lines += 'chcp 65001 >nul'
     foreach ($k in $envBlock.Keys) { $lines += "set `"$k=$($envBlock[$k])`"" }
     $lines += "cd /d `"$(Split-Path $exe)`""
     # 计划任务以用户 Medium 令牌运行，能修好调用方（可能处于低完整性沙箱）修不了的标签
@@ -548,6 +552,8 @@ function Show-Logs($svcName, $n) {
     $utf8 = [System.Text.UTF8Encoding]::new($false, $true)
     try { $text = $utf8.GetString($bytes) }
     catch { $text = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.ANSICodePage).GetString($bytes) }
+    # 新日志带 UTF-8 BOM（方便记事本/PowerShell 5.1 识别）：显示前去掉行首 BOM
+    if ($text.Length -gt 0 -and $text[0] -eq [char]0xFEFF) { $text = $text.Substring(1) }
     ($text -split "\r?\n") | Where-Object { $_ -ne '' } | Select-Object -Last $n
 }
 

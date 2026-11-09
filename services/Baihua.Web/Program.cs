@@ -23,6 +23,19 @@ using Baihua.Web.Middleware;
 using System.Globalization;
 using Microsoft.AspNetCore.Localization;
 
+// 控制台/日志输出编码固定 UTF-8（.NET 默认跟随控制台代码页）：
+// native cell 用 `cmd >> webui.log` 重定向 stdout/stderr，而计划任务启动的进程会拿到系统
+// OEM 代码页（简中为 936/GBK）；早先从带 UTF-8 控制台的终端启动时写的却是 UTF-8 字节，
+// 两种编码追加进同一个日志文件，中文就变成一半乱码。这里不依赖外部 chcp，进程内钉死 UTF-8。
+try
+{
+    Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+}
+catch (Exception)
+{
+    // 无控制台句柄（服务/无重定向的环境）时设置编码可能失败，不影响服务启动
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 var dataProtectionKeyPath = Path.Combine(AppContext.BaseDirectory, "data", "dp-keys");
