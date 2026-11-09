@@ -46,7 +46,9 @@ builder.Services.AddDataProtection()
 
 // Configure logging
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
+// 控制台只保留 Serilog 一个 provider（见下方 WriteTo.Console）：
+// AddConsole() 与 Serilog 都写 stdout，native cell 会把 stdout 重定向进 webui.log，
+// 于是每条日志出现两次，日志体积翻倍。
 builder.Logging.AddDebug();
 
 // 根据环境设置日志级别
@@ -68,17 +70,16 @@ var openobservePass = builder.Configuration["OpenObserve:Password"] ?? "";
 // Diagnostic: print OpenObserve config to console to help debug startup URI issues
 Console.Error.WriteLine($"[WebUI] OpenObserve.Enabled={openobserveEnabled}, WebUrl='{openobserveUrl}'");
 
-// Serilog 仅用于控制台结构化输出
+// Serilog 是**唯一**的控制台 provider：级别/类别过滤交给上面的 Logging 管线（SetMinimumLevel + AddFilter），
+// 控制台下限与管线一致（Development=Debug，否则 Information）。
+// 不再写第二份 ByExcluding：否则 Microsoft.AspNetCore / SignalR 的 Warning、Error 会被兜底过滤掉
+// （此前靠 AddConsole 才看得见，去掉 AddConsole 后就会静默丢失）。
+var consoleLogLevel = builder.Environment.IsDevelopment()
+    ? Serilog.Events.LogEventLevel.Debug
+    : Serilog.Events.LogEventLevel.Information;
 var serilogConfig = new Serilog.LoggerConfiguration()
-    .MinimumLevel.Is(Serilog.Events.LogEventLevel.Information)
+    .MinimumLevel.Is(consoleLogLevel)
     .Enrich.WithProperty("Service", "WebUI")
-    .Filter.ByExcluding(e => e.Properties.ContainsKey("SourceContext") &&
-        ((Serilog.Events.LogEventPropertyValue)e.Properties["SourceContext"]).ToString()
-            .StartsWith("\"Microsoft.AspNetCore") ||
-        ((Serilog.Events.LogEventPropertyValue)e.Properties["SourceContext"]).ToString()
-            .StartsWith("\"System.Net.Http") ||
-        ((Serilog.Events.LogEventPropertyValue)e.Properties["SourceContext"]).ToString()
-            .StartsWith("\"Microsoft.AspNetCore.SignalR"))
     .WriteTo.Console();
 
 builder.Logging.AddSerilog(serilogConfig.CreateLogger(), dispose: true);

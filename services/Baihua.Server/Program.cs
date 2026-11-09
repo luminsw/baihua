@@ -274,7 +274,9 @@ builder.Services.AddCors(options =>
 
 // ---------------- 日志 ----------------
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
+// 控制台只保留 Serilog 一个 provider（见下方 WriteTo.Console）：
+// AddConsole() 与 Serilog 都写 stdout，native cell 会把 stdout 重定向进 server.log，
+// 于是每条日志出现两次（`info: Category[0]` + 缩进消息、`[HH:mm:ss LVL] 消息` 交替），日志体积翻倍。
 builder.Logging.AddDebug();
 
 // 结构化 JSON Lines 文件日志（所有类别共享 Writer）
@@ -297,16 +299,16 @@ builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 builder.Logging.AddFilter("System.Net.Http", LogLevel.Warning);
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
 
+// Serilog 是**唯一**的控制台 provider：级别/类别过滤交给上面的 Logging 管线（SetMinimumLevel + AddFilter），
+// 控制台下限与管线一致（Development=Debug，否则 Information）。
+// 不再写第二份 ByExcluding：否则 Microsoft.AspNetCore / EF Core / System.Net.Http 的 Warning、Error
+// 会被兜底过滤掉（此前靠 AddConsole 才看得见，去掉 AddConsole 后就会静默丢失）。
+var consoleLogLevel = builder.Environment.IsDevelopment()
+    ? Serilog.Events.LogEventLevel.Debug
+    : Serilog.Events.LogEventLevel.Information;
 var serilogConfig = new Serilog.LoggerConfiguration()
-    .MinimumLevel.Is(Serilog.Events.LogEventLevel.Information)
+    .MinimumLevel.Is(consoleLogLevel)
     .Enrich.WithProperty("Service", "Baihua.Server")
-    .Filter.ByExcluding(e => e.Properties.ContainsKey("SourceContext") &&
-        ((Serilog.Events.LogEventPropertyValue)e.Properties["SourceContext"]).ToString()
-            .StartsWith("\"Microsoft.AspNetCore") ||
-        ((Serilog.Events.LogEventPropertyValue)e.Properties["SourceContext"]).ToString()
-            .StartsWith("\"System.Net.Http") ||
-        ((Serilog.Events.LogEventPropertyValue)e.Properties["SourceContext"]).ToString()
-            .StartsWith("\"Microsoft.EntityFrameworkCore"))
     .WriteTo.Console();
 builder.Logging.AddSerilog(serilogConfig.CreateLogger(), dispose: true);
 

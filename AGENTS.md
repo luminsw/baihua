@@ -53,6 +53,11 @@ $PSDefaultParameterValues['*:Encoding'] = 'utf8'
 排查旧文件时：`bh logs <svc>` 会先按严格 UTF-8 解码、失败再回退 ANSI 代码页，两种都能看清；
 需要重新开始可直接把旧文件改名（服务停掉后 `Move-Item server.log server.log.mixed-<时间>.bak`，再让 bh 重建）。
 
+控制台（→ `.log`）只有 **Serilog 一个 provider**（`Program.cs` 里已移除 `AddConsole()`）：
+两者都写 stdout 会让每条日志出现两次、日志体积翻倍。级别/类别阈值统一由 `builder.Logging` 管线
+（`SetMinimumLevel` + `AddFilter`）决定，Serilog 侧不再写第二份 `ByExcluding`，
+否则 `Microsoft.AspNetCore` / EF Core 的 **Warning/Error 会被静默吞掉**（控制台上看不到 500、Kestrel、EF 慢查询告警）。
+
 ### 项目目录结构
 
 ```
