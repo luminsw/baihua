@@ -6,6 +6,7 @@
 @using Microsoft.Extensions.Localization
 @using Microsoft.AspNetCore.SignalR.Client
 @using Baihua.Contracts.LocalModels
+@using Baihua.Contracts.Learn
 @implements IAsyncDisposable
 @inject Baihua.Web.Services.IApiService ApiService
 @inject NavigationManager Navigation
@@ -17,6 +18,32 @@
 <PageTitle>@L["Tasks_PageTitle"]</PageTitle>
 
 <h1>📊 @L["Tasks_Title"]</h1>
+
+@if (learnJobs.Count > 0)
+{
+    <div class="learn-jobs">
+        <div class="learn-jobs-head">
+            <h2>🧠 题库生成任务</h2>
+            <a href="/learn/generate" class="btn btn-sm btn-outline-primary">去生成页</a>
+        </div>
+        @foreach (var job in learnJobs)
+        {
+            <div class="learn-job-row">
+                <span class="learn-job-status @job.Status">@LearnJobStatusText(job.Status)</span>
+                <span class="learn-job-name">@(string.IsNullOrWhiteSpace(job.BankName) ? job.Topic : job.BankName)</span>
+                @if (job.Status is "queued" or "running")
+                {
+                    <span class="learn-job-progress">@job.ProgressPercent%</span>
+                }
+                else if (!string.IsNullOrWhiteSpace(job.Error))
+                {
+                    <span class="learn-job-error">@job.Error</span>
+                }
+                <span class="learn-job-time">@job.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+            </div>
+        }
+    </div>
+}
 
 
 <div class="task-controls">
@@ -274,6 +301,7 @@ else
 @code {
     /// <summary>首屏 true，避免在 OnInitializedAsync 完成前误显示「暂无任务」。</summary>
     private List<TaskInfo> tasks = new();
+    private List<QuizGenerateJobSummaryDto> learnJobs = new();
     private bool isLoading = true;
     private bool isHubConnected = false;
     private bool showClearConfirm = false;
@@ -476,6 +504,17 @@ else
                 Logger.LogWarning(ex, "加载任务失败");
                 tasks = new();
             }
+
+            try
+            {
+                learnJobs = await ApiService.ListLearnGenerateJobsAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "加载题库生成任务失败");
+                learnJobs = new();
+            }
+
             finally
             {
                 if (!silent)
@@ -488,6 +527,16 @@ else
             try { _loadTasksLock.Release(); } catch (ObjectDisposedException) { }
         }
     }
+
+    private static string LearnJobStatusText(string status) => status switch
+    {
+        "queued" => "排队中",
+        "running" => "生成中",
+        "succeeded" => "已完成",
+        "failed" => "失败",
+        "canceled" => "已取消",
+        _ => status,
+    };
 
     private void OnTaskClick(TaskInfo task)
     {
@@ -801,6 +850,18 @@ else
 }
 
 <style>
+    .learn-jobs { background: var(--bs-tertiary-bg); border-radius: .6rem; padding: .8rem 1rem; margin-bottom: 1rem; }
+    .learn-jobs-head { display: flex; justify-content: space-between; align-items: center; }
+    .learn-jobs-head h2 { font-size: 1.05rem; margin: 0; }
+    .learn-job-row { display: flex; align-items: center; gap: .6rem; font-size: .85rem; padding: .35rem 0; border-top: 1px solid var(--bs-border-color); }
+    .learn-job-status { border-radius: 999px; padding: .05rem .55rem; background: var(--bs-secondary-bg); font-size: .78rem; }
+    .learn-job-status.succeeded { background: rgba(25, 135, 84, .15); color: var(--bs-success); }
+    .learn-job-status.failed { background: rgba(220, 53, 69, .12); color: var(--bs-danger); }
+    .learn-job-status.running { background: rgba(13, 110, 253, .12); color: var(--bs-primary); }
+    .learn-job-name { flex: 1; }
+    .learn-job-progress { font-weight: 600; }
+    .learn-job-error { color: var(--bs-danger); font-size: .8rem; max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .learn-job-time { color: var(--bs-secondary-color); font-size: .78rem; }
     .modal-overlay {
         position: fixed;
         top: 0;

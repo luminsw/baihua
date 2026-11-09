@@ -206,8 +206,21 @@ public class QuizBankGeneratorService : IQuizBankGenerator
 
         try
         {
-            var response = await _ai.GetChatResponseWithAutoStartAsync(
+            var responseTask = _ai.GetChatResponseWithAutoStartAsync(
                 provider, model, messages, options, batchCts.Token, operation: "quiz", useCache: false);
+            // 硬超时兜底：shim/底层 SDK 在部分链路不响应取消令牌，单靠 CancelAfter 可能一直挂
+            var timeoutTask = Task.Delay(TimeSpan.FromMinutes(timeoutMinutes), CancellationToken.None);
+            var winner = await Task.WhenAny(responseTask, timeoutTask);
+
+            if (winner != responseTask)
+            {
+                batchCts.Cancel();
+                _ = responseTask.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                ct.ThrowIfCancellationRequested();
+                throw new TimeoutException($"单批生成超过 {timeoutMinutes} 分钟未返回");
+            }
+
+            var response = await responseTask;
             return response.Text ?? "";
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
