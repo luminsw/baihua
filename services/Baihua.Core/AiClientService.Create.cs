@@ -36,7 +36,12 @@ public partial class AiClientService
                     var shimBase = _aiSettings.AiShimUrl;
                     // 尾斜杠关键：OpenAI SDK 在 endpoint 后追加 "chat/completions"（相对 URI 合并）
                     var shimEndpoint = new Uri($"{shimBase.TrimEnd('/')}/mg/ai/v1/");
-                    var shimOptions = new OpenAIClientOptions { Endpoint = shimEndpoint };
+                    var shimOptions = new OpenAIClientOptions
+                    {
+                        Endpoint = shimEndpoint,
+                        // SDK 默认网络超时仅 100 秒（且自动重试 4 次），长 JSON 输出（题库 30 题等）会整批失败
+                        NetworkTimeout = TimeSpan.FromMinutes(3),
+                    };
                     // shim 鉴权：未配置 BAIHUA_AI_EXTERNAL_TOKEN 时局域网信任，占位即可
                     var shimCredential = new ApiKeyCredential("local-shim");
                     var shimClient = new OpenAIClient(shimCredential, shimOptions);
@@ -55,7 +60,12 @@ public partial class AiClientService
                 // 无尾斜杠时会把 endpoint 最后一个路径段（如 /v1）当文件替换掉，
                 // 导致本地服务（Ollama/OpenVINO 等以 /v1 结尾的端点）404。
                 var endpoint = new Uri(provider.AiBaseUrl.TrimEnd('/') + "/");
-                var clientOptions = new OpenAIClientOptions { Endpoint = endpoint };
+var clientOptions = new OpenAIClientOptions
+                {
+                    Endpoint = endpoint,
+                    // 与 shim 一致：默认 100 秒对长输出偏短
+                    NetworkTimeout = TimeSpan.FromMinutes(3),
+                };
 
                 // 无 API Key 时使用占位符（Ollama/LMStudio 等本地服务不需要 Key）
                 var credential = string.IsNullOrWhiteSpace(apiKey)

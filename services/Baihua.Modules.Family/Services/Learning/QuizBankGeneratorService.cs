@@ -27,11 +27,11 @@ public class QuizBankGeneratorService : IQuizBankGenerator
     /// <summary>自适应题量（单批 8-30 题）输出上限</summary>
     private const int AutoMaxOutputTokens = 16000;
 
+    /// <summary>自适应模式总题量上限（按 10 题/批分 3 批）</summary>
+    private const int AutoMaxQuestions = 30;
+
     /// <summary>固定题量单批 AI 调用硬超时（分钟）</summary>
     private const int BatchTimeoutMinutes = 4;
-
-    /// <summary>自适应单批 AI 调用硬超时（分钟）——输出更大、耗时更长</summary>
-    private const int AutoTimeoutMinutes = 8;
 
     /// <summary>解析失败时的重试约束</summary>
     private const string RetrySuffix =
@@ -80,8 +80,10 @@ public class QuizBankGeneratorService : IQuizBankGenerator
         if (string.IsNullOrWhiteSpace(model)) return Fail("所选 AI 提供商未配置模型");
 
         var profile = QuizIndustryProfileCatalog.Resolve(industryCode, request.IndustryName);
-        // 自适应题量只跑一批（AI 一次规划并覆盖）；固定题量按 10 题分批
-        var batches = isAutoCount ? [1] : SplitBatches(request.QuestionCount, BatchSize);
+        // 自适应：按 10 题/批、最多 3 批（上限 30）——每批输出可控、有进度，避免单次长输出撞网络超时
+        var batches = isAutoCount
+            ? SplitBatches(AutoMaxQuestions, BatchSize)
+            : SplitBatches(request.QuestionCount, BatchSize);
         var merged = new QuizBankPackage
         {
             FormatVersion = 1,
@@ -127,13 +129,15 @@ public class QuizBankGeneratorService : IQuizBankGenerator
                     DistractorStrategy = request.DistractorStrategy,
                     CodePrefix = batchPrefix,
                     TargetDescription = request.TargetDescription,
+                    BatchIndex = i + 1,
+                    BatchCount = batches.Count,
                     Profile = profile,
                 });
                 if (i == 0) promptUsed = prompt;
 
                 var text = await CompleteAsync(provider, model, prompt,
                     isAutoCount ? AutoMaxOutputTokens : MaxOutputTokens,
-                    isAutoCount ? AutoTimeoutMinutes : BatchTimeoutMinutes, ct);
+                    BatchTimeoutMinutes, ct);
                 raw.AppendLine(text);
 
                 var package = QuizBankResponseParser.Parse(text);
@@ -142,7 +146,7 @@ public class QuizBankGeneratorService : IQuizBankGenerator
                     _logger.LogInformation("题库生成第 {Batch} 批解析失败，追加约束重试一次", i + 1);
                     text = await CompleteAsync(provider, model, prompt + RetrySuffix,
                         isAutoCount ? AutoMaxOutputTokens : MaxOutputTokens,
-                        isAutoCount ? AutoTimeoutMinutes : BatchTimeoutMinutes, ct);
+                        BatchTimeoutMinutes, ct);
                     raw.AppendLine(text);
                     package = QuizBankResponseParser.Parse(text);
                 }

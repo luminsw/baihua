@@ -31,6 +31,10 @@ public static class QuizBankPromptBuilder
         public int QuestionCount { get; set; } = 10;
         /// <summary>题量模式：fixed（固定）/ auto（AI 按知识点覆盖自适应决定）</summary>
         public string QuestionCountMode { get; set; } = "fixed";
+        /// <summary>当前批次序号（1 开始；总批数大于 1 时提示 AI 不要跨批重复）</summary>
+        public int BatchIndex { get; set; }
+        /// <summary>总批数（1 表示单批）</summary>
+        public int BatchCount { get; set; } = 1;
         public int Difficulty { get; set; } = 3;
         /// <summary>参考范围（书名篇章 / 知识库 id / 目录），可空</summary>
         public string? ReferenceScope { get; set; }
@@ -66,7 +70,10 @@ public static class QuizBankPromptBuilder
             ? "- 参考范围：未指定（必须基于该行业公认的基础知识，不得编造）"
             : $"- 参考范围：{options.ReferenceScope.Trim()}（内容必须限定在此范围内，范围外内容不要生成）";
 
-        var targetCodes = string.Join(" / ", profile.Targets.Select(t => t.Code));
+        // mixed 时列出画像全部题型；其余（含自定义题型）直接用当前 target，避免 schema 把 AI 误导回画像默认值
+        var targetCodes = string.Equals(target, "mixed", StringComparison.OrdinalIgnoreCase)
+            ? string.Join(" / ", profile.Targets.Select(t => t.Code))
+            : target;
 
         var sb = new StringBuilder();
         sb.AppendLine("你是「百花题库」的内容生成助手。请按下面的规范生成一个可以直接导入的单选题题库包（JSON）。");
@@ -76,7 +83,9 @@ public static class QuizBankPromptBuilder
         sb.AppendLine($"- 题库：{bankName}（代码 {bankCode}）");
         sb.AppendLine($"- 主题/要求：{topic}");
         sb.AppendLine($"- 题型：{DescribeTarget(target, profile, options.TargetDescription)}");
-        if (isAutoCount)
+        if (isAutoCount && options.BatchCount > 1)
+            sb.AppendLine($"- 题目数量：本批 {questionCount} 题（全库分 {options.BatchCount} 批生成，这是第 {options.BatchIndex} 批；只覆盖该主题的第 {options.BatchIndex} 部分知识点，不要与其它批次重复）");
+        else if (isAutoCount)
             sb.AppendLine("- 题目数量：自适应（先规划覆盖该主题所需的知识点，再为每个知识点生成 1-3 题；总题数控制在 8-30 题，覆盖完整性优先于数量）");
         else
             sb.AppendLine($"- 题目数量：{questionCount}");
@@ -103,7 +112,9 @@ public static class QuizBankPromptBuilder
         sb.AppendLine($"13. {DescribeTargetRule(target, profile, options.TargetDescription)}");
         if (isAutoCount)
         {
-            sb.AppendLine("14. 自适应题量：每个主要知识点至少 1 题；不要为凑数生成重复题；宁少勿滥，覆盖完整性优先。");
+            sb.AppendLine(options.BatchCount > 1
+                ? $"14. 分批生成：本批只覆盖第 {options.BatchIndex}/{options.BatchCount} 部分知识点，避免与其它批次重复；该部分知识点不足时可少于 {questionCount} 题，不得为凑数生成重复题。"
+                : "14. 自适应题量：每个主要知识点至少 1 题；不要为凑数生成重复题；宁少勿滥，覆盖完整性优先。");
         }
         sb.AppendLine();
         sb.AppendLine("## 结构示例（仅示意字段与层级，内容请按主题替换）");
