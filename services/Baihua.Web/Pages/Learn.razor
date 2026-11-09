@@ -27,7 +27,7 @@
                         <button class="bank-card btn" @onclick="() => SelectBankAsync(bank)">
                             <div class="bank-name">@bank.IndustryName · @bank.BankName</div>
                             <div class="bank-meta">
-                                <span>@bank.ItemCount 方剂</span>
+                                <span>@bank.ItemCount 条目</span>
                                 <span>@bank.QuestionCount 道题</span>
                                 <span>v@(string.IsNullOrEmpty(bank.Version) ? "-" : bank.Version)</span>
                             </div>
@@ -120,7 +120,7 @@
                     @if ((result.Discrimination?.Count ?? 0) > 0)
                     {
                         <div class="result-discrimination">
-                            <div class="analysis-title">🎯 易混淆方 · 关键区分点</div>
+                            <div class="analysis-title">🎯 易混淆项 · 关键区分点</div>
                             <table class="table table-sm discrimination-table">
                                 <tbody>
                                     @foreach (var d in result.Discrimination!)
@@ -334,7 +334,7 @@
         try
         {
             var prompt =
-                $"我正在做中医经方选择题练习，请对下面这题做延伸讲解（辨证思路、方义、临床要点），帮助我理解记忆：" +
+                $"我正在做选择题练习，请对下面这题做延伸讲解（核心概念、原理、易错点与记忆要点），帮助我理解记忆：" +
                 $"\n\n【题目】{currentQuestion.Stem}" +
                 $"\n\n【我的答案】{result.IsCorrect switch { true => "答对了", _ => "答错了" } }，正确答案是 {result.CorrectKey}．{result.CorrectContent}" +
                 $"\n\n【标准解析】{currentAnalysis}";
