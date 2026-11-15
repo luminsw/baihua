@@ -248,8 +248,9 @@ sudo bash tools/bh/bh.sh install       # root → /usr/local/bin（在 sudo secu
 - **端口探测不要用 `TcpClient.Connect`**：有防火墙/WFP 过滤时，对未监听的回环端口不返回 RST 而是等到超时（实测 ~2.05s/次），`bh status` 探 4 个端口会卡 8s。改用 `GetIPGlobalProperties().GetActiveTcpListeners()` 枚举（~30ms，native 与 wslc 两处都已改）。
 - **`bh` 不带参数 = 状态总览**：旧 help 写「打开管理面板」但实现是打印 help（不一致）。现在统一为 `status`——不会突然弹浏览器，只读且附带下一步提示。
 - **服务启动是静默的**（2026-11-15）：计划任务在用户会话里直接起控制台程序会分配一个**可见**控制台窗口，而 `start-<svc>.cmd` 是同步等 exe 的，窗口就挂在服务整个生命周期（两个服务 = 两个黑框）。
-  现在任务动作是 `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File start-<svc>.ps1`，PS1 里 `& cmd.exe /c $cmd` 同步等下去 —— 窗口隐藏、任务继续持有服务进程。
-  选 PowerShell 而不是 `wscript`+VBS 是为了不引入 VBScript 依赖（微软已把它列入弃用路线）；代价是控制台先创建再隐藏，可能有 0.1~0.3s 闪烁。
-  `start-<svc>.ps1` / `.cmd` 都由 `bh start` 生成，改完产物不用手改；旧版本留下的 `.vbs` 会被自动清掉。
+  现在任务动作是 `out\native\bin\bh-launch.exe <start-<svc>.cmd> <logs 目录>`：**GUI 子系统**的小启动器（自身没有控制台，没有窗口可闪），内部 `Process.Start(cmd.exe /c <cmd>, CreateNoWindow=true)` 并 `WaitForExit`。
+  为什么不用 `powershell -WindowStyle Hidden`：它只是"先创建控制台再隐藏"，实测仍有 0.1~0.3s 闪；也不用 `wscript`+VBS（VBScript 已被微软列入弃用路线）。
+  启动器由 `bh start` 首次使用时用 `Add-Type -OutputAssembly -OutputType WindowsApplication` 编译（4KB，落在 `out\native\bin\`，`out` 被 gitignore）；编译失败则依次退回 PowerShell 隐藏外壳、直接 cmd。
+  无论哪一层，外壳都**同步等** cmd 结束 —— 任务实例必须继续持有服务进程，否则任务结束会把它连坐杀掉（2026-11-04 实测）。旧版本留下的 `start-<svc>.ps1` / `.vbs` 会被自动清掉。
 - **关掉调用方终端不会杀掉服务**：服务不是终端的子进程（父链是 计划任务 → wscript → cmd → exe），而且 cmd 的隐藏控制台与你的终端无关。反过来说，`Ctrl+C`/关窗口只影响 `bh` 命令本身。
 - `bh doctor` 里的 PostgreSQL 登录检查必须带 `psql -w`（never prompt）：否则口令为空时 psql 会等 stdin，体检直接挂住。
