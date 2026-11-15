@@ -8,8 +8,11 @@
 
   检查项：
     1. 结构：Windows 侧只剩 bh 一个入口（bh-k3s.* / locator-k3s.ps1 已删除，bh 入口齐全）
-    2. 静态：native 实现里不出现 wsl / docker / kubectl（不依赖任何容器/WSL 运行时）
-    3. 行为：bh help / bh status / bh status --json 正常；bh k8s 旧写法给退役指引并失败
+    2. 静态：native 实现不依赖 docker / kubectl，也不直接调 WSL 发行版
+       （wslc 是唯一例外：OVMS 本地模型服务自 2026-11-15 起由 wslc 容器 ovms-gpu 承载，
+         bh ovms 需要能启停/看日志，但百花本体仍不跑在任何容器里）
+    3. 行为：bh help / status / status --json / doctor / doctor --json / ovms status 正常；
+       bh k8s 旧写法给退役指引并失败；不带参数 = 状态总览
     4. 兼容：bh native <cmd> 旧前缀仍可用（等价于 bh <cmd>）
 
   用法：
@@ -81,9 +84,11 @@ Test-Case 'native 入口齐全（bh.ps1 / bh.cmd / locator.ps1 / win/native/bh.p
 }
 
 # ---------- 2. 静态：实现不依赖 WSL / Docker / kubectl ----------
-Test-Case 'native 实现不出现 wsl / docker / kubectl' {
+Test-Case 'native 实现不依赖 docker / kubectl / WSL 发行版（wslc 除外）' {
     $text = Get-Content $Native -Raw
-    $hits = [regex]::Matches($text, '(?i)\b(wsl|docker|kubectl)\b') |
+    # wslc 放行：OVMS（本地模型服务）跑在 wslc 容器里，bh ovms 必须能管它；
+    # 但 wsl.exe / WSL 发行版仍禁止 —— 百花本体不依赖任何虚拟化（这条是 2026-10-27 的底线）。
+    $hits = [regex]::Matches($text, '(?i)\b(wsl(?!c)|docker|kubectl)\b') |
         ForEach-Object { $_.Value } | Select-Object -Unique
     if ($hits) { "命中：$($hits -join ', ')" }
 }
@@ -112,6 +117,45 @@ Test-Case 'bh status --json 退出码 0 且是 cell=native 的合法 JSON（DSH 
         if ($names -notcontains 'server' -or $names -notcontains 'webui') { return "services 缺少 server/webui：$($names -join ',')" }
         if (-not $doc.summary -or $doc.summary.total -lt 2) { return 'summary.total 不合法' }
     }
+}
+
+Test-Case 'bh status --json 的 openvino 条目带 engine（wslc / 服务 / 外部进程三态）' {
+    if ($json.ExitCode -ne 0) { return "exit=$($json.ExitCode)" }
+    try { $docS = $json.Output | ConvertFrom-Json } catch { return "JSON 解析失败：$($_.Exception.Message)" }
+    $ov = @($docS.services | Where-Object { $_.name -eq 'openvino' })
+    if ($ov.Count -ne 1) { return 'services 里没有 openvino 条目' }
+    if (-not $ov[0].engine) { return 'openvino 条目缺少 engine 字段' }
+}
+
+$bare = Invoke-Bh @()
+Test-Case 'bh 不带参数输出状态总览（端口 + 下一步）' {
+    if ($bare.ExitCode -ne 0) { "exit=$($bare.ExitCode)" }
+    elseif ($bare.Output -notmatch '8788' -or $bare.Output -notmatch '下一步') { '输出不是状态总览' }
+}
+
+$docJson = Invoke-Bh @('doctor', '--json')
+Test-Case 'bh doctor --json 是合法 JSON（cell=native / summary / checks 齐全）' {
+    if ($docJson.ExitCode -ne 0) { "exit=$($docJson.ExitCode)" }
+    else {
+        try { $d = $docJson.Output | ConvertFrom-Json } catch { return "JSON 解析失败：$($_.Exception.Message)" }
+        if ($d.cell -ne 'native') { return "cell=$($d.cell)，期望 native" }
+        if (-not $d.summary -or $d.summary.passed -lt 1) { return 'summary.passed 不合法' }
+        if (@($d.checks).Count -lt 8) { return "checks 太少：$(@($d.checks).Count)" }
+        $names = @($d.checks | ForEach-Object { $_.name })
+        if (-not ($names | Where-Object { $_ -match 'PostgreSQL|\.NET' })) { return 'checks 缺少 .NET / PostgreSQL 项' }
+    }
+}
+
+$doc = Invoke-Bh @('doctor')
+Test-Case 'bh doctor 输出逐项结论与汇总（退出码 0/1 表示有无 FAIL）' {
+    if ($doc.ExitCode -notin @(0, 1)) { "exit=$($doc.ExitCode)" }
+    elseif ($doc.Output -notmatch '体检完成') { '输出缺少「体检完成」汇总' }
+}
+
+$ovms = Invoke-Bh @('ovms', 'status')
+Test-Case 'bh ovms status 退出码 0 且报告 OVMS 形态' {
+    if ($ovms.ExitCode -ne 0) { "exit=$($ovms.ExitCode)" }
+    elseif ($ovms.Output -notmatch '形态') { '输出缺少「形态」' }
 }
 
 $k8s = Invoke-Bh @('k8s', 'status')

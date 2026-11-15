@@ -12,7 +12,7 @@
     * 首次会拉取镜像：.NET 基础镜像走 mcr.microsoft.com（可直连），
       postgres 走 Docker Hub —— 国内直连 hub 会超时，默认经 docker.m.daocloud.io 镜像拉取
       （docker/.env.wslc 里的 BAIHUA_WSL_MIRROR，留空则用官方 registry）
-    * 本机 OVMS（Windows :8000 服务）从容器里经宿主 IP 访问：启动时自动探测可用地址
+    * 本机 OVMS（:8000；2026-11-15 起由 wslc 容器 ovms-gpu 承载）从容器里经宿主 IP 访问：启动时自动探测可用地址
 
   用法：bh wslc <command> [args]
     build [server|webui]   构建镜像（首次/源码变更后；首次会拉 .NET SDK 镜像，较慢）
@@ -20,7 +20,7 @@
     start [svc...]         启动（默认全部：postgres → server → webui）
     stop                   停止并删除容器（命名卷保留数据）
     restart                停止 + 启动
-    status                 容器列表 + 访问地址 + OVMS 探测
+    status                 容器列表 + 访问地址 + OVMS 探测（bh ovms status 看形态/模型）
     logs <svc> [n]         日志（server|webui|postgres，默认 server 50 行）
     exec <svc> <cmd...>    在运行中的容器里执行命令（如 exec postgres psql -U baihua）
     ps                     等价于 wslc container list --all
@@ -29,15 +29,14 @@
     env                    查看/生成 docker/.env.wslc
     help                   本帮助
 #>
-[CmdletBinding()]
-param(
-    # 与 tools/bh/bh.ps1 同一套路：ValueFromRemainingArguments 会把所有裸参数收进来，
-    # 再手动切分（exec 需要把后续参数原样透传给容器）
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$All = @()
-)
+# 不用 param()/CmdletBinding：`exec` 要把后续参数（含 -U/-d/--format）原样透传给容器，
+# 而 CmdletBinding 会先把 `-e` 之类当 PowerShell 参数解析 → 报「参数二义性」。用 $args 收齐。
+$All = @($args)
 
 $ErrorActionPreference = 'Stop'
+# wslc.exe 输出 UTF-8 中文；Windows PowerShell 5.1 默认按 OEM 代码页（简中 936）解码 → 表头/日志乱码。
+# 钉死控制台输出编码，`bh wslc status/ps/logs` 才读得懂。
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 $Command = if ($All.Count -gt 0) { $All[0] } else { 'help' }
 $Arg1 = if ($All.Count -gt 1) { $All[1] } else { '' }
@@ -195,8 +194,18 @@ function Remove-Container([string]$Name) {
 }
 
 function Test-PortOpen($port) {
-    $c = New-Object Net.Sockets.TcpClient
-    try { $c.Connect('127.0.0.1', [int]$port); return $true } catch { return $false } finally { $c.Dispose() }
+    # ⚠️ 别改回 TcpClient.Connect：机器上有防火墙/WFP 过滤时，对**未监听**的回环端口
+    # 不返回 RST 而是一直等到超时（实测 ~2s/次）；本脚本要探 8788/5177/80/8000，
+    # status 会卡 8s 以上。端口枚举一次 ~30ms，4 个端口都走同一实现。
+    try {
+        $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+        foreach ($ep in $listeners) {
+            if ([int]$ep.Port -ne [int]$port) { continue }
+            $addr = $ep.Address
+            if ($addr.Equals([System.Net.IPAddress]::Any) -or $addr.Equals([System.Net.IPAddress]::IPv6Any) -or [System.Net.IPAddress]::IsLoopback($addr)) { return $true }
+        }
+    } catch { }
+    return $false
 }
 
 function Wait-Port($port, $seconds) {
@@ -398,6 +407,9 @@ function Start-Stack {
         }
     }
 
+    if (-not (Test-PortOpen 8000)) {
+        Write-Host '  OVMS 未运行（:8000）：本地 AI 会降级，可用 bh ovms start 拉起（容器 ovms-gpu）' -ForegroundColor Yellow
+    }
     Write-Host ('[start] 完成：后端 http://127.0.0.1:' + $envMap['BAIHUA_SERVER_PORT'] + '  WebUI http://127.0.0.1:' + $envMap['BAIHUA_WEBUI_PORT'] + '  入口 http://127.0.0.1/')
     Write-Host '        局域网：http://<宿主IP>/ （nginx :80，浏览器与花记移动端共用）'
 }
@@ -424,7 +436,7 @@ function Show-Status {
     $nginxState = if (Test-Container $Containers['nginx']) { 'RUNNING (:80)' } else { 'stopped' }
     Write-Host ('入口:   http://127.0.0.1/  nginx=' + $nginxState)
     $ov = if (Test-PortOpen 8000) { 'RUNNING (port 8000)' } else { 'stopped' }
-    Write-Host ('OVMS:   ' + $ov + '（容器内经宿主 IP:8000 访问）')
+    Write-Host ('OVMS:   ' + $ov + '（wslc 容器 ovms-gpu；容器内经宿主 IP:8000 访问，bh ovms status 看详情）')
     $mirror = $envMap['BAIHUA_WSL_MIRROR']
     if ([string]::IsNullOrWhiteSpace($mirror)) { $mirror = '（官方 registry）' }
     Write-Host ('镜像源: ' + $mirror)
@@ -514,3 +526,7 @@ switch ($Command.ToLower()) {
         exit 1
     }
 }
+
+# 内部探测命令（如 inspect 未命中容器）返回 1 是正常分支，不该让整条命令看起来失败。
+# 真正的失败在上面的分派里已 exit 1，这里统一归零。
+exit 0

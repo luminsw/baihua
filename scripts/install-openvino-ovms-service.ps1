@@ -1,4 +1,8 @@
 ﻿# ============================================================
+# ⚠ 已不推荐（2026-11-15）：本机 OVMS 已改为 WSL3 容器（wslc，容器名 ovms-gpu），
+#   Windows 服务 ovms 已卸载。日常启停请用 `bh ovms start|stop|status|logs`；
+#   重建容器见 %BAIHUA_HOME%\ovms\README.md。本脚本仅作为「回滚到 Windows 服务」的备选保留。
+# ------------------------------------------------------------
 # 安装/更新 百花 OpenVINO Model Server（Intel OVMS）Windows 服务
 # 用法（管理员 PowerShell）:
 #   powershell -ExecutionPolicy Bypass -File install-openvino-ovms-service.ps1

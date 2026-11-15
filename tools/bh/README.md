@@ -48,11 +48,22 @@ bh status                        # 期望：server 8788 / webui 5177 均 ready
 bh dashboard                     # 打开 WebUI（cli-token 自动登录）
 ```
 
-可选：IPv6/局域网访问用 `bh lan on`（宿主 `:80 -> :8788` portproxy）；本地推理用
-`scripts/install-openvino-ovms-service.ps1` 装 OVMS（REST :8000）。
+可选：IPv6/局域网访问用 `bh lan on`（宿主 `:80 -> :8788` portproxy）。
 
-> native 侧目前**没有** `onboard` 体检命令：缺 PostgreSQL 或口令不对时，`bh start` 只会报
-> "后端起不来"，需要自己按上面 ①②检查。`bh status` / `bh logs server` 是主要排查手段。
+### 先体检，再启动（推荐）
+
+```powershell
+bh doctor                     # 逐项结论 + 失败项的下一步命令（只读，不改任何系统状态）
+bh start
+bh status                     # 期望：server 8788 / webui 5177 均 RUNNING
+```
+
+> `bh doctor` 是 native 的体检入口，覆盖：.NET SDK 10、构建产物、产物完整性标签、
+> PostgreSQL 服务/端口/**真实登录**（psql `select 1`，不弹口令提示）、8788/5177 占用、
+> OVMS 形态与模型、数据目录可写、定位器与 PATH、防火墙 8788、仓库是否脏。
+> 每项输出 `[ OK ] / [WARN] / [FAIL]`，FAIL 下面直接给命令；`bh doctor --json` 给工具用
+> （退出码 0 = 没有 FAIL 项）。`bh start` 也会在 PostgreSQL 不可达/口令未设时先警告，
+> 不会让你干等 60s 只看到「后端起不来」。
 
 ### k3s 形态（已从 Windows 退役）
 
@@ -67,7 +78,10 @@ Linux 机器不受影响：`bh`（= k3s 形态）照常可用。
 ## 用法
 
 ```
+bh                           状态总览（= bh status）
 bh <command> [args]           native 命令（Windows，默认形态）
+bh doctor [--json]            本机体检（.NET / PostgreSQL 登录 / 产物 / 端口 / OVMS）
+bh ovms [status|start|stop|restart|logs]   本地模型服务 OVMS(:8000)
 bh wslc <command> [args]      wslc 命令（Windows，WSL 自带容器 CLI，全容器形态）
 bh lan [on|off|status]        局域网入口（宿主 :80→:8788 portproxy，两种形态通用）
 bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
@@ -83,19 +97,35 @@ bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
 | `bh stop [svc...]` | 停止服务 |
 | `bh restart [svc...]` | stop + start |
 | `bh update` | git pull + build + start + 防火墙放行 |
-| `bh status` | 端口/进程状态 |
-| `bh status --json` | JSON 格式（供 DSH 插件） |
-| `bh logs <svc> [n]` | tail 日志，默认 50 行 |
+| `bh status` | 状态总览（端口/进程/OVMS 形态/访问地址，带颜色）；`bh` 不带参数即此命令 |
+| `bh status --json` | JSON 格式（供 DSH 插件；`openvino` 条目含 `engine`/`container`） |
+| `bh doctor [--json]` | 本机体检：.NET / PostgreSQL 登录 / 产物 / 端口 / OVMS / PATH，逐项给修复命令 |
+| `bh logs <svc> [n] [-f] [-e]` | tail 日志（默认 50 行）；`-f` 跟随，`-e` 看 stderr 日志 |
+| `bh ovms [status\|start\|stop\|restart\|logs [n]]` | 本地模型服务 OVMS(:8000)：自动识别 wslc 容器 / Windows 服务 / 外部进程 |
 | `bh dashboard` | 打开 WebUI（cli-token 自动登录） |
 | `bh lan [on\|off\|status]` | 局域网入口（宿主 :80 → :8788 portproxy） |
 
 > native 不管 PostgreSQL 安装（用户自行装 Windows 服务 `postgresql-x64-18`）。
-> OpenVINO 用 Windows 服务 `ovms`（AUTO_START，REST :8000）：安装走 OVMS 自带的
-> `install_ovms_service.bat <模型目录>`（内部会 `sc create` + `ovms.exe install`），再
-> `sc.exe config ovms start= auto`；`bh start|stop|status openvino` 控制该服务。
-> ⚠ 只做 `sc create` 不执行 `ovms.exe install` 会报 1053（控制台程序不响应 SCM），
-> 这也是 `scripts/install-openvino-ovms-service.ps1` 里调用官方 bat 的原因。
 > 环境变量：`PG_HOST`（默认 127.0.0.1）、`PG_USER`（默认 postgres）、`PG_PASSWORD`、`PG_DATABASE`（默认 baihua）。
+
+**OVMS（本地模型服务，REST :8000）不是 native 的一部分**，`bh` 只负责「按当前形态启停它」：
+
+| 形态 | 何时出现 | `bh ovms start/stop` 做什么 |
+|------|----------|------------------------------|
+| `wslc` | 2026-11-15 起的现行形态：容器 `ovms-gpu`（WSL3 自带 `wslc.exe`） | 优先调用 `%BAIHUA_HOME%\ovms\start-ovms-wslc.ps1`（内含端口占用检查 + 等模型就绪），没有就用 `wslc start/stop ovms-gpu` |
+| `service` | 历史形态：Windows SCM 服务 `ovms`（本机 2026-11-15 已卸载，仍兼容） | `Start-Service` / `Stop-Service`（需要管理员） |
+| `process` | 只是个外来进程占着 :8000 | 只报告 pid，不代为 kill |
+
+```powershell
+bh ovms status      # 形态 + 容器状态 + /v1/models 里的模型名
+bh ovms start       # 容器没起就拉起，等到模型就绪（最多 120s）
+bh ovms restart     # 跑久了 tok/s 衰减时的一键恢复
+bh ovms logs 100    # wslc logs --tail 100 ovms-gpu
+```
+
+> 运行手册（重建镜像、常见坑、为何不用 Windows 服务）：`%BAIHUA_HOME%\ovms\README.md`。
+> 没有 OVMS 也能跑百花，只是本地 AI 功能降级；`bh doctor` 会把这种情况标成 `[WARN]` 而不是失败。
+> 旧入口 `bh start|stop|restart|status openvino` 仍可用（= `bh ovms ...`），文案里说的 `openvino` 就是 OVMS。
 
 ### wslc 命令速查（`bh wslc`）
 
@@ -139,7 +169,7 @@ bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
 ## 自检（回归）
 
 ```powershell
-pwsh -File scripts/verify-bh-native.ps1          # native：无 bh-k3s 残留 / 无 WSL·Docker 依赖 / status(--json) / 旧写法提示
+pwsh -File scripts/verify-bh-native.ps1          # native：bh-k3s 残留 / docker·kubectl·WSL 发行版依赖 / status(--json) / doctor(--json) / ovms status / 裸 bh / 旧写法提示
 pwsh -File scripts/verify-bh-wslc.ps1            # wslc：入口/dispatch/只用 wslc 的静态检查（无 wslc 时跳过运行时项）
 pwsh -File scripts/verify-bh-native.ps1 -Quiet   # 只输出失败与汇总
 ```
@@ -194,3 +224,7 @@ sudo bash tools/bh/bh.sh install       # root → /usr/local/bin（在 sudo secu
 - `bh lan status/on` 的 portproxy 规则校验**只认 `:80 → 127.0.0.1:8788`**：k3s 时代遗留的 `:80 -> <WSL IP>:80` 规则指向已消失的 WSL IP，连接被接受但永不响应（HTTP 挂死超时）——`lan on` 会先 delete 再 add 清理这类遗留。
 - `Get-HostLanIp` 排除 `WSL|Hyper-V|vEthernet|Loopback` 虚拟网卡：只按私有地址正则会把 WSL 的 vEthernet（172.x）误当成宿主 IP。
 - （历史，WSL 已卸载）`wsl.exe` 传参剥离反斜杠、`wsl -e sudo` 卡密码、跨 WSL 转发必须经管道逐行——详见 git 历史的 bh-k3s.ps1。
+- **`wslc list --format json` 的输出不是合法 JSON**：`Command` 字段被截断成含孤立代理字符的字符串，`ConvertFrom-Json` 必抛错。判断容器状态用 `wslc container inspect <name>` 的文本（正则取 `"Status": "running"`），别解析 list 的 JSON。
+- **端口探测不要用 `TcpClient.Connect`**：有防火墙/WFP 过滤时，对未监听的回环端口不返回 RST 而是等到超时（实测 ~2.05s/次），`bh status` 探 4 个端口会卡 8s。改用 `GetIPGlobalProperties().GetActiveTcpListeners()` 枚举（~30ms，native 与 wslc 两处都已改）。
+- **`bh` 不带参数 = 状态总览**：旧 help 写「打开管理面板」但实现是打印 help（不一致）。现在统一为 `status`——不会突然弹浏览器，只读且附带下一步提示。
+- `bh doctor` 里的 PostgreSQL 登录检查必须带 `psql -w`（never prompt）：否则口令为空时 psql 会等 stdin，体检直接挂住。

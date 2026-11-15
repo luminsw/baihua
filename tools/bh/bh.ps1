@@ -12,17 +12,16 @@
     bh install                   复制定位器到 %USERPROFILE%\.local\bin（加入用户 PATH）
     bh uninstall                 移除定位器与 PATH 项
 #>
-[CmdletBinding()]
-param(
-    # 注意：PowerShell 5.1 中 ValueFromRemainingArguments 会抢占位置参数绑定，
-    # 因此不定义 Position 参数，全部裸参数收进 $All 后手动切分
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$All = @()
-)
+# 不用 param()/CmdletBinding：`-e` / `-f` / `--json` / `-Prebuilt` 这类子命令选项必须**原样**透传，
+# 而 CmdletBinding 会先把 `-e` 当 PowerShell 参数解析（与 -ErrorAction 二义性 → 直接报错）。
+# 用自动变量 $args 全量收齐，再手动切分。
+$All = @($args)
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSCommandPath          # tools/bh
 $Repo = Split-Path -Parent (Split-Path -Parent $Root)   # 仓库根
+# 提权子进程首选 PowerShell 7（pwsh），没有就退回 Windows PowerShell
+$ShellExe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
 
 $Arg1 = if ($All.Count -gt 0) { $All[0] } else { '' }
 # @(...) 强制数组：强类型数组的单元素范围索引（$All[1..1]）会返回裸 string，
@@ -30,21 +29,23 @@ $Arg1 = if ($All.Count -gt 0) { $All[0] } else { '' }
 $CmdArgs = @($All)
 
 function Show-Help {
-    Write-Host 'bh - 百花 CLI（Windows native：dotnet 进程，不依赖 WSL/Docker/k3s）'
+    Write-Host 'bh - 百花 CLI（Windows native：dotnet 进程，不依赖容器/虚拟化）'
     Write-Host ''
     Write-Host '用法:'
-    Write-Host '  bh                           打开管理面板（= bh dashboard）'
+    Write-Host '  bh                           状态总览（= bh status）'
     Write-Host '  bh <command> [args]           执行 native 命令'
+    Write-Host '  bh doctor [--json]            本机体检：.NET / PostgreSQL 登录 / 产物 / 端口 / OVMS'
     Write-Host '  bh lan [on|off|status]        局域网入口（宿主 :80 -> :8788 portproxy）'
     Write-Host '  bh install / uninstall        安装 / 移除 定位器与用户 PATH'
     Write-Host ''
     Write-Host 'native 命令: build / build-restart / start / stop / restart / update'
-    Write-Host '             status [--json] / logs <svc> [n] / dashboard / open / open-webui'
+    Write-Host '             status [--json] / doctor [--json] / logs <svc> [n] [-f|-e]'
+    Write-Host '             ovms [status|start|stop|restart|logs [n]] / dashboard / open / open-webui'
     Write-Host 'native 依赖: .NET SDK 10、本机 PostgreSQL（Windows 服务）、可选 OVMS(:8000)'
     Write-Host ''
     Write-Host 'wslc 形态:  bh wslc <build|start|stop|restart|status|logs|exec|update|dashboard|env>'
     Write-Host '             全容器（postgres/server/webui，WSL 自带的 wslc.exe，不需要 Docker Desktop），与 native 互斥（同占 8788/5177）'
-    Write-Host '             依赖: WSL >= 2.9.3（wsl --update）；OVMS 仍跑在 Windows 服务 :8000'
+    Write-Host '             依赖: WSL >= 2.9.3（wsl --update）；OVMS 由 wslc 容器 ovms-gpu 承载（:8000，bh ovms status 可查）'
     Write-Host ''
     Write-Host 'k3s 形态已随本机 WSL 卸载退役（Linux 侧实现保留于 tools/bh/linux/k8s）'
     Write-Host ''
@@ -204,7 +205,7 @@ if ($Arg1 -eq 'lan') {
             try {
                 # 先删掉 :80 上的旧规则（含 k3s 形态遗留的 :80 -> <WSL IP>:80——它指向
                 # 已消失的 WSL IP，只 add 不 delete 会与之并存）；再重建 :80 -> 127.0.0.1:8788。
-                $p = Start-Process -FilePath 'pwsh' -Verb RunAs -PassThru -ArgumentList @(
+                $p = Start-Process -FilePath $ShellExe -Verb RunAs -PassThru -ArgumentList @(
                     '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
                     'netsh interface portproxy delete v4tov4 listenport=80 listenaddress=0.0.0.0 | Out-Null; netsh interface portproxy delete v4tov4 listenport=80 listenaddress=* | Out-Null; netsh interface portproxy add v4tov4 listenport=80 connectport=8788 connectaddress=127.0.0.1; netsh advfirewall firewall add rule name="Baihua LAN 80" dir=in action=allow protocol=TCP localport=80'
                 ) -ErrorAction Stop
@@ -215,7 +216,7 @@ if ($Arg1 -eq 'lan') {
         'off' {
             Write-Host '[lan] 撤销宿主 :80 转发（需要管理员授权）...'
             try {
-                $p = Start-Process -FilePath 'pwsh' -Verb RunAs -PassThru -ArgumentList @(
+                $p = Start-Process -FilePath $ShellExe -Verb RunAs -PassThru -ArgumentList @(
                     '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
                     'netsh interface portproxy delete v4tov4 listenport=80; netsh advfirewall firewall delete rule name="Baihua LAN 80"'
                 ) -ErrorAction Stop
