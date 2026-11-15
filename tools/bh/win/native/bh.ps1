@@ -11,7 +11,8 @@
     restart [svc...]    stop + start 指定服务（默认全部）
     update              git pull 最新代码 + 重建 + 重启（局域网机器一键升级）
     status [--json]     状态总览（端口/进程/OVMS 形态/访问地址）；--json 供 DSH 桥插件
-    doctor [--json]     本机体检：.NET / PostgreSQL 登录 / 构建产物 / 端口 / OVMS，逐项给下一步命令
+    doctor [--json] [--fix]  本机体检：.NET / PG 登录 / 产物 / 端口 / OVMS（--json 给工具，--fix 自动修可修的）
+    autostart [on|off|status] 登录自启（用户级 Startup，执行 bh start；不需要管理员）
     logs <svc> [n]      tail 日志（默认 50 行；-f 跟随，-e 看 stderr）
     ovms [status|start|stop|restart|logs [n]]
                         本地模型服务 OVMS(:8000)：自动识别 wslc 容器 / Windows 服务 / 外部进程
@@ -116,8 +117,16 @@ function Invoke-Build {
     foreach ($svc in $targets) {
         Write-Host "[build] $($svc.Name) ..."
         $proj = Join-Path $Root $svc.Project
-        $out = & dotnet publish $proj -c Release -r win-x64 --self-contained false -o (Join-Path $OutDir $svc.Name) 2>&1 | ForEach-Object { Write-Host $_; $_ }
-        if ($LASTEXITCODE -ne 0) { throw "publish failed: $($svc.Name)`n$($out | Select-Object -Last 6)" }
+        # ⚠ PowerShell 5.1 在 $ErrorActionPreference='Stop' 下会把「2>&1 重定向进来的原生 stderr」
+        # 当成终止性错误（NativeCommandError）—— dotnet 一条警告就能让整次 build 半路炸掉。
+        # 所以这类调用必须局部放宽 EAP，只按退出码判成败。
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $out = & dotnet publish $proj -c Release -r win-x64 --self-contained false -o (Join-Path $OutDir $svc.Name) 2>&1 | ForEach-Object { Write-Host $_; $_ }
+            $publishCode = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $prevEap }
+        if ($publishCode -ne 0) { throw "publish failed: $($svc.Name)`n$($out | Select-Object -Last 6)" }
         # 发布后立刻校正完整性标签：产物若继承到 Low 标签，exe 会以 Low IL 启动（能读不能写）
         Repair-LowIntegrityLabel (Join-Path $OutDir $svc.Name)
     }
@@ -412,6 +421,16 @@ function Start-One($svc) {
         $conn = Get-NetTCPConnection -LocalPort $svc.Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
         $owner = if ($conn) { Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue } else { $null }
         if ($owner -and $owner.ProcessName -like 'bh-*') {
+            # 幂等：端口上是**我们自己记录的那个 pid** ⇒ 服务健康在跑，直接跳过。
+            # （以前一律「补杀后重试」：`bh start` 会把正在服务的进程杀掉重起，登录自启也会踩到——
+            #   正在处理的请求、内存里的会话全丢。）
+            $pf = Get-PidFile $svc.Name
+            $knownPid = 0
+            if (Test-Path $pf) { $knownPid = [int](Get-Content $pf) }
+            if ($knownPid -eq $owner.Id) {
+                Write-Host "[$($svc.Name)] 已在运行（pid=$($owner.Id), port=$($svc.Port)），跳过"
+                return
+            }
             Write-Warning "[$($svc.Name)] port $($svc.Port) 被残留进程 $($owner.ProcessName)($($owner.Id)) 占用，补杀后重试"
             Stop-Process -Id $owner.Id -Force -ErrorAction SilentlyContinue
             if (-not (Wait-PortClosed $svc.Port 10)) { Write-Warning "[$($svc.Name)] port $($svc.Port) 仍被占用，跳过"; return }
@@ -466,14 +485,24 @@ function Start-One($svc) {
     Set-Content -Path $startCmd -Value $lines -Encoding ASCII
 
     $taskName = "bh-start-$($svc.Name)-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
-    $createOut = schtasks /create /tn $taskName /tr "`"$startCmd`"" /sc once /st 00:00 /f /rl limited 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "[$($svc.Name)] schtasks create failed: $createOut" }
+    # ⚠ schtasks 会把「/ST 早于当前时间」的**警告**写到 stderr；PS 5.1 在 EAP=Stop 下 2>&1 会把它
+    # 当成终止性错误（NativeCommandError），服务直接起不来（实测 bh start 报 schtasks 警告后退出）。
+    # 必须局部放宽 EAP，只按退出码判成败。
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
-        schtasks /run /tn $taskName | Out-Null
+        $createOut = (& schtasks /create /tn $taskName /tr "`"$startCmd`"" /sc once /st 00:00 /f /rl limited 2>&1 | Out-String)
+        $createCode = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $prevEap }
+    if ($createCode -ne 0) { throw "[$($svc.Name)] schtasks create failed: $($createOut.Trim())" }
+    try {
+        $ErrorActionPreference = 'Continue'
+        $null = & schtasks /run /tn $taskName 2>&1
         Start-Sleep -Milliseconds 800
     }
     finally {
-        schtasks /delete /tn $taskName /f | Out-Null
+        $null = & schtasks /delete /tn $taskName /f 2>&1
+        $ErrorActionPreference = 'Stop'
     }
     Write-Host "[$($svc.Name)] started (scheduled task) port=$($svc.Port) log=$logFile"
 }
@@ -502,6 +531,22 @@ function Start-Services {
         else { Update-RealPid $svc; Write-Host "[$($svc.Name)] ready on $($svc.Port)" }
     }
     if ($ok) { Write-Host "[start] all services up. WebUI: http://localhost:5177" }
+    # AI 对话页：Baihua.Web 的 /open-webui 是个 iframe，后端指向 :8080（open-webui）
+    # —— 没装就不管（只提示），装了没跑就后台拉起（首启要 1-2 分钟，不阻塞 bh start）
+    $owuiExe = Join-Path $DataHome 'open-webui-venv\Scripts\open-webui.exe'
+    $owuiLauncher = Join-Path $Root 'scripts\start-open-webui.ps1'
+    if (-not (Test-Path $owuiExe)) {
+        Write-Host '[start] open-webui 未安装：AI 对话页（/open-webui）会空白（需要时 bh open-webui install）'
+    } elseif (Test-PortOpen 8080) {
+        Write-Host '[start] open-webui 已在运行（:8080）'
+    } elseif (Test-OpenWebUIStarting) {
+        # 注意顺序：-Detached 实例会一直 hold 着服务，tasks 状态常态就是 Running ——
+        # 所以必须先看端口，再看「是否启动中」，否则在跑的服务会被误判成启动中
+        Write-Host '[start] open-webui 正在启动中（后台），稍后用 bh open-webui status 确认'
+    } elseif (Test-Path $owuiLauncher) {
+        Write-Host '[start] open-webui（AI 对话页）未运行 → 后台启动（首启 1-2 分钟，bh open-webui status 查看）'
+        & $owuiLauncher -Async
+    }
 }
 
 function Stop-One($svc) {
@@ -807,6 +852,16 @@ function Get-OpenWebUIStatus {
     }
 }
 
+function Test-OpenWebUIStarting {
+    # 已经在启动途中就别再触发一次：计划任务是以「-Detached 实例 wait 服务进程」的方式持活的，
+    # `Register-ScheduledTask -Force` 会把正在启动的实例打断，等于永远启动不完（实测会卡住调用方）。
+    $task = Get-ScheduledTask -TaskName 'baihua-open-webui-start' -ErrorAction SilentlyContinue
+    if ($task -and $task.State.ToString() -eq 'Running') { return $true }
+    $procs = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like '*start-open-webui.ps1*' })
+    return ($procs.Count -gt 0)
+}
+
 # ---- doctor（本机体检）--------------------------------------------------------
 # native 用户第一次跑、或 bh start 失败时，一条命令说清「哪一环断了 + 下一步敲什么」。
 # 只读：不改服务、不装东西、不写环境变量（唯一写入是 $DataHome 下的一次性探针文件）。
@@ -953,6 +1008,18 @@ function Invoke-DoctorChecks {
         }
     }
 
+    # AI 对话页依赖：Baihua.Web 的 /open-webui 是 iframe，后端是 open-webui(:8080)
+    $owuiExe = Join-Path $DataHome 'open-webui-venv\Scripts\open-webui.exe'
+    if (-not (Test-Path $owuiExe)) {
+        Add-DoctorCheck $checks 'AI 对话页 open-webui' 'warn' '未安装（/open-webui 页会空白）' 'bh open-webui install（Python venv，几分钟）'
+    } elseif (Test-PortOpen 8080) {
+        Add-DoctorCheck $checks 'AI 对话页 open-webui' 'ok' 'RUNNING :8080' ''
+    } elseif (Test-OpenWebUIStarting) {
+        Add-DoctorCheck $checks 'AI 对话页 open-webui' 'warn' '正在启动中（首启 1-2 分钟）' '稍后 bh open-webui status 确认'
+    } else {
+        Add-DoctorCheck $checks 'AI 对话页 open-webui' 'warn' '已安装但没在运行（/open-webui 页会空白）' 'bh open-webui start（首启 1-2 分钟）'
+    }
+
     # 9) 数据目录可写（密钥、备份、日志都在这里）
     $probe = Join-Path $DataHome ('.doctor-' + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.tmp')
     try {
@@ -1028,17 +1095,269 @@ function Show-Doctor {
 }
 
 function Show-DoctorJson {
+    param($Fixes = @())
     $checks = Invoke-DoctorChecks
     $ok = @($checks | Where-Object { $_.status -eq 'ok' }).Count
     $warn = @($checks | Where-Object { $_.status -eq 'warn' }).Count
     $fail = @($checks | Where-Object { $_.status -eq 'fail' }).Count
-    [pscustomobject]@{
+    $doc = [pscustomobject]@{
         cell = 'native'
         updatedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
         ok = ($fail -eq 0)
         summary = [pscustomobject]@{ passed = $ok; warned = $warn; failed = $fail }
         checks = @($checks)
-    } | ConvertTo-Json -Depth 6
+    }
+    if (@($Fixes).Count -gt 0) { $doc | Add-Member -NotePropertyName fixes -NotePropertyValue @($Fixes) }
+    $doc | ConvertTo-Json -Depth 6
+}
+
+# ---- doctor --fix / 需要管理员的动作 -------------------------------------------
+function Test-IsElevated {
+    # 当前进程是否已是管理员（完整性标签/Startup 不需要，防火墙/服务需要）
+    try {
+        $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch { return $false }
+}
+
+# --fix 默认会弹 UAC 修需要管理员的项；脚本/无人值守场景用 --no-elevate 明确跳过（不弹窗）
+$script:NoElevate = $false
+
+function Invoke-ElevatedCmdFile([string[]]$Lines) {
+    # 需要管理员的命令：先写成临时 .cmd 再 RunAs —— 避免 -Command 里的引号被 Start-Process 拆坏。
+    # 会弹 UAC；用户取消返回 $false（预期分支，不是异常）。
+    if ($script:NoElevate) {
+        Write-Host ('[fix] --no-elevate：跳过需要管理员的操作 → ' + ($Lines | Select-Object -Last 1))
+        return $false
+    }
+    $tmp = Join-Path $env:TEMP ('bh-elev-' + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.cmd')
+    Set-Content -Path $tmp -Value $Lines -Encoding ASCII
+    try {
+        $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', $tmp) -Verb RunAs -PassThru -ErrorAction Stop
+        $null = $proc.WaitForExit(120000)
+        try { return ($proc.ExitCode -eq 0) } catch { return $false }
+    } catch {
+        Write-Warning '[fix] 提权被取消（需要管理员权限的操作已跳过）'
+        return $false
+    } finally {
+        Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-PsqlExe {
+    $psql = ''
+    foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        if ($base -and (Test-Path $base) -and -not $psql) {
+            $hit = Get-ChildItem (Join-Path $base 'PostgreSQL\*\bin\psql.exe') -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+            if ($hit) { $psql = $hit.FullName }
+        }
+    }
+    if (-not $psql) {
+        $c = Get-Command psql -ErrorAction SilentlyContinue
+        if ($c) { $psql = $c.Source }
+    }
+    return $psql
+}
+
+# ---- doctor --fix -------------------------------------------------------------
+# 只修「确定性、可回滚、不需要人判断」的项：完整性标签 / PG 服务 / 缺库 / 防火墙 /
+# 定位器 / OVMS 容器 / 构建产物。口令错误、数据目录权限这类只报不修。
+function Invoke-DoctorFix {
+    $actions = New-Object System.Collections.ArrayList
+    $pgHost = if ($env:PG_HOST) { $env:PG_HOST } else { '127.0.0.1' }
+    $pgUser = if ($env:PG_USER) { $env:PG_USER } else { 'postgres' }
+    $pgDb = if ($env:PG_DATABASE) { $env:PG_DATABASE } else { 'baihua' }
+    $isLocalPg = $pgHost -in @('127.0.0.1', 'localhost')
+
+    # 1) 产物完整性标签（Low ⇒ 进程能读不能写；普通用户即可修）
+    foreach ($svc in $Services) {
+        $dir = Join-Path $OutDir $svc.Name
+        if (-not (Test-Path $dir)) { continue }
+        if ((Get-IntegrityLabel $dir) -ne 'Low') { continue }
+        Write-Host ('[fix] 产物带 Low 完整性标签 → 改 Medium：' + $dir)
+        & icacls $dir /setintegritylevel '(OI)(CI)Medium' 2>$null | Out-Null
+        $ok = ((Get-IntegrityLabel $dir) -ne 'Low')
+        $detail = ''
+        if (-not $ok) { $detail = '仍失败：请在普通（非沙箱）终端执行 icacls' }
+        [void]$actions.Add([pscustomobject]@{ action = '完整性标签 → Medium（' + $svc.Name + '）'; ok = $ok; detail = $detail })
+        if ($ok) { Write-Host '[fix]   ok' -ForegroundColor Green } else { Write-Warning '[fix]   失败' }
+    }
+
+    # 2) PostgreSQL 服务没运行 → 启动（必要时提权）
+    $stoppedPg = @(Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Where-Object { $_.Status -ne 'Running' })
+    foreach ($pgSvc in $stoppedPg) {
+        Write-Host ('[fix] PostgreSQL 服务未运行 → 启动 ' + $pgSvc.Name)
+        $ok = $false
+        try { Start-Service -Name $pgSvc.Name -ErrorAction Stop; $ok = $true } catch { $ok = $false }
+        if (-not $ok) { $ok = Invoke-ElevatedCmdFile @('@echo off', 'net start ' + $pgSvc.Name) }
+        if (-not $ok) {
+            $s = Get-Service -Name $pgSvc.Name -ErrorAction SilentlyContinue
+            if ($s -and $s.Status -eq 'Running') { $ok = $true }
+        }
+        $detail = ''
+        if (-not $ok) { $detail = '需要管理员：以管理员运行 net start ' + $pgSvc.Name }
+        [void]$actions.Add([pscustomobject]@{ action = '启动 PostgreSQL 服务 ' + $pgSvc.Name; ok = $ok; detail = $detail })
+        if ($ok) { Write-Host '[fix]   ok' -ForegroundColor Green }
+    }
+
+    # 3) 库不存在 → 建库（口令错就不动，交给 doctor 报）
+    $psql = Get-PsqlExe
+    if ($psql -and $isLocalPg -and (Test-PortOpen 5432)) {
+        $prevPw = $env:PGPASSWORD
+        $env:PGPASSWORD = $env:PG_PASSWORD
+        try {
+            $probe = & $psql -h $pgHost -p 5432 -U $pgUser -d $pgDb -w -tAc 'select 1' 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0 -and $probe -match 'does not exist') {
+                Write-Host ('[fix] 库 ' + $pgDb + ' 不存在 → 创建')
+                $null = & $psql -h $pgHost -p 5432 -U $pgUser -d postgres -w -tAc ('CREATE DATABASE "' + $pgDb + '"') 2>&1
+                $ok = ($LASTEXITCODE -eq 0)
+                $detail = ''
+                if (-not $ok) { $detail = '建库失败：确认 PG_PASSWORD 有建库权限，或手动 psql -U ' + $pgUser + ' -d postgres 建库' }
+                [void]$actions.Add([pscustomobject]@{ action = '创建数据库 ' + $pgDb; ok = $ok; detail = $detail })
+                if ($ok) { Write-Host '[fix]   ok' -ForegroundColor Green }
+            }
+        } finally { $env:PGPASSWORD = $prevPw }
+    }
+
+    # 4) 防火墙 TCP 8788（局域网/手机入口；需要管理员）
+    $null = netsh advfirewall firewall show rule name='Baihua Server 8788' 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host '[fix] 防火墙未放行 TCP 8788 → 添加规则（可能弹 UAC）'
+        $ok = Invoke-ElevatedCmdFile @('@echo off', 'netsh advfirewall firewall add rule name="Baihua Server 8788" dir=in action=allow protocol=TCP localport=8788')
+        if ($ok) {
+            $null = netsh advfirewall firewall show rule name='Baihua Server 8788' 2>$null
+            $ok = ($LASTEXITCODE -eq 0)
+        }
+        $detail = ''
+        if (-not $ok) { $detail = '需要管理员：netsh advfirewall firewall add rule name="Baihua Server 8788" dir=in action=allow protocol=TCP localport=8788' }
+        [void]$actions.Add([pscustomobject]@{ action = '放行防火墙 TCP 8788'; ok = $ok; detail = $detail })
+        if ($ok) { Write-Host '[fix]   ok' -ForegroundColor Green }
+    }
+
+    # 5) bh 定位器（不在 PATH 时新终端里没有 bh 命令）
+    $binDir = Join-Path $HOME '.local\bin'
+    $locator = Join-Path $binDir 'bh.cmd'
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $onPath = @(($userPath -split ';') | Where-Object { $_ -and ($_.TrimEnd('\') -ieq $binDir) })
+    if (-not (Test-Path $locator) -or $onPath.Count -eq 0) {
+        $installer = Join-Path $Root 'tools\bh\bh.ps1'
+        if (Test-Path $installer) {
+            Write-Host '[fix] 定位器缺失或不在 PATH → 安装（bh install）'
+            & $installer install | Out-Null
+            $ok = (Test-Path $locator)
+            [void]$actions.Add([pscustomobject]@{ action = '安装 bh 定位器并写入用户 PATH'; ok = $ok; detail = '' })
+            if ($ok) { Write-Host '[fix]   ok（新开的终端才生效）' -ForegroundColor Green }
+        }
+    }
+
+    # 6) OVMS 容器停着 → 拉起（只在容器已存在的前提下；没装交给 doctor 的 WARN）
+    $ov = Get-OvmsState -SkipModels
+    if ($ov.Engine -eq 'wslc' -and $ov.ContainerState -ne 'running') {
+        Write-Host ('[fix] OVMS 容器 ' + $ov.Container + ' 停着 → 启动')
+        Start-Ovms | Out-Null
+        $ov2 = Get-OvmsState -SkipModels
+        [void]$actions.Add([pscustomobject]@{ action = '启动 OVMS 容器 ' + $ov.Container; ok = $ov2.PortOpen; detail = '' })
+    }
+
+    # 7) AI 对话页（open-webui）装了没跑 → 后台拉起（不阻塞，首启慢）
+    $owuiExe = Join-Path $DataHome 'open-webui-venv\Scripts\open-webui.exe'
+    $owuiLauncher = Join-Path $Root 'scripts\start-open-webui.ps1'
+    if ((Test-Path $owuiExe) -and -not (Test-PortOpen 8080) -and -not (Test-OpenWebUIStarting) -and (Test-Path $owuiLauncher)) {
+        Write-Host '[fix] open-webui（AI 对话页）没在运行 → 后台启动'
+        & $owuiLauncher -Async
+        [void]$actions.Add([pscustomobject]@{ action = '启动 open-webui（AI 对话页）'; ok = $true; detail = '后台启动中，1-2 分钟后 bh open-webui status 确认' })
+    }
+
+    # 8) 构建产物缺失 → bh build（最慢，放最后）
+    $missing = @()
+    foreach ($svc in $Services) {
+        $exe = Join-Path $OutDir ($svc.Name + '\' + $svc.Exe)
+        if (-not (Test-Path $exe)) { $missing += $svc.Name }
+    }
+    if ($missing.Count -gt 0) {
+        Write-Host ('[fix] 缺少构建产物（' + ($missing -join ', ') + '）→ 执行 bh build（首次要几分钟）')
+        # build 会先停掉在跑的服务（否则 exe 被占用）；记下来，构建成功后原样拉回去
+        $wereUp = @()
+        foreach ($svc in $Services) { if (Test-PortOpen $svc.Port) { $wereUp += $svc.Name } }
+        try {
+            Invoke-Build
+            $ok = $true
+            foreach ($svc in $Services) {
+                if (-not (Test-Path (Join-Path $OutDir ($svc.Name + '\' + $svc.Exe)))) { $ok = $false }
+            }
+            [void]$actions.Add([pscustomobject]@{ action = '构建产物（dotnet publish）'; ok = $ok; detail = '' })
+            if ($ok -and $wereUp.Count -gt 0) {
+                Write-Host ('[fix] 构建前在跑的服务（' + ($wereUp -join ', ') + '）→ 重新拉起')
+                Start-Services
+            }
+        } catch {
+            [void]$actions.Add([pscustomobject]@{ action = '构建产物（dotnet publish）'; ok = $false; detail = $_.Exception.Message })
+        }
+    }
+
+    return ,$actions
+}
+
+# ---- 登录自启（用户级 Startup 目录：不需要管理员，也不碰系统服务）----------------
+$StartupDir = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup'
+$AutostartFile = Join-Path $StartupDir 'baihua-native.cmd'
+$OvmsStartupFile = Join-Path $StartupDir 'ovms-wslc.cmd'
+
+function Get-BhShimPath {
+    # 优先已安装的定位器（仓库搬家/改名都不失效），否则用仓库内入口
+    $loc = Join-Path $HOME '.local\bin\bh.cmd'
+    if (Test-Path $loc) { return $loc }
+    return (Join-Path $Root 'tools\bh\bh.cmd')
+}
+
+function Show-Autostart {
+    Write-Host '[autostart] 百花 native 登录自启（用户级 Startup 目录，不需要管理员）'
+    if (Test-Path $AutostartFile) {
+        Write-Host '[autostart] 状态: 已启用' -ForegroundColor Green
+        Write-Host ('[autostart] 文件: ' + $AutostartFile)
+        Write-Host '[autostart] 动作: 登录时执行 bh start（幂等：已在跑的服务不会重复起）'
+    } else {
+        Write-Host '[autostart] 状态: 未启用' -ForegroundColor DarkGray
+        Write-Host '[autostart] 开启: bh autostart on'
+    }
+    if (Test-Path (Join-Path $HOME '.local\bin\bh.cmd')) {
+        Write-Host ('[autostart] 入口: ' + (Join-Path $HOME '.local\bin\bh.cmd') + '（已安装定位器，仓库搬家不影响）')
+    } else {
+        Write-Host ('[autostart] 入口: ' + (Join-Path $Root 'tools\bh\bh.cmd') + '（仓库内入口；仓库搬家后需重新 bh autostart on）')
+    }
+    if (Test-Path $OvmsStartupFile) {
+        Write-Host '[autostart] OVMS: 有自己的自启项 ovms-wslc.cmd（模型服务独立于百花本体）'
+    } else {
+        Write-Host '[autostart] OVMS: 没有开机自启项（需要时参考 %BAIHUA_HOME%\ovms\README.md）'
+    }
+    Write-Host '[autostart] 说明: 只启动 out\native 下已构建的产物；改了代码要先 bh build；日志见 bh logs server|webui'
+}
+
+function Enable-Autostart {
+    if (-not (Test-Path $StartupDir)) { New-Item -ItemType Directory -Force -Path $StartupDir | Out-Null }
+    $shim = Get-BhShimPath
+    # .cmd 必须纯 ASCII（cmd 按 ANSI 读）：注释也用英文
+    $lines = @(
+        '@echo off',
+        'rem baihua native autostart - generated by: bh autostart on',
+        'rem action: bh start (idempotent). disable with: bh autostart off',
+        ('start "baihua" /min "' + $shim + '" start')
+    )
+    Set-Content -Path $AutostartFile -Value $lines -Encoding ASCII
+    Write-Host ('[autostart] 已启用: ' + $AutostartFile) -ForegroundColor Green
+    if (-not (Test-Path (Join-Path $HOME '.local\bin\bh.cmd'))) {
+        Write-Warning '[autostart] 用的是仓库内入口；建议先 bh install（装定位器），仓库搬家后才不用重开自启'
+    }
+    Write-Host '[autostart] 下次登录生效（现在想看效果：bh start）'
+}
+
+function Disable-Autostart {
+    if (Test-Path $AutostartFile) {
+        Remove-Item $AutostartFile -Force
+        Write-Host '[autostart] 已关闭（删除 Startup 里的 baihua-native.cmd）' -ForegroundColor Green
+    } else {
+        Write-Host '[autostart] 本来就是关闭状态' -ForegroundColor DarkGray
+    }
 }
 
 switch ($Command.ToLower()) {
@@ -1123,9 +1442,37 @@ switch ($Command.ToLower()) {
     'update'    { Update-Services }
     'status'    { if ($Arg1 -eq '--json') { Show-StatusJson } else { Show-Status } }
     'doctor'    {
-        # 体检失败（有 FAIL 项）时退出码 1，便于脚本/CI 判断
-        if ($Arg1 -eq '--json') { Show-DoctorJson }
-        else { $failCount = Show-Doctor; if ($failCount -gt 0) { exit 1 } }
+        # --fix 先自动修「可确定修的项」，再照常体检（体检失败 => 退出码 1，便于脚本/CI 判断）
+        $docArgs = @(Get-ServiceArgs)
+        $asJson = ($docArgs -contains '--json')
+        $doFix = ($docArgs -contains '--fix')
+        $script:NoElevate = ($docArgs -contains '--no-elevate') -or ($docArgs -contains '--no-uac')
+        $fixes = @()
+        if ($doFix) {
+            if ($asJson) {
+                # --json 时 stdout 必须是纯 JSON：Write-Host/Write-Warning 走 info/warning 流（6/3），
+                # 调用方 `*>&1` 会把它们混进来，直接丢弃（修复结果在 JSON 的 fixes 字段里）
+                $fixes = Invoke-DoctorFix 3>$null 6>$null
+            } else {
+                $fixes = Invoke-DoctorFix
+                Write-Host ''
+            }
+        }
+        if ($asJson) { Show-DoctorJson -Fixes $fixes }
+        else {
+            $failCount = Show-Doctor
+            if ($failCount -gt 0) { exit 1 }
+        }
+    }
+    'autostart' {
+        # 用户级 Startup 目录（不需要管理员）；on=写 baihua-native.cmd，登录时跑 bh start
+        switch ($Arg1.ToLower()) {
+            'on'      { Enable-Autostart }
+            'enable'  { Enable-Autostart }
+            'off'     { Disable-Autostart }
+            'disable' { Disable-Autostart }
+            default   { Show-Autostart }
+        }
     }
     'logs'      {
         # 支持: bh logs server 100 / bh logs server -f（跟随）/ bh logs server -e（stderr 日志）

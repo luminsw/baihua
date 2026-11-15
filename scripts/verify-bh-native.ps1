@@ -158,6 +158,23 @@ Test-Case 'bh ovms status 退出码 0 且报告 OVMS 形态' {
     elseif ($ovms.Output -notmatch '形态') { '输出缺少「形态」' }
 }
 
+$auto = Invoke-Bh @('autostart', 'status')
+Test-Case 'bh autostart status 退出码 0 且报告启用状态与入口' {
+    if ($auto.ExitCode -ne 0) { "exit=$($auto.ExitCode)" }
+    elseif ($auto.Output -notmatch '状态') { '输出缺少「状态」' }
+    elseif ($auto.Output -notmatch '入口') { '输出缺少「入口」' }
+}
+
+$fix = Invoke-Bh @('doctor', '--fix', '--no-elevate', '--json')
+Test-Case 'bh doctor --fix --no-elevate --json 合法且带 checks（不弹 UAC、不改口令）' {
+    if ($fix.ExitCode -ne 0) { "exit=$($fix.ExitCode)" }
+    else {
+        try { $f = $fix.Output | ConvertFrom-Json } catch { return "JSON 解析失败：$($_.Exception.Message)" }
+        if ($f.cell -ne 'native') { return "cell=$($f.cell)，期望 native" }
+        if (@($f.checks).Count -lt 8) { return 'checks 太少' }
+    }
+}
+
 $k8s = Invoke-Bh @('k8s', 'status')
 Test-Case 'bh k8s 旧写法失败（exit 1）并给出退役指引' {
     if ($k8s.ExitCode -ne 1) { "exit=$($k8s.ExitCode)，期望 1" }

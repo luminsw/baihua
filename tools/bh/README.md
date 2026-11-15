@@ -65,6 +65,24 @@ bh status                     # 期望：server 8788 / webui 5177 均 RUNNING
 > （退出码 0 = 没有 FAIL 项）。`bh start` 也会在 PostgreSQL 不可达/口令未设时先警告，
 > 不会让你干等 60s 只看到「后端起不来」。
 
+### 一键自动修：`bh doctor --fix`
+
+只修「确定性、可回滚、不需要人判断」的项：产物完整性标签（Low → Medium）、PostgreSQL 服务启动、缺库建库、
+防火墙 8788、bh 定位器、OVMS 容器拉起，以及产物缺失时跑 `bh build`（构建前在跑的服务会在构建完原样拉回）。
+需要管理员的两项（防火墙 / 系统服务）会弹 UAC；无人值守场景用 `--no-elevate` 明确跳过（不弹窗）。
+口令错误、数据目录权限这类只报不修 —— 修了也不会对。
+
+### 登录自启：`bh autostart`
+
+```powershell
+bh autostart on       # 往 %APPDATA%\...\Startup 写 baihua-native.cmd（登录时 bh start，幂等）
+bh autostart status   # 是否启用 / 用的哪个入口 / OVMS 有没有自己的自启项
+bh autostart off      # 删掉自启文件（不影响正在跑的服务）
+```
+
+要点：用户级 Startup 目录 ⇒ **不需要管理员**，也不注册系统服务；`bh start` 现在幂等（端口上是我们记录的
+那个 pid 就跳过，不会再杀正在服务的进程）；自启只起 `out\native` 下已构建的产物，改了代码先 `bh build`。
+
 ### k3s 形态（已从 Windows 退役）
 
 k3s 需要 Linux 运行时（Windows 上曾经 WSL2 转发，**本机 WSL 已于 2026-10-27 卸载**）。
@@ -80,7 +98,8 @@ Linux 机器不受影响：`bh`（= k3s 形态）照常可用。
 ```
 bh                           状态总览（= bh status）
 bh <command> [args]           native 命令（Windows，默认形态）
-bh doctor [--json]            本机体检（.NET / PostgreSQL 登录 / 产物 / 端口 / OVMS）
+bh doctor [--json] [--fix]    本机体检；--fix 自动修可修的项（不改口令、不碰权限问题）
+bh autostart [on|off|status]  登录自启（用户级 Startup 目录，登录时执行 bh start）
 bh ovms [status|start|stop|restart|logs]   本地模型服务 OVMS(:8000)
 bh wslc <command> [args]      wslc 命令（Windows，WSL 自带容器 CLI，全容器形态）
 bh lan [on|off|status]        局域网入口（宿主 :80→:8788 portproxy，两种形态通用）
@@ -99,7 +118,8 @@ bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
 | `bh update` | git pull + build + start + 防火墙放行 |
 | `bh status` | 状态总览（端口/进程/OVMS 形态/访问地址，带颜色）；`bh` 不带参数即此命令 |
 | `bh status --json` | JSON 格式（供 DSH 插件；`openvino` 条目含 `engine`/`container`） |
-| `bh doctor [--json]` | 本机体检：.NET / PostgreSQL 登录 / 产物 / 端口 / OVMS / PATH，逐项给修复命令 |
+| `bh doctor [--json] [--fix]` | 本机体检：.NET / PostgreSQL 登录 / 产物 / 端口 / OVMS / PATH，逐项给修复命令；`--fix` 自动修可修的项 |
+| `bh autostart [on\|off\|status]` | 登录自启：往用户 Startup 目录写 `baihua-native.cmd`（登录时 `bh start`，幂等） |
 | `bh logs <svc> [n] [-f] [-e]` | tail 日志（默认 50 行）；`-f` 跟随，`-e` 看 stderr 日志 |
 | `bh ovms [status\|start\|stop\|restart\|logs [n]]` | 本地模型服务 OVMS(:8000)：自动识别 wslc 容器 / Windows 服务 / 外部进程 |
 | `bh dashboard` | 打开 WebUI（cli-token 自动登录） |
@@ -169,7 +189,7 @@ bh ovms logs 100    # wslc logs --tail 100 ovms-gpu
 ## 自检（回归）
 
 ```powershell
-pwsh -File scripts/verify-bh-native.ps1          # native：bh-k3s 残留 / docker·kubectl·WSL 发行版依赖 / status(--json) / doctor(--json) / ovms status / 裸 bh / 旧写法提示
+pwsh -File scripts/verify-bh-native.ps1          # native：bh-k3s 残留 / docker·kubectl·WSL 发行版依赖 / status(--json) / doctor(--json) / ovms status / autostart status / 裸 bh / 旧写法提示
 pwsh -File scripts/verify-bh-wslc.ps1            # wslc：入口/dispatch/只用 wslc 的静态检查（无 wslc 时跳过运行时项）
 pwsh -File scripts/verify-bh-native.ps1 -Quiet   # 只输出失败与汇总
 ```

@@ -15,7 +15,9 @@ param(
     [switch]$Status,
     [switch]$Install,
     # 仅供计划任务内部自调用（见文件头说明）：真正的启动实例，不再二次脱离
-    [switch]$Detached
+    [switch]$Detached,
+    # 只把计划任务拉起来就返回，不等健康检查（给 bh start / doctor --fix 用：首启要 1-2 分钟）
+    [switch]$Async
 )
 
 $ErrorActionPreference = 'Stop'
@@ -140,6 +142,10 @@ function Start-OpenWebUIDetached {
         Start-ScheduledTask -TaskName $taskName
     } catch {
         Write-Error ("[open-webui] 计划任务注册/启动失败：" + $_.Exception.Message)
+        return
+    }
+    if ($Async) {
+        Write-Host '[open-webui] 已在后台启动（不等就绪；首次导入约 1-2 分钟，用 bh open-webui status 查看）'
         return
     }
     Write-Host '[open-webui] waiting for health ...'
