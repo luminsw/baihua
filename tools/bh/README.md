@@ -247,4 +247,6 @@ sudo bash tools/bh/bh.sh install       # root → /usr/local/bin（在 sudo secu
 - **`wslc list --format json` 的输出不是合法 JSON**：`Command` 字段被截断成含孤立代理字符的字符串，`ConvertFrom-Json` 必抛错。判断容器状态用 `wslc container inspect <name>` 的文本（正则取 `"Status": "running"`），别解析 list 的 JSON。
 - **端口探测不要用 `TcpClient.Connect`**：有防火墙/WFP 过滤时，对未监听的回环端口不返回 RST 而是等到超时（实测 ~2.05s/次），`bh status` 探 4 个端口会卡 8s。改用 `GetIPGlobalProperties().GetActiveTcpListeners()` 枚举（~30ms，native 与 wslc 两处都已改）。
 - **`bh` 不带参数 = 状态总览**：旧 help 写「打开管理面板」但实现是打印 help（不一致）。现在统一为 `status`——不会突然弹浏览器，只读且附带下一步提示。
+- **服务启动是静默的**（2026-11-15）：计划任务在用户会话里直接起控制台程序会分配一个**可见**控制台窗口，而 `start-<svc>.cmd` 是同步等 exe 的，窗口就挂在服务整个生命周期（两个服务 = 两个黑框）。现在任务动作改成 `wscript.exe //B //NoLogo start-<svc>.vbs`，`Run(cmd, 0, True)` 隐藏窗口并继续持有进程。VBScript 已被微软列入弃用路线：`wscript.exe` 缺失时自动退回原来的可见 cmd 启动（功能优先）。
+- **关掉调用方终端不会杀掉服务**：服务不是终端的子进程（父链是 计划任务 → wscript → cmd → exe），而且 cmd 的隐藏控制台与你的终端无关。反过来说，`Ctrl+C`/关窗口只影响 `bh` 命令本身。
 - `bh doctor` 里的 PostgreSQL 登录检查必须带 `psql -w`（never prompt）：否则口令为空时 psql 会等 stdin，体检直接挂住。
