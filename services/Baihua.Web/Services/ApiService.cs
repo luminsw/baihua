@@ -134,6 +134,9 @@ namespace Baihua.Web.Services
         // 算力池（局域网算力总览与选用）
         Task<ComputePoolViewDto?> GetComputePoolAsync();
         Task<bool> RefreshComputePoolAsync();
+
+    /// <summary>一键把本机 OVMS 登记为本地算力提供方（Tier2）。</summary>
+    Task<(bool ok, string message)> RegisterLocalOvmsAsync();
         Task<(bool ok, string? error)> SelectComputeModelAsync(string serverId, string modelName);
         Task<BenchmarkRunResultDto?> RunComputeBenchmarkAsync(string serverId, string modelName);
         Task<(bool ok, string? error)> PullComputeModelAsync(string serverId, string modelName);

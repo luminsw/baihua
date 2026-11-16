@@ -440,6 +440,86 @@ public class ComputePoolService : IHostedService, IDisposable
         return (true, null);
     }
 
+    /// <summary>
+    /// 一键把本机 OVMS 登记为本地算力提供方（Tier2，providerId=local-ovms）。
+    /// 探测 {OpenVinoOms__BaseUrl}/v1/models，把返回的模型写进 Provider 配置；幂等。
+    /// 用于算力池页「本机暂无对外模型」时的一键登记（不自动 seed，避免用户没打算共享时偷写配置）。
+    /// </summary>
+    public async Task<(bool Ok, string Message)> RegisterLocalOvmsAsync(CancellationToken ct = default)
+    {
+        var baseUrl = (_configuration["OpenVinoOms__BaseUrl"] ?? "http://127.0.0.1:8000").TrimEnd('/');
+        var openAiBase = baseUrl.EndsWith("/v1", StringComparison.OrdinalIgnoreCase) ? baseUrl : baseUrl + "/v1";
+
+        var models = new List<AiModelConfig>();
+        try
+        {
+            var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(5);
+            var json = await http.GetStringAsync(openAiBase + "/models", ct);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in data.EnumerateArray())
+                {
+                    var id = item.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                    if (string.IsNullOrWhiteSpace(id)) continue;
+                    var isEmbedding = id.Contains("embedding", StringComparison.OrdinalIgnoreCase);
+                    models.Add(new AiModelConfig
+                    {
+                        Name = id,
+                        IsMain = false,
+                        Category = isEmbedding ? "embedding" : "chat"
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[ComputePool] 探测本机 OVMS 失败：{Url}", openAiBase);
+            return (false, $"访问 {openAiBase}/models 失败：{ex.Message}（OVMS 没起？用 bh ovms status 看）");
+        }
+
+        models = models.GroupBy(m => m.Name).Select(g => g.First()).ToList();
+        if (models.Count == 0)
+            return (false, $"OVMS 在 {openAiBase} 没有返回任何模型（检查容器里的 config 是否注册了模型）");
+
+        // 第一个非 embedding 模型设为主模型（聊天默认用它）
+        var main = models.FirstOrDefault(m => m.Category != "embedding");
+        if (main != null) main.IsMain = true;
+
+        const string providerId = "local-ovms";
+        var providerName = "本地 OVMS";
+        var existing = _aiConfig.GetProvider(providerId);
+        if (existing != null)
+        {
+            var sameModels = existing.Models.Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal)
+                .SequenceEqual(models.Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal));
+            if (sameModels
+                && string.Equals(existing.AiBaseUrl?.TrimEnd('/'), openAiBase, StringComparison.OrdinalIgnoreCase)
+                && existing.Tier == AiModelTier.Tier2_Local)
+            {
+                return (true, $"本机 OVMS 已登记（{models.Count} 个模型），无需重复登记");
+            }
+        }
+
+        var setting = new AiProviderSetting
+        {
+            ProviderId = providerId,
+            ProviderName = providerName,
+            BaseUrl = openAiBase,
+            ModelsJson = AiConfigService.SerializeModels(models),
+            IsMain = false,
+            IsEnabled = true,
+            Tier = (int)AiModelTier.Tier2_Local,
+            SortOrder = 10
+        };
+        // 写收口：API Key 的加解密只在 AI 模块内部；OVMS 不校验 key，这里不写密钥
+        _aiConfig.SaveProvider(setting, null);
+        _aiSettings.ClearAiProvidersCache();
+        _logger.LogInformation("[ComputePool] 已登记本机 OVMS {Url}（{Count} 个模型）", openAiBase, models.Count);
+        return (true, $"已登记本地 OVMS：{string.Join(", ", models.Select(m => m.Name))}");
+    }
+
     private async Task<ComputePoolNodeDto> GetLocalNodeAsync()
     {
         var settings = _serverAddress.GetSettings();

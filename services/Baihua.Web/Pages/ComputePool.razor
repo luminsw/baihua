@@ -79,7 +79,21 @@ else
 
                 @if (node.Providers.Count == 0)
                 {
-                    <div class="text-secondary small p-2">该节点暂无对外模型（需在对方配置 AI 提供方）</div>
+                    @if (node.IsLocal)
+                    {
+                        <div class="text-secondary small p-2">
+                            本机暂无对外模型：还没把本地模型登记为算力提供方（Tier 1/2）。
+                            <button class="btn btn-sm btn-outline-primary ms-2" @onclick="RegisterLocalOvmsAsync" disabled="@_busy"
+                                    title="探测本机 OVMS（OpenVinoOms__BaseUrl，默认 http://127.0.0.1:8000）的 /v1/models，把模型登记为本地提供方">
+                                一键登记本地 OVMS
+                            </button>
+                            <span class="ms-2">或到「AI 设置」手动添加提供方</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-secondary small p-2">该节点暂无对外模型（需在对方配置 AI 提供方）</div>
+                    }
                 }
                 else
                 {
@@ -277,6 +291,22 @@ else
         }
         else if (_error == null)
             _error = "加载算力池失败";
+    }
+
+    /// <summary>一键登记本机 OVMS：探测 /v1/models 后写成 Tier2 提供方（local-ovms）。</summary>
+    private async Task RegisterLocalOvmsAsync()
+    {
+        _busy = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            var (ok, message) = await ApiService.RegisterLocalOvmsAsync();
+            if (ok) { _message = message; await LoadAsync(); }
+            else { _error = message; }
+            StateHasChanged();
+        }
+        finally { _busy = false; }
     }
 
     private async Task RefreshAsync()

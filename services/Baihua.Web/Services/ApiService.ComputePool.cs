@@ -38,6 +38,33 @@ public partial class ApiService
         }
     }
 
+    /// <summary>一键把本机 OVMS 登记为本地算力提供方（探测 OpenVinoOms__BaseUrl 的 /v1/models）。</summary>
+    public async Task<(bool ok, string message)> RegisterLocalOvmsAsync()
+    {
+        try
+        {
+            using var quick = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var response = await _httpClient.PostAsync("/api/compute-pool/register-local-ovms", null, quick.Token);
+            var body = await response.Content.ReadAsStringAsync(quick.Token);
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                if (response.IsSuccessStatusCode)
+                    return (true, doc.RootElement.TryGetProperty("message", out var m) ? (m.GetString() ?? "已登记") : "已登记");
+                return (false, doc.RootElement.TryGetProperty("error", out var e) ? (e.GetString() ?? body) : body);
+            }
+            catch
+            {
+                return (response.IsSuccessStatusCode, body);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "登记本地 OVMS 失败");
+            return (false, ex.Message);
+        }
+    }
+
     /// <summary>选用某个节点+模型为本机主 AI 提供方。</summary>
     public async Task<(bool ok, string? error)> SelectComputeModelAsync(string serverId, string modelName)
     {

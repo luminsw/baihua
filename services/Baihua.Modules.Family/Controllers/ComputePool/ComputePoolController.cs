@@ -28,6 +28,19 @@ public class ComputePoolController : ControllerBase
         return Ok(await _poolService.GetPoolViewAsync(ct));
     }
 
+    /// <summary>
+    /// 一键把本机 OVMS 登记为本地算力提供方（Tier2）。
+    /// 探 OpenVinoOms__BaseUrl（默认 http://127.0.0.1:8000）的 /v1/models，把模型写进 Provider 配置。
+    /// </summary>
+    [HttpPost("register-local-ovms")]
+    public async Task<IActionResult> RegisterLocalOvms(CancellationToken ct)
+    {
+        var (ok, message) = await _poolService.RegisterLocalOvmsAsync(ct);
+        if (!ok) return BadRequest(new { error = message });
+        await _poolService.RefreshAsync(ct);
+        return Ok(new { success = true, message });
+    }
+
     /// <summary>立即刷新对端能力（可选，正常每 60s 自动刷新）。</summary>
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(CancellationToken ct)
