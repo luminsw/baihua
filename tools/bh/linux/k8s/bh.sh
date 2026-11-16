@@ -25,6 +25,7 @@
 #   dashboard   open browser with cli-token auto-login
 #   openvino <on|off|status>   按需启停 Intel GPU 相关服务（10-intel-gpu-plugin + bh-openvino）
 #                              deploy 时自动探测：无 Intel GPU 则跳过；可用 BAIHUA_ENABLE_OPENVINO=1/0 强制
+#   doctor      只读体检：k3s/命名空间/Deployment/PVC/端口/AI 组件，逐项给下一步命令
 #   help        this help
 set -u
 
@@ -817,6 +818,99 @@ annotate_commit() {
     fi
 }
 
+# ---- doctor：只读体检（与 Windows 侧 bh doctor 对齐的输出格式） -------------------
+# 目的：一条命令说清「k3s/部署/端口/AI 组件哪一环有问题 + 下一步敲什么」。
+doctor_cmd() {
+    local okc=0 warn=0 fail=0
+    _dok()  { okc=$((okc+1));  printf '[ OK ] %s\n' "$1"; }
+    _dwarn(){ warn=$((warn+1)); printf '[WARN] %s\n' "$1"; [ -n "${2:-}" ] && printf '       -> %s\n' "$2"; }
+    _dfail(){ fail=$((fail+1)); printf '[FAIL] %s\n' "$1"; [ -n "${2:-}" ] && printf '       -> %s\n' "$2"; return 0; }
+
+    printf 'bh doctor —— k3s 形态体检（Linux）\n\n'
+
+    # 1) k3s 运行时
+    if command -v k3s >/dev/null 2>&1; then
+        _dok "k3s: $(k3s --version 2>/dev/null | head -1)"
+    else
+        _dfail "没有找到 k3s 可执行文件" "按 k8s/README.md 安装（curl -sfL https://get.k3s.io | sh -）"
+    fi
+    if systemctl is-active --quiet k3s 2>/dev/null; then
+        _dok 'k3s.service: active'
+        if systemctl is-enabled --quiet k3s 2>/dev/null; then
+            _dok 'k3s 开机自启: enabled（Linux 侧不需要 autostart 子命令）'
+        else
+            _dwarn 'k3s 未设置开机自启' 'sudo systemctl enable k3s'
+        fi
+    else
+        _dfail 'k3s.service 未运行' 'sudo systemctl start k3s'
+    fi
+
+    # 2) API 可达 + namespace
+    if ! k get --raw /version >/dev/null 2>&1; then
+        _dfail 'kubectl 连不上 k3s API（kubeconfig 权限？）' 'sudo chmod 644 /etc/rancher/k3s/k3s.yaml 或 sudo bh doctor'
+    elif k get namespace "$NAMESPACE" >/dev/null 2>&1; then
+        _dok "namespace $NAMESPACE 存在"
+    else
+        _dwarn "namespace $NAMESPACE 不存在（还没部署）" 'bh deploy'
+        printf '\n体检完成：%s 项通过 / %s 项警告 / %s 项失败\n' "$okc" "$warn" "$fail"
+        [ "$fail" -gt 0 ] && return 1 || return 0
+    fi
+
+    # 3) Deployment 就绪（按服务逐个看）
+    local svc ready reps
+    for svc in bh-server bh-webui bh-postgres bh-open-webui bh-openvino; do
+        if ! k -n "$NAMESPACE" get deploy "$svc" >/dev/null 2>&1; then
+            _dwarn "deploy/$svc 不存在" 'bh deploy（openvino 由 deploy 自动探测是否启用）'
+            continue
+        fi
+        ready="$(k -n "$NAMESPACE" get deploy "$svc" -o jsonpath='{.status.readyReplicas}' 2>/dev/null)"
+        reps="$(k -n "$NAMESPACE" get deploy "$svc" -o jsonpath='{.spec.replicas}' 2>/dev/null)"
+        ready=${ready:-0}; reps=${reps:-0}
+        if [ "$reps" = "0" ]; then
+            _dwarn "deploy/$svc 已停（replicas=0）" "bh start ${svc#bh-}"
+        elif [ "$ready" -ge "$reps" ] 2>/dev/null; then
+            _dok "deploy/$svc ready $ready/$reps"
+        else
+            _dfail "deploy/$svc 未就绪（$ready/$reps）" "bh logs ${svc#bh-} 100"
+        fi
+    done
+
+    # 4) PVC
+    local pvc_phases
+    pvc_phases="$(k -n "$NAMESPACE" get pvc -o jsonpath='{range .items[*]}{.metadata.name}={.status.phase}{"\n"}{end}' 2>/dev/null)"
+    if [ -z "$pvc_phases" ]; then
+        _dwarn '没有 PVC' 'bh deploy 会创建（数据在 hostPath，别手删）'
+    elif printf '%s' "$pvc_phases" | grep -qv '=Bound'; then
+        _dfail "有 PVC 未 Bound: $(printf '%s' "$pvc_phases" | grep -v '=Bound' | tr '\n' ' ')" 'kubectl -n baihua describe pvc 看原因'
+    else
+        _dok 'PVC 全部 Bound'
+    fi
+
+    # 5) 端口（8788/5177 由 Traefik 暴露，:80 是统一入口）
+    local port
+    for port in 80 8788 5177; do
+        if timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" >/dev/null 2>&1; then
+            _dok "端口 $port 可连"
+        else
+            _dwarn "端口 $port 不通" "kubectl -n $NAMESPACE get svc；Traefik/LoadBalancer 是否就绪"
+        fi
+    done
+
+    # 6) AI 组件（可选）
+    if k -n "$NAMESPACE" get pods -l app=bh-openvino --no-headers 2>/dev/null | grep -q Running; then
+        _dok 'OVMS pod Running（:8000）'
+    else
+        _dwarn 'OVMS pod 未运行（AI 功能降级）' 'bh openvino status / bh openvino on'
+    fi
+    if k -n "$NAMESPACE" get pods -l app=bh-open-webui --no-headers 2>/dev/null | grep -q Running; then
+        _dok 'open-webui pod Running（AI 对话页后端）'
+    else
+        _dwarn 'open-webui pod 未运行（/open-webui 页会空白）' 'bh start open-webui'
+    fi
+
+    printf '\n体检完成：%s 项通过 / %s 项警告 / %s 项失败\n' "$okc" "$warn" "$fail"
+    [ "$fail" -gt 0 ] && return 1 || return 0
+}
 case "${1:-help}" in
     build)     build_all "${@:2}" ;;
     deploy)    deploy_all ;;
@@ -827,13 +921,23 @@ case "${1:-help}" in
     start|stop|restart) scale_service "${1}" "${2:-}" ;;
     annotate)  annotate_commit "${2:-}" ;;
     openvino)  openvino_cmd "${2:-status}" ;;
+    doctor)    doctor_cmd ;;
     logs)      show_logs "${2:-bh-server}" "${3:-50}" ;;
     destroy)   k delete namespace "$NAMESPACE"; echo "[destroy] done" ;;
     dashboard) open_dashboard ;;
-    k8s|native)
-        # 旧的 cell 子命令写法（bh k8s <cmd> / bh native <cmd>）已移除：形态现在由命令名表达
-        echo "[bh-k3s] '$1' 不再是子命令：k3s 部署请直接用 bh-k3s <cmd>（Linux 上 bh <cmd> 同义）。" >&2
-        echo "         例: bh-k3s ${*:2}" >&2
+    k8s|native|dev|wslc|container)
+        # Windows 侧才有「wslc 默认 / dev native」两种形态；Linux 只有 k3s 一种 ——
+        # 这些词在 Linux 上没有意义，明确报错，而不是落到 help 里让人猜。
+        case "$1" in
+            dev|wslc|container)
+                echo "[bh] Linux 上只有 k3s 形态：没有 '$1' 这个子命令（那是 Windows 侧的多形态命名）。" >&2
+                echo "     直接用: bh <cmd>  例: bh status / bh start server / bh doctor" >&2
+                ;;
+            *)
+                echo "[bh] '$1' 不再需要：Linux 上 bh 就是 k3s 形态，直接用 bh <cmd>。" >&2
+                echo "     例: bh ${*:2}" >&2
+                ;;
+        esac
         exit 1
         ;;
     help)      help_text ;;

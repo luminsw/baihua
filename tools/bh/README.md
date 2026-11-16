@@ -225,10 +225,29 @@ pwsh -File scripts/verify-bh-native.ps1 -Quiet   # 只输出失败与汇总
 只读脚本（不 start/stop 服务），改了 `tools/bh/*.ps1` 后建议先跑一遍——
 `dotnet test` 覆盖不到 PowerShell 入口。
 
-### Linux（k3s 形态）
+### Linux（k3s 形态 —— 也是默认，而且只有这一种）
 
-在 Linux 机器上 `bh` 等同 k3s 形态（`linux/k8s/bh.sh`）：build/deploy/up/status/logs 等，
-命令速查见 `linux/k8s/README.md`。
+Linux 机器上 `bh` **就是** k3s 形态（`linux/k8s/bh.sh`）：没有第二个形态可切换，所以不存在
+「默认切谁」的问题 —— 与 Windows 的差别只在命令面：
+
+| 平台 | 默认 | 第二形态 | 自启 |
+|------|------|----------|------|
+| Windows | `bh` = wslc 容器 | `bh dev` = native（开发） | `bh autostart on`（用户级 Startup） |
+| Linux | `bh` = k3s（systemd 服务） | 无 | `systemctl enable k3s`（k3s 本身是服务，Pod 由 Deployment 自愈） |
+
+命令：`build` / `deploy` / `up` / `update` / `prune` / `status [--json]` / `start|stop|restart <svc>` /
+`logs <svc> [n]` / `destroy` / `dashboard` / `openvino <on|off|status>` / **`doctor`（新增）** / `help`。
+
+```bash
+bh doctor          # 只读体检：k3s/版本、k3s.service 是否 active+enabled、API 可达、
+                   # namespace、五个 Deployment 的 ready 数、PVC 是否 Bound、:80/8788/5177、
+                   # OVMS/open-webui pod —— 输出格式与 Windows 侧 bh doctor 一致
+```
+
+> Windows 的 `bh dev` / `bh wslc` 在 Linux 上会明确报错（「Linux 上只有 k3s 形态」），不会静默落到 help。
+> `status --json` 的 `cell` 值是 `k8s`（Windows 侧是 `native` / `wslc`），DSH 插件按 cell 区分展示。
+
+命令速查与运维细节见 `linux/k8s/README.md`。
 
 ## 从旧写法迁移
 
