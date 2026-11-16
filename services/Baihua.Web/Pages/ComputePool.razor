@@ -85,7 +85,15 @@ else
                             本机暂无对外模型：还没把本地模型登记为算力提供方（Tier 1/2）。
                             <button class="btn btn-sm btn-outline-primary ms-2" @onclick="RegisterLocalOvmsAsync" disabled="@_busy"
                                     title="探测本机 OVMS（OpenVinoOms__BaseUrl，默认 http://127.0.0.1:8000）的 /v1/models，把模型登记为本地提供方">
-                                一键登记本地 OVMS
+                                @if (_registeringLocalOvms)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                    <span>登记中…（探测 OVMS /v1/models）</span>
+                                }
+                                else
+                                {
+                                    <span>一键登记本地 OVMS</span>
+                                }
                             </button>
                             <span class="ms-2">或到「AI 设置」手动添加提供方</span>
                         </div>
@@ -256,6 +264,8 @@ else
     private string? _error;
     private string? _message;
     private bool _busy;
+    /// <summary>「一键登记本地 OVMS」按钮自己的 loading 态（只控制这颗按钮的文案/spinner）</summary>
+    private bool _registeringLocalOvms;
     private string _updatedAt = "—";
     private string _taskType = "";
     private string _taskPrompt = "";
@@ -296,17 +306,25 @@ else
     /// <summary>一键登记本机 OVMS：探测 /v1/models 后写成 Tier2 提供方（local-ovms）。</summary>
     private async Task RegisterLocalOvmsAsync()
     {
+        if (_busy) return;
         _busy = true;
+        _registeringLocalOvms = true;
         _error = null;
         _message = null;
+        // 先把「登记中…」画出来，再发请求：否则点击后到响应前界面毫无反馈（实测几秒钟没动静）
+        StateHasChanged();
         try
         {
             var (ok, message) = await ApiService.RegisterLocalOvmsAsync();
             if (ok) { _message = message; await LoadAsync(); }
             else { _error = message; }
+        }
+        finally
+        {
+            _busy = false;
+            _registeringLocalOvms = false;
             StateHasChanged();
         }
-        finally { _busy = false; }
     }
 
     private async Task RefreshAsync()

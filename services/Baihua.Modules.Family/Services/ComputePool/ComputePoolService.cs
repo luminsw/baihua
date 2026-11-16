@@ -569,18 +569,29 @@ public class ComputePoolService : IHostedService, IDisposable
         };
     }
 
+    // 本机 ComfyUI 在线探测结果缓存（60s）：算力池页每次 GetPoolView 都会重建本机节点，
+    // ComfyUI 没起时那次探测要等满 3s 超时 —— 加了缓存后页面刷新从 ~2s 掉到 ~100ms。
+    // 代价：ComfyUI 刚起/刚停时，「可绘图」标识最多滞后 60s（可接受）。
+    private static readonly TimeSpan DrawProbeTtl = TimeSpan.FromSeconds(60);
+    private DateTime _drawProbeAt = DateTime.MinValue;
+    private bool _drawProbeOnline;
+
     /// <summary>短超时探测本机 ComfyUI 是否在线（用于算力池总览的绘图能力标识）。</summary>
     private async Task<bool> ProbeDrawOnlineAsync()
     {
+        if (DateTime.UtcNow - _drawProbeAt < DrawProbeTtl)
+            return _drawProbeOnline;
         try
         {
             using var shortCt = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            return await _draw.IsAvailableAsync(shortCt.Token);
+            _drawProbeOnline = await _draw.IsAvailableAsync(shortCt.Token);
         }
         catch
         {
-            return false;
+            _drawProbeOnline = false;
         }
+        _drawProbeAt = DateTime.UtcNow;
+        return _drawProbeOnline;
     }
 
     /// <summary>排行榜里该模型最近一次实测 token/s（无记录返回 null）。</summary>

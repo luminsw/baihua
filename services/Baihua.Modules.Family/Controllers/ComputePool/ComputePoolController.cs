@@ -37,7 +37,8 @@ public class ComputePoolController : ControllerBase
     {
         var (ok, message) = await _poolService.RegisterLocalOvmsAsync(ct);
         if (!ok) return BadRequest(new { error = message });
-        await _poolService.RefreshAsync(ct);
+        // 故意不调用 RefreshAsync：它要挨个拉对端 capabilities（数秒），
+        // 而本次操作只改了本机 Provider，GetPoolViewAsync 直接读 DB 就能看到 —— 白等几秒没意义。
         return Ok(new { success = true, message });
     }
 
