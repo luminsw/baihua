@@ -429,6 +429,16 @@ app.UseRequestMetrics();
 
 app.UseWebUIAuthentication();
 
+// AI 对话：直接跳转到 Open WebUI（独立应用），不再用 iframe 内嵌。
+// 内嵌的代价：open-webui 的相对资源/接口按自身 origin 解析，塞进 iframe 会出现路径 404
+// （如左下角用户头像）、X-Frame-Options/CSP 限制、键盘/剪贴板/下载行为受限；收益为零
+// （两者本来就不是同源应用，也没有共享登录态）。旧书签 / 侧边菜单都打这个地址，302 过去。
+app.MapGet("/open-webui", (IConfiguration cfg) =>
+{
+    var baseUrl = (cfg["OpenWebUi:BaseUrl"] ?? "http://localhost:8080").TrimEnd('/');
+    return Results.Redirect(baseUrl + "/");
+});
+
 app.MapRazorComponents<Baihua.Web.Components.App>()
     .AddInteractiveServerRenderMode();
 

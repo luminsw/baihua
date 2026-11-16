@@ -45,10 +45,21 @@
             }
             @foreach (var item in group)
             {
-                <NavLink href="@item.Href" Match="@(item.MatchAll ? NavLinkMatch.All : NavLinkMatch.Prefix)">
-                    <span class="nav-icon @item.Icon"></span>
-                    <span>@L[item.LabelKey]</span>
-                </NavLink>
+                @if (item.External)
+                {
+                    @* 外部应用（如 Open WebUI）：新窗口直接打开，不嵌 iframe *@
+                    <a class="nav-link" href="@item.Href" target="_blank" rel="noopener">
+                        <span class="nav-icon @item.Icon"></span>
+                        <span>@L[item.LabelKey]</span>
+                    </a>
+                }
+                else
+                {
+                    <NavLink href="@item.Href" Match="@(item.MatchAll ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                        <span class="nav-icon @item.Icon"></span>
+                        <span>@L[item.LabelKey]</span>
+                    </NavLink>
+                }
             }
         </div>
     }
@@ -83,7 +94,8 @@ else if (_activeScene == 0)
     /// 菜单项定义。Scene 为必填参数——新增菜单漏填分类会编译报错。
     /// RequiredFeature 非空时需能力检测通过才显示。
     /// </summary>
-    private sealed record NavMenuItem(string Href, string LabelKey, string Icon, int Scene, string? Group = null, string? RequiredFeature = null, bool MatchAll = false);
+    // External=true：指向独立应用（新窗口打开，不走 Blazor 客户端路由 / 不嵌 iframe）
+    private sealed record NavMenuItem(string Href, string LabelKey, string Icon, int Scene, string? Group = null, string? RequiredFeature = null, bool MatchAll = false, bool External = false);
 
     private static readonly NavMenuItem[] AllItems =
     [
@@ -109,7 +121,7 @@ else if (_activeScene == 0)
         new("dashboard", "Nav_ParentDashboard", "bi bi-bar-chart-line", 1),
 
         // 🤖 AI 实验室（场景 2）
-        new("open-webui", "Nav_OpenWebUi", "bi bi-chat-dots", 2, Group: "Nav_ChatLabel"),
+        new("open-webui", "Nav_OpenWebUi", "bi bi-chat-dots", 2, Group: "Nav_ChatLabel", External: true),
         new("master-chat", "Nav_VirtualMaster", "bi bi-mortarboard", 2, Group: "Nav_ChatLabel"),
         new("local-models", "Nav_LocalModels", "bi bi-cpu", 2, Group: "Nav_ResearchLabel", RequiredFeature: "LocalModelsPage"),
         new("stock-advisor", "Nav_StockAdvisor", "bi bi-graph-up", 2, Group: "Nav_ResearchLabel"),
