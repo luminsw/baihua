@@ -242,7 +242,10 @@ Linux 机器上 `bh` **就是** k3s 形态（`linux/k8s/bh.sh`）：没有第二
 bh doctor          # 只读体检：k3s/版本、k3s.service 是否 active+enabled、API 可达、
                    # namespace、五个 Deployment 的 ready 数、PVC 是否 Bound、:80/8788/5177、
                    # OVMS/open-webui pod —— 输出格式与 Windows 侧 bh doctor 一致
+bh doctor --json   # 同构 JSON：cell="k8s" / summary{passed,warned,failed} / checks[{name,status,detail,fix}]
 ```
+
+> k3s 没装或没跑时 `doctor` 会**短路**：只报运行时那三项（k3s/service/API），不再刷五条「deploy 不存在」的噪声。
 
 > Windows 的 `bh dev` / `bh wslc` 在 Linux 上会明确报错（「Linux 上只有 k3s 形态」），不会静默落到 help。
 > `status --json` 的 `cell` 值是 `k8s`（Windows 侧是 `native` / `wslc`），DSH 插件按 cell 区分展示。

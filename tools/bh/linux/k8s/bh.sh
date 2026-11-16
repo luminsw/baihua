@@ -820,19 +820,64 @@ annotate_commit() {
 
 # ---- doctor：只读体检（与 Windows 侧 bh doctor 对齐的输出格式） -------------------
 # 目的：一条命令说清「k3s/部署/端口/AI 组件哪一环有问题 + 下一步敲什么」。
-doctor_cmd() {
-    local okc=0 warn=0 fail=0
-    _dok()  { okc=$((okc+1));  printf '[ OK ] %s\n' "$1"; }
-    _dwarn(){ warn=$((warn+1)); printf '[WARN] %s\n' "$1"; [ -n "${2:-}" ] && printf '       -> %s\n' "$2"; }
-    _dfail(){ fail=$((fail+1)); printf '[FAIL] %s\n' "$1"; [ -n "${2:-}" ] && printf '       -> %s\n' "$2"; return 0; }
+# doctor --json：把收集到的检查项转成 JSON（字段与 Windows 侧 bh doctor --json 同构，cell=k8s）
+doctor_json() {
+    local okc="$1" warn="$2" fail="$3"
+    python3 - "$DOCTOR_REC" "$okc" "$warn" "$fail" <<'PY'
+import json, sys, datetime
+path, ok, warn, fail = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+checks = []
+if path:
+    try:
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                line = line.rstrip('\n')
+                if not line:
+                    continue
+                parts = line.split('\t')
+                while len(parts) < 4:
+                    parts.append('')
+                checks.append({'name': parts[0], 'status': parts[1], 'detail': parts[2], 'fix': parts[3]})
+    except FileNotFoundError:
+        pass
+doc = {
+    'cell': 'k8s',
+    'updatedAt': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'ok': fail == 0,
+    'summary': {'passed': ok, 'warned': warn, 'failed': fail},
+    'checks': checks,
+}
+print(json.dumps(doc, ensure_ascii=False, indent=2))
+PY
+}
 
-    printf 'bh doctor —— k3s 形态体检（Linux）\n\n'
+doctor_cmd() {
+    # 用法: bh doctor [--json]；--json 的输出与 Windows 侧 doctor --json 同构（cell=k8s），
+    # 字段: cell / updatedAt / ok / summary{passed,warned,failed} / checks[{name,status,detail,fix}]
+    local mode="${1:-}"
+    local okc=0 warn=0 fail=0 runtime_ok=1
+    DOCTOR_REC="$(mktemp -t bh-doctor.XXXXXX 2>/dev/null || true)"
+    _rec() { [ -n "$DOCTOR_REC" ] && printf '%s\t%s\t%s\t%s\n' "$1" "$2" "${3:-}" "${4:-}" >> "$DOCTOR_REC"; return 0; }
+    _dok()  { okc=$((okc+1));  _rec "$1" ok '' ''; [ "$mode" = '--json' ] || printf '[ OK ] %s\n' "$1"; }
+    _dwarn(){ warn=$((warn+1)); _rec "$1" warn '' "${2:-}"; [ "$mode" = '--json' ] || { printf '[WARN] %s\n' "$1"; [ -n "${2:-}" ] && printf '       -> %s\n' "$2"; } ; }
+    _dfail(){ fail=$((fail+1)); _rec "$1" fail '' "${2:-}"; [ "$mode" = '--json' ] || { printf '[FAIL] %s\n' "$1"; [ -n "${2:-}" ] && printf '       -> %s\n' "$2"; } ; return 0; }
+    _finish() {
+        if [ "$mode" = '--json' ]; then
+            doctor_json "$okc" "$warn" "$fail"
+        else
+            printf '\n体检完成：%s 项通过 / %s 项警告 / %s 项失败\n' "$okc" "$warn" "$fail"
+        fi
+        [ -n "$DOCTOR_REC" ] && rm -f "$DOCTOR_REC"
+        [ "$fail" -gt 0 ] && return 1 || return 0
+    }
+
+    [ "$mode" = '--json' ] || printf 'bh doctor —— k3s 形态体检（Linux）\n\n'
 
     # 1) k3s 运行时
     if command -v k3s >/dev/null 2>&1; then
         _dok "k3s: $(k3s --version 2>/dev/null | head -1)"
     else
-        _dfail "没有找到 k3s 可执行文件" "按 k8s/README.md 安装（curl -sfL https://get.k3s.io | sh -）"
+        _dfail "没有找到 k3s 可执行文件" "按 k8s/README.md 安装（curl -sfL https://get.k3s.io | sh -）"; runtime_ok=0
     fi
     if systemctl is-active --quiet k3s 2>/dev/null; then
         _dok 'k3s.service: active'
@@ -842,18 +887,24 @@ doctor_cmd() {
             _dwarn 'k3s 未设置开机自启' 'sudo systemctl enable k3s'
         fi
     else
-        _dfail 'k3s.service 未运行' 'sudo systemctl start k3s'
+        _dfail 'k3s.service 未运行' 'sudo systemctl start k3s'; runtime_ok=0
     fi
 
     # 2) API 可达 + namespace
     if ! k get --raw /version >/dev/null 2>&1; then
-        _dfail 'kubectl 连不上 k3s API（kubeconfig 权限？）' 'sudo chmod 644 /etc/rancher/k3s/k3s.yaml 或 sudo bh doctor'
+        _dfail 'kubectl 连不上 k3s API（kubeconfig 权限？）' 'sudo chmod 644 /etc/rancher/k3s/k3s.yaml 或 sudo bh doctor'; runtime_ok=0
     elif k get namespace "$NAMESPACE" >/dev/null 2>&1; then
         _dok "namespace $NAMESPACE 存在"
     else
         _dwarn "namespace $NAMESPACE 不存在（还没部署）" 'bh deploy'
-        printf '\n体检完成：%s 项通过 / %s 项警告 / %s 项失败\n' "$okc" "$warn" "$fail"
-        [ "$fail" -gt 0 ] && return 1 || return 0
+        _finish
+        return $?
+    fi
+
+    # k3s 没跑起来就别继续刷屏了：后面的部署项会全部报「不存在」，纯噪声
+    if [ "$runtime_ok" = 0 ]; then
+        _finish
+        return $?
     fi
 
     # 3) Deployment 就绪（按服务逐个看）
@@ -908,8 +959,7 @@ doctor_cmd() {
         _dwarn 'open-webui pod 未运行（/open-webui 页会空白）' 'bh start open-webui'
     fi
 
-    printf '\n体检完成：%s 项通过 / %s 项警告 / %s 项失败\n' "$okc" "$warn" "$fail"
-    [ "$fail" -gt 0 ] && return 1 || return 0
+    _finish
 }
 case "${1:-help}" in
     build)     build_all "${@:2}" ;;
@@ -921,7 +971,7 @@ case "${1:-help}" in
     start|stop|restart) scale_service "${1}" "${2:-}" ;;
     annotate)  annotate_commit "${2:-}" ;;
     openvino)  openvino_cmd "${2:-status}" ;;
-    doctor)    doctor_cmd ;;
+    doctor)    doctor_cmd "${2:-}" ;;
     logs)      show_logs "${2:-bh-server}" "${3:-50}" ;;
     destroy)   k delete namespace "$NAMESPACE"; echo "[destroy] done" ;;
     dashboard) open_dashboard ;;
