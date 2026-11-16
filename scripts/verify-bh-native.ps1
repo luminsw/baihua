@@ -95,20 +95,21 @@ Test-Case 'native 实现不依赖 docker / kubectl / WSL 发行版（wslc 除外
 
 # ---------- 3. 行为：help / status / status --json / k8s 旧写法 ----------
 $help = Invoke-Bh @('help')
-Test-Case 'bh help 退出码 0 且说明 native 形态' {
+Test-Case 'bh help 退出码 0 且说明 wslc 默认 + dev 开发形态' {
     if ($help.ExitCode -ne 0) { "exit=$($help.ExitCode)" }
-    elseif ($help.Output -notmatch 'native') { '输出未提到 native' }
+    elseif ($help.Output -notmatch 'wslc') { '输出未提到 wslc' }
+    elseif ($help.Output -notmatch 'dev') { '输出未提到 dev' }
 }
 
-$status = Invoke-Bh @('status')
-Test-Case 'bh status 退出码 0 且列出 server(8788) / webui(5177)' {
+$status = Invoke-Bh @('dev', 'status')
+Test-Case 'bh dev status 退出码 0 且列出 server(8788) / webui(5177)' {
     if ($status.ExitCode -ne 0) { "exit=$($status.ExitCode)" }
     elseif ($status.Output -notmatch 'server' -or $status.Output -notmatch '8788') { '输出缺少 server / 8788' }
     elseif ($status.Output -notmatch 'webui' -or $status.Output -notmatch '5177') { '输出缺少 webui / 5177' }
 }
 
-$json = Invoke-Bh @('status', '--json')
-Test-Case 'bh status --json 退出码 0 且是 cell=native 的合法 JSON（DSH 插件契约）' {
+$json = Invoke-Bh @('dev', 'status', '--json')
+Test-Case 'bh dev status --json 是 cell=native 的合法 JSON' {
     if ($json.ExitCode -ne 0) { "exit=$($json.ExitCode)" }
     else {
         try { $doc = $json.Output | ConvertFrom-Json } catch { return "JSON 解析失败：$($_.Exception.Message)" }
@@ -119,7 +120,7 @@ Test-Case 'bh status --json 退出码 0 且是 cell=native 的合法 JSON（DSH 
     }
 }
 
-Test-Case 'bh status --json 的 openvino 条目带 engine（wslc / 服务 / 外部进程三态）' {
+Test-Case 'bh dev status --json 的 openvino 条目带 engine（wslc / 服务 / 外部进程三态）' {
     if ($json.ExitCode -ne 0) { return "exit=$($json.ExitCode)" }
     try { $docS = $json.Output | ConvertFrom-Json } catch { return "JSON 解析失败：$($_.Exception.Message)" }
     $ov = @($docS.services | Where-Object { $_.name -eq 'openvino' })
@@ -127,13 +128,13 @@ Test-Case 'bh status --json 的 openvino 条目带 engine（wslc / 服务 / 外�
     if (-not $ov[0].engine) { return 'openvino 条目缺少 engine 字段' }
 }
 
-$bare = Invoke-Bh @()
-Test-Case 'bh 不带参数输出状态总览（端口 + 下一步）' {
+$bare = Invoke-Bh @('dev')
+Test-Case 'bh dev 不带子命令 = native 状态总览（端口 + 下一步）' {
     if ($bare.ExitCode -ne 0) { "exit=$($bare.ExitCode)" }
     elseif ($bare.Output -notmatch '8788' -or $bare.Output -notmatch '下一步') { '输出不是状态总览' }
 }
 
-$docJson = Invoke-Bh @('doctor', '--json')
+$docJson = Invoke-Bh @('dev', 'doctor', '--json')
 Test-Case 'bh doctor --json 是合法 JSON（cell=native / summary / checks 齐全）' {
     if ($docJson.ExitCode -ne 0) { "exit=$($docJson.ExitCode)" }
     else {
@@ -146,7 +147,7 @@ Test-Case 'bh doctor --json 是合法 JSON（cell=native / summary / checks 齐�
     }
 }
 
-$doc = Invoke-Bh @('doctor')
+$doc = Invoke-Bh @('dev', 'doctor')
 Test-Case 'bh doctor 输出逐项结论与汇总（退出码 0/1 表示有无 FAIL）' {
     if ($doc.ExitCode -notin @(0, 1)) { "exit=$($doc.ExitCode)" }
     elseif ($doc.Output -notmatch '体检完成') { '输出缺少「体检完成」汇总' }
@@ -158,14 +159,14 @@ Test-Case 'bh ovms status 退出码 0 且报告 OVMS 形态' {
     elseif ($ovms.Output -notmatch '形态') { '输出缺少「形态」' }
 }
 
-$auto = Invoke-Bh @('autostart', 'status')
+$auto = Invoke-Bh @('dev', 'autostart', 'status')
 Test-Case 'bh autostart status 退出码 0 且报告启用状态与入口' {
     if ($auto.ExitCode -ne 0) { "exit=$($auto.ExitCode)" }
     elseif ($auto.Output -notmatch '状态') { '输出缺少「状态」' }
     elseif ($auto.Output -notmatch '入口') { '输出缺少「入口」' }
 }
 
-$fix = Invoke-Bh @('doctor', '--fix', '--no-elevate', '--json')
+$fix = Invoke-Bh @('dev', 'doctor', '--fix', '--no-elevate', '--json')
 Test-Case 'bh doctor --fix --no-elevate --json 合法且带 checks（不弹 UAC、不改口令）' {
     if ($fix.ExitCode -ne 0) { "exit=$($fix.ExitCode)" }
     else {

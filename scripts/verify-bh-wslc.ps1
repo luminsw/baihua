@@ -81,7 +81,8 @@ Test-Case 'nginx 入口配置齐全（wslc.conf 用容器名上游，cell 发布
         if ($c -notmatch 'bh-server:8788' -or $c -notmatch 'bh-webui:5177') { 'wslc.conf 上游不是 bh-server/bh-webui' }
         else {
             $cell = Get-Content $Cell -Raw
-            if ($cell -notmatch "0\.0\.0\.0:80:80") { 'cell 没有把 nginx 发布到 0.0.0.0:80（局域网访问不到）' }
+            # nginx 宿主端口可配（BAIHUA_NGINX_PORT，默认 80）：字面量与变量两种写法都算通过
+            if ($cell -notmatch '0\.0\.0\.0:80:80' -and $cell -notmatch '0\.0\.0\.0:.\s*\+\s*\$nginxPort') { 'cell 没有把 nginx 发布到 0.0.0.0:<port>（局域网访问不到）' }
         }
     }
 }
@@ -101,6 +102,49 @@ $legacy = Invoke-Bh @('docker', 'status')
 Test-Case 'bh docker 旧写法给 wslc 迁移指引（exit 1）' {
     if ($legacy.ExitCode -ne 1) { "exit=$($legacy.ExitCode)，期望 1" }
     elseif ($legacy.Output -notmatch 'wslc') { '缺少指向 bh wslc 的指引' }
+}
+
+# ---------- 默认形态 = wslc（2026-11-16 起）----------
+$defJson = Invoke-Bh @('status', '--json')
+Test-Case 'bh status --json 默认走 wslc：cell=wslc 且 services 含 server/webui' {
+    if ($defJson.ExitCode -ne 0) { "exit=$($defJson.ExitCode)" }
+    else {
+        try { $d = $defJson.Output | ConvertFrom-Json } catch { return "JSON 解析失败：$($_.Exception.Message)" }
+        if ($d.cell -ne 'wslc') { return "cell=$($d.cell)，期望 wslc" }
+        $names = @($d.services | ForEach-Object { $_.name })
+        if ($names -notcontains 'server' -or $names -notcontains 'webui') { return "services 缺少 server/webui：$($names -join ',')" }
+        if (-not $d.summary -or $d.summary.total -lt 4) { return 'summary.total 不合法' }
+    }
+}
+
+$defStatus = Invoke-Bh @('status')
+Test-Case 'bh status（默认）输出 wslc 视图（后端/WebUI/OVMS 行）' {
+    if ($defStatus.ExitCode -ne 0) { "exit=$($defStatus.ExitCode)" }
+    elseif ($defStatus.Output -notmatch 'WebUI') { '输出缺少 WebUI 行' }
+    elseif ($defStatus.Output -notmatch 'OVMS') { '输出缺少 OVMS 行' }
+}
+
+$defDoc = Invoke-Bh @('doctor', '--json')
+Test-Case 'bh doctor --json 默认走 wslc：cell=wslc 且含 wslc/镜像 项' {
+    if ($defDoc.ExitCode -notin @(0, 1)) { "exit=$($defDoc.ExitCode)" }
+    else {
+        try { $dd = $defDoc.Output | ConvertFrom-Json } catch { return "JSON 解析失败：$($_.Exception.Message)" }
+        if ($dd.cell -ne 'wslc') { return "cell=$($dd.cell)，期望 wslc" }
+        $names = @($dd.checks | ForEach-Object { $_.name })
+        if (-not ($names | Where-Object { $_ -match 'wslc|镜像' })) { return 'checks 缺少 wslc / 镜像 项' }
+    }
+}
+
+$defAuto = Invoke-Bh @('autostart', 'status')
+Test-Case 'bh autostart status（wslc）报告状态' {
+    if ($defAuto.ExitCode -ne 0) { "exit=$($defAuto.ExitCode)" }
+    elseif ($defAuto.Output -notmatch 'autostart') { '输出缺少 autostart 前缀' }
+}
+
+$devRoute = Invoke-Bh @('dev', 'status')
+Test-Case 'bh dev 路由到 native（输出含 dev 横幅）' {
+    if ($devRoute.ExitCode -ne 0) { "exit=$($devRoute.ExitCode)" }
+    elseif ($devRoute.Output -notmatch 'native') { '输出未经过 native cell' }
 }
 
 if (Get-Command wslc -ErrorAction SilentlyContinue) {

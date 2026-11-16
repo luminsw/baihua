@@ -57,17 +57,21 @@ $Volumes = @('bh-pgdata', 'bh-data', 'bh-logs')
 $PgImageName = 'postgres:18-alpine'
 
 function Show-Help {
-    Write-Host 'bh wslc — 百花 Windows 容器形态（WSL 自带 wslc.exe，无需 Docker Desktop）'
+    Write-Host 'bh — 百花 CLI（wslc 形态，Windows 默认；WSL 自带 wslc.exe，无需 Docker Desktop）'
     Write-Host ''
-    Write-Host '用法: bh wslc <command> [args]'
-    Write-Host '  build [server|webui] [ -Prebuilt ]   构建镜像（首次较慢；拉不到 sdk 镜像时用 -Prebuilt：宿主机 publish + 运行时镜像）'
+    Write-Host '用法: bh <command> [args]        （bh wslc <command> 是等价的显式写法）'
+    Write-Host '  build [server|webui] [ -Prebuilt ]   构建镜像（首次较慢；拉不到 sdk 镜像时用 -Prebuilt）'
     Write-Host '  pull                   拉取 postgres 镜像'
-    Write-Host '  start [svc...] / stop / restart'
-    Write-Host '  status / logs <svc> [n] / exec <svc> <cmd...> / ps'
+    Write-Host '  start [svc...]         启动（默认全部：postgres → server → webui → nginx）'
+    Write-Host '  stop [svc...] / restart   停止（可只停指定服务）/ 重启'
+    Write-Host '  status [--json] / logs <svc> [n] / exec <svc> <cmd...> / ps'
+    Write-Host '  doctor [--json]        体检：wslc/镜像/卷/容器/端口冲突/OVMS/AI 对话页/.env.wslc'
+    Write-Host '  autostart [on|off|status]  登录自启（写 baihua-wslc.cmd，登录时 bh start）'
     Write-Host '  update / dashboard / open / env'
     Write-Host ''
-    Write-Host '与 native 互斥（同占 8788/5177）：native = bh <cmd>，容器 = bh wslc <cmd>'
+    Write-Host '与 dev(native) 互斥（同占 8788/5177）：dev 形态用 bh dev <cmd>；切换前 bh stop / bh dev stop'
     Write-Host '前置：WSL >= 2.9.3（wsl --update）；首次会生成 docker/.env.wslc（随机 PG_PASSWORD）'
+    Write-Host '宿主 :80 被占时：docker/.env.wslc 里设 BAIHUA_NGINX_PORT=8080 再 bh restart'
 }
 
 function Invoke-Wslc {
@@ -114,6 +118,8 @@ function Get-EnvMap {
         PG_HOST_PORT = '5433'
         BAIHUA_SERVER_PORT = '8788'
         BAIHUA_WEBUI_PORT = '5177'
+        # 宿主 :80 常被 http.sys/IIS/其它服务占着：可用 BAIHUA_NGINX_PORT 换成 8080 之类
+        BAIHUA_NGINX_PORT = '80'
         VAULTS_DIR = $homeUnix + '/Vaults'
         OVMS_HOST_IP = ''
     }
@@ -300,6 +306,7 @@ function Build-Images {
 function Start-Stack {
     param([string]$Only)
     Ensure-Wslc
+    Assert-NoDevConflict
     $script:EnvMap = Get-EnvMap
     $envMap = $script:EnvMap
     Ensure-Network
@@ -380,29 +387,30 @@ function Start-Stack {
 
     # ---------- nginx（局域网统一入口 :80：/mg、/api、/pair → server；其余 → webui） ----------
     if ([string]::IsNullOrWhiteSpace($Only) -or $Only -eq 'nginx') {
+        $nginxPort = [int]$envMap['BAIHUA_NGINX_PORT']
         $proxy = (netsh interface portproxy show v4tov4 2>$null | Out-String)
-        if ($proxy -match '(?m)^\s*\S+\s+80\s+') {
-            Write-Warning '端口 80 上有 netsh portproxy（bh lan on 的遗留）：wslc 形态由 nginx 容器独占 :80，请先执行 bh lan off'
+        if ($proxy -match ('(?m)^\s*\S+\s+' + $nginxPort + '\s+')) {
+            Write-Warning ('端口 ' + $nginxPort + ' 上有 netsh portproxy（bh lan on 的遗留）：请先执行 bh lan off')
         } else {
             try {
                 $nginxImg = Get-MirroredImage 'nginx:1.27-alpine' $envMap
                 Ensure-Image $nginxImg
                 Remove-Container $Containers['nginx']
-                Write-Host '[start] nginx (:80) ...'
+                Write-Host ('[start] nginx (:' + $nginxPort + ') ...')
                 $conf = Join-Path $Root 'docker/nginx/wslc.conf'
                 $headers = Join-Path $Root 'docker/nginx/server-proxy-headers.conf'
                 # 显式 0.0.0.0：wslc 默认把发布端口绑在 127.0.0.1，局域网/手机访问不到
                 $args = @('run', '-d', '--name', $Containers['nginx'], '--network', $Network,
-                    '-p', '0.0.0.0:80:80',
+                    '-p', ('0.0.0.0:' + $nginxPort + ':80'),
                     '-v', ($conf + ':/etc/nginx/conf.d/default.conf:ro'),
                     '-v', ($headers + ':/etc/nginx/server-proxy-headers.conf:ro'),
                     $nginxImg)
                 Invoke-Wslc -WslcArgs $args | Out-Null
-                if (Wait-Port 80 60) { Write-Host '  nginx ready: http://127.0.0.1/ 或 http://<宿主IP>/' }
+                if (Wait-Port $nginxPort 60) { if ($nginxPort -eq 80) { Write-Host '  nginx ready: http://127.0.0.1/ 或 http://<宿主IP>/' } else { Write-Host ('  nginx ready: http://127.0.0.1:' + $nginxPort + '/ 或 http://<宿主IP>:' + $nginxPort + '/') } }
                 else { Write-Warning 'nginx 60s 内未就绪（bh wslc logs nginx）' }
             } catch {
-                Write-Warning ('nginx 启动失败（:80 可能被占用）：' + $_.Exception.Message)
-                Write-Warning '  仍可用 8788（后端）/ 5177（WebUI）直连；修复后 bh wslc restart'
+                Write-Warning ('nginx 启动失败（:' + $nginxPort + ' 可能被占用）：' + $_.Exception.Message)
+                Write-Warning '  仍可用 8788（后端）/ 5177（WebUI）直连；换端口：docker/.env.wslc 里 BAIHUA_NGINX_PORT=8080 后 bh restart'
             }
         }
     }
@@ -433,8 +441,19 @@ function Show-Status {
     Write-Host ''
     Write-Host ('后端:   http://127.0.0.1:' + $envMap['BAIHUA_SERVER_PORT'])
     Write-Host ('WebUI:  http://127.0.0.1:' + $envMap['BAIHUA_WEBUI_PORT'])
-    $nginxState = if (Test-Container $Containers['nginx']) { 'RUNNING (:80)' } else { 'stopped' }
-    Write-Host ('入口:   http://127.0.0.1/  nginx=' + $nginxState)
+    $nginxPort = [int]$envMap['BAIHUA_NGINX_PORT']
+    $nginxState = if (Test-Container $Containers['nginx']) { 'RUNNING (:' + $nginxPort + ')' } else { 'stopped' }
+    $entryUrl = if ($nginxPort -eq 80) { 'http://127.0.0.1/' } else { 'http://127.0.0.1:' + $nginxPort + '/' }
+    Write-Host ('入口:   ' + $entryUrl + '  nginx=' + $nginxState)
+    # 端口占用者：dev/native 在跑时 8788/5177 被 bh-* 占着，别让上面的 URL 误导成 wslc 已就绪
+    foreach ($pair in @(@([int]$envMap['BAIHUA_SERVER_PORT'], 'server'), @([int]$envMap['BAIHUA_WEBUI_PORT'], 'webui'), @($nginxPort, 'nginx'))) {
+        $owner = Get-PortOwnerName $pair[0]
+        if ($owner) {
+            $tag = ''
+            if ($owner -match '^bh-') { $tag = '  <- native(dev) 占用，不是 wslc 容器' }
+            Write-Host ('        端口 ' + $pair[0] + ' 占用者: ' + $owner + $tag) -ForegroundColor DarkGray
+        }
+    }
     $ov = if (Test-PortOpen 8000) { 'RUNNING (port 8000)' } else { 'stopped' }
     Write-Host ('OVMS:   ' + $ov + '（wslc 容器 ovms-gpu；容器内经宿主 IP:8000 访问，bh ovms status 看详情）')
     $mirror = $envMap['BAIHUA_WSL_MIRROR']
@@ -474,6 +493,318 @@ function Update-Stack {
     Start-Stack ''
 }
 
+# ---- 端口占用 / 形态冲突 ------------------------------------------------------
+function Get-PortOwnerName([int]$port) {
+    $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $conn) { return '' }
+    $proc = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
+    if ($proc) { return ($proc.ProcessName + '(' + $proc.Id + ')') }
+    return ('pid ' + $conn.OwningProcess)
+}
+
+function Assert-NoDevConflict {
+    # wslc 与 dev/native 都占 8788/5177/80：先看端口是否被 native 的 bh-* 进程占着
+    $conflicts = @()
+    foreach ($port in @(8788, 5177, 80)) {
+        $owner = Get-PortOwnerName $port
+        if ($owner -match '^bh-') { $conflicts += ($port.ToString() + ' <- ' + $owner) }
+    }
+    if ($conflicts.Count -gt 0) {
+        Write-Host '[wslc] 检测到 native(dev) 形态在跑，端口冲突：' -ForegroundColor Yellow
+        $conflicts | ForEach-Object { Write-Host ('       ' + $_) -ForegroundColor Yellow }
+        Write-Host '[wslc] 先停 native：bh dev stop    然后重试：bh start' -ForegroundColor Yellow
+        exit 1
+    }
+}
+
+function Stop-Stacks {
+    param([string[]]$Names = @())
+    Ensure-Wslc
+    $order = @($Containers['nginx'], $Containers['webui'], $Containers['server'], $Containers['postgres'])
+    $targets = @()
+    if ($Names.Count -eq 0) {
+        $targets = $order
+    } else {
+        foreach ($n in $Names) {
+            $key = ($n.ToLower() -replace '^bh-', '')
+            if ($Containers.Contains($key)) { if ($targets -notcontains $Containers[$key]) { $targets += $Containers[$key] } }
+            else { Write-Host ('[stop] 未知服务：' + $n + '（可选：postgres|server|webui|nginx）') -ForegroundColor Yellow }
+        }
+    }
+    foreach ($name in $targets) {
+        if (Test-Container $name) {
+            Invoke-Wslc -WslcArgs @('container', 'stop', $name) -AllowFail | Out-Null
+            Invoke-Wslc -WslcArgs @('container', 'remove', '-f', $name) -AllowFail | Out-Null
+            Write-Host ('[stop] ' + $name)
+        }
+    }
+    if ($targets.Count -eq $order.Count) {
+        Write-Host '[stop] 已停止（命名卷 bh-pgdata / bh-data / bh-logs 保留）'
+    }
+}
+
+# ---- status --json（与 native 同构：DSH 插件消费同一份契约，cell 标 wslc）--------
+function Show-StatusJson {
+    Ensure-Wslc
+    $envMap = Get-EnvMap
+    $head = 'unknown'; $branch = 'unknown'; $dirty = $false
+    if (Test-Path (Join-Path $Root '.git')) {
+        try {
+            $h = git -C $Root rev-parse --short HEAD 2>$null
+            if ($h) { $head = ($h | Select-Object -First 1) }
+            $b = git -C $Root rev-parse --abbrev-ref HEAD 2>$null
+            if ($b) { $branch = ($b | Select-Object -First 1) }
+            $d = git -C $Root status --porcelain 2>$null
+            if ($d) { $dirty = $true }
+        } catch { }
+    }
+    $ports = @{ postgres = [int]$envMap['PG_HOST_PORT']; server = [int]$envMap['BAIHUA_SERVER_PORT']; webui = [int]$envMap['BAIHUA_WEBUI_PORT']; nginx = [int]$envMap['BAIHUA_NGINX_PORT'] }
+    $entries = @()
+    foreach ($name in @('postgres', 'server', 'webui', 'nginx')) {
+        $cn = $Containers[$name]
+        $exists = Test-Container $cn
+        $running = $false
+        $image = ''
+        if ($exists) {
+            $ins = (& wslc container inspect $cn 2>$null | Out-String)
+            if ($ins -match '"Running"\s*:\s*true') { $running = $true }
+            if ($ins -match '"Image"\s*:\s*"([^"]+)"') { $image = $matches[1] }
+        }
+        $portOpen = Test-PortOpen $ports[$name]
+        $phase = 'not installed'
+        if ($running) { $phase = 'Running' } elseif ($exists) { $phase = 'Stopped' }
+        $entries += [pscustomobject]@{
+            name = $name
+            ready = if ($running -and $portOpen) { 1 } else { 0 }
+            replicas = 1
+            image = if ($image) { $image } else { 'wslc' }
+            age = ''
+            restarts = 0
+            phase = $phase
+            imageCommit = $head
+            upToDate = $true
+        }
+    }
+    $ovReady = Test-PortOpen 8000
+    $ovPhase = 'not installed'
+    if ($ovReady) { $ovPhase = 'Running' }
+    $entries += [pscustomobject]@{
+        name = 'openvino'
+        ready = if ($ovReady) { 1 } else { 0 }
+        replicas = 1
+        image = 'wslc:ovms-gpu'
+        age = ''
+        restarts = 0
+        phase = $ovPhase
+        imageCommit = $head
+        upToDate = $true
+        engine = 'wslc'
+        container = 'ovms-gpu'
+    }
+    $readyTotal = @($entries | Where-Object { $_.ready -eq 1 }).Count
+    [pscustomobject]@{
+        cell = 'wslc'
+        namespace = 'wslc'
+        updatedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        git = [pscustomobject]@{ head = $head; branch = $branch; dirty = $dirty }
+        services = $entries
+        summary = [pscustomobject]@{ ready = $readyTotal; total = $entries.Count }
+    } | ConvertTo-Json -Depth 5
+}
+
+# ---- doctor（wslc 形态体检） --------------------------------------------------
+function Add-WslcCheck($list, [string]$name, [string]$status, [string]$detail, [string]$fix) {
+    [void]$list.Add([pscustomobject]@{ name = $name; status = $status; detail = $detail; fix = $fix })
+}
+
+function Invoke-WslcDoctorChecks {
+    $checks = New-Object System.Collections.ArrayList
+    $envMap = Get-EnvMap
+
+    # 1) wslc / WSL 版本
+    $wslcCmd = Get-Command wslc -ErrorAction SilentlyContinue
+    if (-not $wslcCmd) {
+        Add-WslcCheck $checks 'wslc.exe' 'fail' 'PATH 里没有 wslc（Windows 默认形态依赖 WSL3）' 'wsl --update（需要 WSL 3+，wslc 随 WSL 提供）'
+    } else {
+        $ver = (& wslc version 2>&1 | Out-String).Trim()
+        Add-WslcCheck $checks 'wslc.exe' 'ok' $ver ''
+    }
+
+    # 2) 镜像（bh-server / bh-webui 是本仓库构建的）
+    $missingImg = @()
+    foreach ($img in @('bh-server:latest', 'bh-webui:latest')) {
+        $okImg = ((& wslc image inspect $img 2>$null) -ne $null -and $LASTEXITCODE -eq 0)
+        if (-not $okImg) { $missingImg += $img }
+    }
+    if ($missingImg.Count -gt 0) {
+        Add-WslcCheck $checks '镜像' 'fail' ('缺少：' + ($missingImg -join ', ')) 'bh build（首次会拉 .NET 基础镜像，较慢；拉不到 SDK 用 bh build -Prebuilt）'
+    } else {
+        Add-WslcCheck $checks '镜像' 'ok' 'bh-server / bh-webui 都在' ''
+    }
+
+    # 3) 命名卷
+    $missingVol = @()
+    foreach ($v in @('bh-pgdata', 'bh-data', 'bh-logs')) {
+        $vo = (& wslc volume inspect $v 2>$null)
+        if ($LASTEXITCODE -ne 0) { $missingVol += $v }
+    }
+    if ($missingVol.Count -gt 0) {
+        Add-WslcCheck $checks '命名卷' 'warn' ('未创建：' + ($missingVol -join ', ')) 'bh start 会自动创建（数据卷删了就是丢数据，别手删）'
+    } else {
+        Add-WslcCheck $checks '命名卷' 'ok' 'bh-pgdata / bh-data / bh-logs' ''
+    }
+
+    # 4) 容器状态
+    $running = @()
+    $stopped = @()
+    foreach ($name in @('postgres', 'server', 'webui', 'nginx')) {
+        $cn = $Containers[$name]
+        if (-not (Test-Container $cn)) { $stopped += ($name + '(未创建)'); continue }
+        $ins = (& wslc container inspect $cn 2>$null | Out-String)
+        if ($ins -match '"Running"\s*:\s*true') { $running += $name } else { $stopped += $name }
+    }
+    if ($stopped.Count -eq 0) {
+        Add-WslcCheck $checks '容器' 'ok' ('全部运行：' + ($running -join ', ')) ''
+    } elseif ($running.Count -eq 0) {
+        Add-WslcCheck $checks '容器' 'warn' '全部未运行' 'bh start（首次约 1-3 分钟）'
+    } else {
+        Add-WslcCheck $checks '容器' 'warn' ('运行：' + ($running -join ', ') + '；未运行：' + ($stopped -join ', ')) 'bh start（幂等，只会补起缺的）'
+    }
+
+    # 5) 端口：8788 / 5177 / 80 是否可用（native 占着就会冲突）
+    foreach ($pair in @(@([int]$envMap['BAIHUA_SERVER_PORT'], 'server'), @([int]$envMap['BAIHUA_WEBUI_PORT'], 'webui'), @([int]$envMap['BAIHUA_NGINX_PORT'], 'nginx'))) {
+        $port = $pair[0]; $label = $pair[1]
+        $owner = Get-PortOwnerName $port
+        if (-not $owner) { Add-WslcCheck $checks ('端口 ' + $port + '（' + $label + '）') 'ok' '空闲' '' ; continue }
+        if ($owner -match '^bh-') {
+            Add-WslcCheck $checks ('端口 ' + $port + '（' + $label + '）') 'fail' ('被 native(dev) 占用：' + $owner) 'bh dev stop（然后 bh start）'
+        } else {
+            Add-WslcCheck $checks ('端口 ' + $port + '（' + $label + '）') 'warn' ('被外部进程占用：' + $owner) '停掉占位进程，或改 docker/.env.wslc 里的端口'
+        }
+    }
+
+    # 6) OVMS（可选组件）
+    if (Test-PortOpen 8000) {
+        $models = @()
+        try { $r = Invoke-RestMethod 'http://127.0.0.1:8000/v1/models' -TimeoutSec 3; $models = @($r.data | ForEach-Object { $_.id }) } catch { }
+        Add-WslcCheck $checks 'OVMS 本地模型' 'ok' ('RUNNING :8000  模型 ' + ($models -join ', ')) ''
+    } else {
+        Add-WslcCheck $checks 'OVMS 本地模型' 'warn' '未运行（:8000 无监听）' 'bh ovms start（不影响其它模块，AI 降级）'
+    }
+
+    # 7) AI 对话页后端（Windows venv，两种形态共用）
+    $owuiExe = Join-Path (Join-Path $HOME '.baihua') 'open-webui-venv\Scripts\open-webui.exe'
+    if (-not (Test-Path $owuiExe)) {
+        Add-WslcCheck $checks 'AI 对话页 open-webui' 'warn' '未安装' 'bh open-webui install'
+    } elseif (Test-PortOpen 8080) {
+        Add-WslcCheck $checks 'AI 对话页 open-webui' 'ok' 'RUNNING :8080' ''
+    } else {
+        Add-WslcCheck $checks 'AI 对话页 open-webui' 'warn' '已安装但没在运行' 'bh open-webui start（首启 1-2 分钟）'
+    }
+
+    # 8) .env.wslc
+    if (Test-Path $EnvFile) {
+        Add-WslcCheck $checks 'docker/.env.wslc' 'ok' $EnvFile ''
+    } else {
+        Add-WslcCheck $checks 'docker/.env.wslc' 'warn' '还没生成（bh start 首次会生成，含随机 PG_PASSWORD）' 'bh env'
+    }
+    return ,$checks
+}
+
+function Show-Doctor {
+    Ensure-Wslc
+    $checks = Invoke-WslcDoctorChecks
+    Write-Host 'bh doctor —— wslc 形态体检（Windows 默认形态）' -ForegroundColor Cyan
+    Write-Host ''
+    foreach ($c in $checks) {
+        $suffix = if ($c.detail) { ' — ' + $c.detail } else { '' }
+        switch ($c.status) {
+            'ok'   { Write-Host ('[ OK ] ' + $c.name + $suffix) -ForegroundColor Green }
+            'warn' {
+                Write-Host ('[WARN] ' + $c.name + $suffix) -ForegroundColor Yellow
+                if ($c.fix) { Write-Host ('       -> ' + $c.fix) -ForegroundColor DarkYellow }
+            }
+            default {
+                Write-Host ('[FAIL] ' + $c.name + $suffix) -ForegroundColor Red
+                if ($c.fix) { Write-Host ('       -> ' + $c.fix) -ForegroundColor DarkYellow }
+            }
+        }
+    }
+    $ok = @($checks | Where-Object { $_.status -eq 'ok' }).Count
+    $warn = @($checks | Where-Object { $_.status -eq 'warn' }).Count
+    $fail = @($checks | Where-Object { $_.status -eq 'fail' }).Count
+    Write-Host ''
+    $color = if ($fail -gt 0) { 'Red' } elseif ($warn -gt 0) { 'Yellow' } else { 'Green' }
+    Write-Host ('体检完成：' + $ok + ' 项通过 / ' + $warn + ' 项警告 / ' + $fail + ' 项失败') -ForegroundColor $color
+    return $fail
+}
+
+function Show-DoctorJson {
+    Ensure-Wslc
+    $checks = Invoke-WslcDoctorChecks
+    $ok = @($checks | Where-Object { $_.status -eq 'ok' }).Count
+    $warn = @($checks | Where-Object { $_.status -eq 'warn' }).Count
+    $fail = @($checks | Where-Object { $_.status -eq 'fail' }).Count
+    [pscustomobject]@{
+        cell = 'wslc'
+        updatedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+        ok = ($fail -eq 0)
+        summary = [pscustomobject]@{ passed = $ok; warned = $warn; failed = $fail }
+        checks = @($checks)
+    } | ConvertTo-Json -Depth 6
+}
+
+# ---- 登录自启（用户级 Startup；wslc 是默认形态） -------------------------------
+$StartupDir = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup'
+$WslcAutostartFile = Join-Path $StartupDir 'baihua-wslc.cmd'
+$NativeAutostartFile = Join-Path $StartupDir 'baihua-native.cmd'
+
+function Show-Autostart {
+    Write-Host '[autostart] 百花登录自启（用户级 Startup，不需要管理员）'
+    if (Test-Path $WslcAutostartFile) {
+        Write-Host '[autostart] 状态: 已启用（wslc 形态）' -ForegroundColor Green
+        Write-Host ('[autostart] 文件: ' + $WslcAutostartFile)
+    } else {
+        Write-Host '[autostart] 状态: 未启用' -ForegroundColor DarkGray
+        Write-Host '[autostart] 开启: bh autostart on'
+    }
+    if (Test-Path $NativeAutostartFile) {
+        Write-Host '[autostart] 注意: 还留着 native 的自启项 baihua-native.cmd（与 wslc 抢 8788/5177）' -ForegroundColor Yellow
+        Write-Host '[autostart]       关掉它: bh dev autostart off   （或 bh autostart on 会自动改名停用）'
+    }
+    Write-Host '[autostart] 动作: 登录时执行 bh start（= wslc start，幂等）'
+}
+
+function Enable-Autostart {
+    if (-not (Test-Path $StartupDir)) { New-Item -ItemType Directory -Force -Path $StartupDir | Out-Null }
+    # native 的自启项会在登录时抢端口：改成 .disabled（可恢复），并明确告知
+    if (Test-Path $NativeAutostartFile) {
+        Move-Item -Path $NativeAutostartFile -Destination ($NativeAutostartFile + '.disabled') -Force
+        Write-Host '[autostart] 已停用旧的 native 自启项（baihua-native.cmd -> .disabled）' -ForegroundColor Yellow
+    }
+    $lines = @(
+        '@echo off',
+        'rem baihua wslc autostart - generated by: bh autostart on',
+        'rem action: bh start (wslc containers, idempotent). disable with: bh autostart off',
+        'start "baihua" /min "%USERPROFILE%\.local\bin\bh.cmd" start'
+    )
+    Set-Content -Path $WslcAutostartFile -Value $lines -Encoding ASCII
+    Write-Host ('[autostart] 已启用: ' + $WslcAutostartFile) -ForegroundColor Green
+    if (-not (Test-Path (Join-Path $HOME '.local\bin\bh.cmd'))) {
+        Write-Warning '[autostart] 没找到定位器 ~\.local\bin\bh.cmd；先 bh install（否则登录时找不到 bh）'
+    }
+    Write-Host '[autostart] 下次登录生效（现在想看效果：bh start）'
+}
+
+function Disable-Autostart {
+    if (Test-Path $WslcAutostartFile) {
+        Remove-Item $WslcAutostartFile -Force
+        Write-Host '[autostart] 已关闭（删除 baihua-wslc.cmd）' -ForegroundColor Green
+    } else {
+        Write-Host '[autostart] 本来就是关闭状态' -ForegroundColor DarkGray
+    }
+}
+
 $script:EnvMap = @{}
 
 switch ($Command.ToLower()) {
@@ -490,10 +821,10 @@ switch ($Command.ToLower()) {
     'pull'      { Ensure-Wslc; $m = Get-EnvMap; Ensure-Image (Get-PgImage $m) }
     'start'     { Start-Stack $Arg1 }
     'up'        { Start-Stack $Arg1 }
-    'stop'      { Stop-Stack }
-    'down'      { Stop-Stack }
+    'stop'      { $names = @($All | Select-Object -Skip 1); Stop-Stacks $names }
+    'down'      { $names = @($All | Select-Object -Skip 1); Stop-Stacks $names }
     'restart'   { Stop-Stack; Start-Stack '' }
-    'status'    { Show-Status }
+    'status'    { if ($Arg1 -eq '--json') { Show-StatusJson } else { Show-Status } }
     'ps'        { Ensure-Wslc; Write-Host (Invoke-Wslc -WslcArgs @('container', 'list', '--all') -AllowFail).Output.TrimEnd() }
     'logs'      { $count = 50; if ($Arg2) { $count = [int]$Arg2 }; Show-Logs $Arg1 $count }
     'exec'      {
@@ -509,6 +840,16 @@ switch ($Command.ToLower()) {
         exit $LASTEXITCODE
     }
     'update'    { Update-Stack }
+    'doctor'    { if ($Arg1 -eq '--json') { Show-DoctorJson } else { $failCount = Show-Doctor; if ($failCount -gt 0) { exit 1 } } }
+    'autostart' {
+        switch ($Arg1.ToLower()) {
+            'on'      { Enable-Autostart }
+            'enable'  { Enable-Autostart }
+            'off'     { Disable-Autostart }
+            'disable' { Disable-Autostart }
+            default   { Show-Autostart }
+        }
+    }
     'dashboard' { Open-WebUI }
     'open'      { $m = Get-EnvMap; Start-Process ('http://127.0.0.1:' + $m['BAIHUA_WEBUI_PORT']) }
     'env'       {

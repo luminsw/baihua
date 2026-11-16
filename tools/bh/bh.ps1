@@ -29,25 +29,29 @@ $Arg1 = if ($All.Count -gt 0) { $All[0] } else { '' }
 $CmdArgs = @($All)
 
 function Show-Help {
-    Write-Host 'bh - 百花 CLI（Windows native：dotnet 进程，不依赖容器/虚拟化）'
+    Write-Host 'bh - 百花 CLI（Windows）'
     Write-Host ''
     Write-Host '用法:'
-    Write-Host '  bh                           状态总览（= bh status）'
-    Write-Host '  bh <command> [args]           执行 native 命令'
-    Write-Host '  bh doctor [--json] [--fix]    本机体检；--fix 自动修可修的（完整性标签/防火墙/定位器/库/OVMS）'
-    Write-Host '  bh autostart [on|off|status]  登录自启（用户级 Startup，执行 bh start；不需要管理员）'
-    Write-Host '  bh lan [on|off|status]        局域网入口（宿主 :80 -> :8788 portproxy）'
-    Write-Host '  bh install / uninstall        安装 / 移除 定位器与用户 PATH'
+    Write-Host '  bh                           状态总览（wslc 形态）'
+    Write-Host '  bh <command> [args]          wslc 形态命令（Windows 用户默认）'
+    Write-Host '  bh dev <command> [args]      native 形态命令（开发/调试用：VS F5、快速 publish）'
+    Write-Host '  bh doctor [--json]           体检当前形态（wslc / dev）'
+    Write-Host '  bh autostart [on|off|status] 登录自启（用户级 Startup，不需要管理员）'
+    Write-Host '  bh lan [on|off|status]       局域网入口（仅 native/dev：宿主 :80 -> :8788 portproxy）'
+    Write-Host '  bh ovms [status|start|stop|restart|logs [n]]   本地模型服务 OVMS(:8000)，两种形态通用'
+    Write-Host '  bh open-webui <start|stop|status|install>      AI 对话页后端（Windows venv）'
+    Write-Host '  bh install / uninstall       安装 / 移除 定位器与用户 PATH'
     Write-Host ''
-    Write-Host 'native 命令: build / build-restart / start / stop / restart / update'
-    Write-Host '             status [--json] / doctor [--json] [--fix] / logs <svc> [n] [-f|-e] / autostart'
-    Write-Host '             ovms [status|start|stop|restart|logs [n]] / dashboard / open / open-webui'
-    Write-Host 'native 依赖: .NET SDK 10、本机 PostgreSQL（Windows 服务）、可选 OVMS(:8000)'
+    Write-Host 'wslc 命令: build / pull / start / stop [svc] / restart / status [--json] / logs / exec / ps'
+    Write-Host '           update / dashboard / open / env / doctor [--json] / autostart'
+    Write-Host '           全容器（postgres/server/webui/nginx，WSL3 自带 wslc.exe，不需要 Docker Desktop）'
+    Write-Host '           依赖: WSL >= 2.9.3（wsl --update）'
     Write-Host ''
-    Write-Host 'wslc 形态:  bh wslc <build|start|stop|restart|status|logs|exec|update|dashboard|env>'
-    Write-Host '             全容器（postgres/server/webui，WSL 自带的 wslc.exe，不需要 Docker Desktop），与 native 互斥（同占 8788/5177）'
-    Write-Host '             依赖: WSL >= 2.9.3（wsl --update）；OVMS 由 wslc 容器 ovms-gpu 承载（:8000，bh ovms status 可查）'
+    Write-Host 'dev 命令（native）: build / build-restart / start / stop / restart / update / logs / status [--json]'
+    Write-Host '           doctor [--json] [--fix] / autostart / dashboard / open'
+    Write-Host '           依赖: .NET SDK 10、本机 PostgreSQL（Windows 服务）；不依赖容器'
     Write-Host ''
+    Write-Host '两种形态互斥（同占 8788/5177）：切换前先 bh stop（wslc）或 bh dev stop（native）'
     Write-Host 'k3s 形态已随本机 WSL 卸载退役（Linux 侧实现保留于 tools/bh/linux/k8s）'
     Write-Host ''
     Write-Host '完整说明见 tools/bh/README.md'
@@ -153,18 +157,28 @@ if ($Arg1 -eq 'k8s') {
     Write-Warning "[bh] 如需 k8s 能力请先重装 WSL2 并参考 tools/bh/linux/k8s；日常使用直接: bh <command>"
     exit 1
 }
-# 旧写法是 bh native <cmd>；native 就是本命令的默认形态，前缀已无意义
-if ($Arg1 -eq 'native') {
-    $rest = (@($All | Select-Object -Skip 1) -join ' ')
-    Write-Warning "[bh] 'native' 前缀已移除（bh 本身就是 native 形态）。请直接: bh $rest"
-    $All = @($All | Select-Object -Skip 1)
-    $Arg1 = if ($All.Count -gt 0) { $All[0] } else { '' }
-    $CmdArgs = @($All)
-    if ($CmdArgs.Count -eq 0) { Show-Help; exit 0 }
+# ==================== native（开发形态：bh dev <cmd>） ====================
+# 2026-11-16 起：Windows 默认形态切到 wslc；native 降级为开发/调试形态，收进 bh dev。
+# 理由：容器形态自带生命周期管理（重启/日志/卷），native 的启动链路需要三层拼装才能
+# 关终端不被杀、不弹窗口；但 native 的开发内环（VS F5、publish 秒级）依然值钱，保留。
+$nativeScript = Join-Path $Root 'win\native\bh.ps1'
+if ($Arg1 -in @('dev', 'native')) {
+    if (-not (Test-Path $nativeScript)) { Write-Error "[bh dev] 缺少 $nativeScript"; exit 1 }
+    if ($Arg1 -eq 'native') {
+        Write-Warning "[bh] 'native' 已改名：Windows 默认已是 wslc，native 是开发形态 → bh dev <cmd>"
+    }
+    $rest = @($CmdArgs | Select-Object -Skip 1)
+    if ($rest.Count -eq 0) { $rest = @('status') }
+    # --json 时不能往 stdout 混横幅（DSH 插件要解析纯 JSON）
+    if (-not ($rest -contains '--json')) {
+        Write-Host '[bh dev] native 开发形态（dotnet 进程 + 本机 PostgreSQL；与 wslc 互斥）' -ForegroundColor DarkGray
+    }
+    & $nativeScript @rest
+    exit $LASTEXITCODE
 }
 
-# ==================== wslc（Windows 容器形态，WSL 自带 wslc.exe） ====================
-# native 仍是默认形态；bh wslc <cmd> 走 WSL 容器（postgres / server / webui），不需要 Docker Desktop。
+# ==================== wslc（Windows 默认形态：WSL3 容器） ====================
+# 2026-11-16 起 bh 默认 = wslc：<command> 直落这里；`bh wslc <cmd>` 保留为显式写法（脚本/文档兼容）。
 if ($Arg1 -in @('wslc', 'container')) {
     $cell = Join-Path $Root 'win\wslc\bh.ps1'
     if (-not (Test-Path $cell)) { Write-Error "[wslc] 缺少 $cell"; exit 1 }
@@ -180,11 +194,9 @@ if ($Arg1 -eq 'docker') {
     exit 1
 }
 
-# ==================== native ====================
-$nativeScript = Join-Path $Root 'win\native\bh.ps1'
-if (-not (Test-Path $nativeScript)) { Write-Error "[native] 缺少 $nativeScript"; exit 1 }
-
-# lan 命令：native 下做宿主 :80 -> :8788 portproxy（移动端默认无端口访问）
+# ==================== 形态无关的命令（两种形态都要能跑） ====================
+# lan：dev/native 用宿主 :80 -> :8788 portproxy；wslc 形态由 nginx 容器直接占 :80
+#      （wslc 下执行 bh lan on 会提示改用 nginx，见下面分支里的检测）
 if ($Arg1 -eq 'lan') {
     $sub = if ($CmdArgs.Count -gt 1) { $CmdArgs[1] } else { 'status' }
     switch ($sub) {
@@ -255,6 +267,19 @@ if ($Arg1 -eq 'lan') {
     exit 0
 }
 
-# 其余命令直接委托给 native 脚本
-& $nativeScript @CmdArgs
+# ==================== 其余命令：两种形态的兼容入口 ====================
+# ovms / openvino：OVMS(:8000) 的启停两种形态通用（实现放在 native cell，逻辑与形态无关）
+# open-webui：AI 对话页后端目前只有 Windows venv 一种实现（wslc/k8s 侧的容器版在 k8s/ 里）
+if ($Arg1 -in @('ovms', 'openvino', 'open-webui')) {
+    if (-not (Test-Path $nativeScript)) { Write-Error "[bh] 缺少 $nativeScript"; exit 1 }
+    & $nativeScript @CmdArgs
+    exit $LASTEXITCODE
+}
+
+# ==================== 默认：wslc（Windows 用户形态） ====================
+$wslcCell = Join-Path $Root 'win\wslc\bh.ps1'
+if (-not (Test-Path $wslcCell)) { Write-Error "[wslc] 缺少 $wslcCell"; exit 1 }
+$rest = @($CmdArgs)
+if ($rest.Count -eq 0) { $rest = @('status') }
+& $wslcCell @rest
 exit $LASTEXITCODE

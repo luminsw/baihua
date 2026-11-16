@@ -1,87 +1,109 @@
-# bh - 百花 CLI（Windows：native / docker 两种形态）
+# bh - 百花 CLI（Windows：wslc 默认 / dev 开发）
 
-Windows 上有**两种互斥的部署形态**，都占 8788（后端）/ 5177（WebUI），同一时间只能跑一种：
+Windows 上有**两种互斥的部署形态**，都占 8788（后端）/ 5177（WebUI），同一时间只能跑一种。
+**2026-11-16 起默认形态是 wslc**，native 降级为开发形态（`bh dev`）：
 
-| 命令 | 形态 | 跑在哪 | 依赖 | 说明 |
+| 命令 | 形态 | 跑在哪 | 依赖 | 用途 |
 |------|------|--------|------|------|
-| `bh <cmd>` | **native（默认）** | Windows dotnet 进程（`bh-server.exe` / `bh-webui.exe`） | .NET SDK 10、本机 PostgreSQL、可选 OVMS | 不依赖 Docker/WSL，最快 |
-| `bh wslc <cmd>` | **wslc** | WSL 3 里的 Linux 容器（postgres / server / webui） | WSL >= 2.9.3（自带 `wslc.exe`） | 环境隔离，一条命令起全栈 |
+| `bh <cmd>` | **wslc（默认）** | WSL3 里的 Linux 容器（postgres / server / webui / nginx） | WSL >= 2.9.3（自带 `wslc.exe`） | 日常使用：环境隔离、生命周期由容器层管、一条命令起全栈 |
+| `bh dev <cmd>` | **native（开发）** | Windows dotnet 进程（`bh-server.exe` / `bh-webui.exe`） | .NET SDK 10、本机 PostgreSQL | 只在写代码时用：VS F5、秒级 publish、WSL 出问题时的退路 |
 | `bh`（Linux 上） | k3s | Linux k3s（containerd） | Linux + k3s | 与 Windows 无关 |
 
+> **为什么这么分**：容器形态自带生命周期管理（重启状态、日志、卷、端口发布），native 要手工拼
+> 计划任务 + GUI 启动器才能做到「关终端不死、不弹窗口」，日常维护成本明显更高；但 native 的开发内环
+>（改一行 C# → publish → 起进程）比「publish → 打镜像 → 重建容器」快一个量级，所以保留为 `bh dev`。
+>
+> **两种形态互斥**：切换前 `bh stop`（wslc）或 `bh dev stop`（native）。`bh start` 检测到端口被
+> native 的 `bh-*` 进程占着会直接拒绝并提示，不会出现半启动状态。
+>
 > 历史上的 `bh-k3s`（经 WSL 的全容器化形态）已随本机 WSL 卸载而退役（2026-10-27）；
 > Windows 侧该入口与定位器已删除，Linux 侧 k3s 实现仍保留在 `linux/k8s/`。
 > 传入旧写法 `bh k8s <cmd>` / `bh-k3s <cmd>` 会失败并给出迁移指引。
 >
-> **wslc 形态**用 Windows 11 新版 WSL 自带的容器 CLI（`wslc.exe`，WSL >= 2.9.3）承载百花，
-> **不需要 Docker Desktop**、不需要 WSL 里的 k3s，也不需要预构建的 `bh/base-*` 基础镜像——
-> `docker/Dockerfile.server`、`docker/Dockerfile.webui` 直接基于官方 .NET 镜像，`wslc build` 即可。
+> **wslc 形态**用 Windows 11 新版 WSL 自带的容器 CLI（`wslc.exe`，WSL >= 2.9.3），
+> **不需要 Docker Desktop**、不需要 WSL 里的 k3s——`docker/Dockerfile.server|webui` 直接基于官方 .NET 镜像。
 
 ```
 tools/bh/
-├── bh.ps1 / bh.cmd          Windows 入口：默认 native；bh wslc <cmd> 转发到容器形态
+├── bh.ps1 / bh.cmd          Windows 入口：默认 wslc；bh dev <cmd> 落 native；bh wslc <cmd> 显式写法
 ├── locator.ps1              Windows 自包含定位器（复制到 PATH 用）
 ├── bh.sh / locator.sh       Linux 入口（指向 linux/k8s/bh.sh；Linux 上 bh 即 k3s 形态）
-├── win/native/              native 实现（build/start/stop/status/logs/dashboard…）
-├── win/wslc/                wslc 实现（bh wslc：网络/卷/容器 build/run/logs，docker/.env.wslc）
+├── win/native/              native（dev）实现：build/start/stop/status/logs/doctor/autostart…
+├── win/wslc/                wslc（默认）实现：网络/卷/容器 build/run/logs/status/doctor/autostart，docker/.env.wslc
 └── linux/k8s/               k3s 实现（Linux 专用；Windows 上已退役）
 ```
 
-## 首次运行（必读）
+## 首次运行（wslc 默认形态）
 
 ```powershell
-# ① 装 .NET SDK 10（bh build 也会在缺失时用 winget 自动装）
-winget install --id Microsoft.DotNet.SDK.10
+# ① WSL 3（wslc.exe 随 WSL 提供；不需要 Docker Desktop、不需要 .NET SDK、不需要本机 PostgreSQL）
+wsl --update
+wsl --version                    # 需要 WSL 2.9.3+（本机为 3.0.x）
 
-# ② 装 PostgreSQL，并准备密码（bh 不管理 PG 的安装；默认口令不可用时会连不上）
-#    - 装 Windows 服务 postgresql-x64-18
-#    - 建库：CREATE DATABASE baihua;
-#    - 后端读环境变量 PG_PASSWORD（PG_HOST=127.0.0.1 / PG_USER=postgres / PG_DATABASE=baihua）
-#    - 给当前用户设一次即可：setx PG_PASSWORD "<你的口令>"
-
-# ③ 装 bh 定位器并加入 PATH
+# ② 装 bh 定位器并加入 PATH（先装定位器，后面 bh 才能直接用）
 .\tools\bh\bh.ps1 install        # 新开终端后 bh 直接可用（并清理旧版 bh-k3s 遗留）
 
-# ④ 构建 + 启动（首次 publish 需要几分钟）
-bh build
-bh start
-bh status                        # 期望：server 8788 / webui 5177 均 ready
+# ③ 体检 → 构建镜像 → 启动
+bh doctor                        # 逐项结论 + 失败项的下一步命令（只读）
+bh build                         # 首次要拉 .NET 基础镜像，较慢；拉不到 SDK 镜像用 bh build -Prebuilt
+bh start                         # postgres → server → webui → nginx，等健康检查
+bh status                        # 期望：四个容器 RUNNING + OVMS
 bh dashboard                     # 打开 WebUI（cli-token 自动登录）
 ```
 
-可选：IPv6/局域网访问用 `bh lan on`（宿主 `:80 -> :8788` portproxy）。
+> `bh doctor` 覆盖：`wslc.exe`/版本、镜像是否齐全、命名卷、容器状态、8788/5177/80 端口占用（含
+> native/dev 冲突）、OVMS 形态与模型、AI 对话页后端（open-webui:8080）、`docker/.env.wslc`。
+> 每项 `[ OK ] / [WARN] / [FAIL]`，FAIL 下面直接给命令；`--json` 给工具用（退出码 0 = 无 FAIL）。
 
-### 先体检，再启动（推荐）
-
-```powershell
-bh doctor                     # 逐项结论 + 失败项的下一步命令（只读，不改任何系统状态）
-bh start
-bh status                     # 期望：server 8788 / webui 5177 均 RUNNING
-```
-
-> `bh doctor` 是 native 的体检入口，覆盖：.NET SDK 10、构建产物、产物完整性标签、
-> PostgreSQL 服务/端口/**真实登录**（psql `select 1`，不弹口令提示）、8788/5177 占用、
-> OVMS 形态与模型、数据目录可写、定位器与 PATH、防火墙 8788、仓库是否脏。
-> 每项输出 `[ OK ] / [WARN] / [FAIL]`，FAIL 下面直接给命令；`bh doctor --json` 给工具用
-> （退出码 0 = 没有 FAIL 项）。`bh start` 也会在 PostgreSQL 不可达/口令未设时先警告，
-> 不会让你干等 60s 只看到「后端起不来」。
-
-### 一键自动修：`bh doctor --fix`
-
-只修「确定性、可回滚、不需要人判断」的项：产物完整性标签（Low → Medium）、PostgreSQL 服务启动、缺库建库、
-防火墙 8788、bh 定位器、OVMS 容器拉起，以及产物缺失时跑 `bh build`（构建前在跑的服务会在构建完原样拉回）。
-需要管理员的两项（防火墙 / 系统服务）会弹 UAC；无人值守场景用 `--no-elevate` 明确跳过（不弹窗）。
-口令错误、数据目录权限这类只报不修 —— 修了也不会对。
-
-### 登录自启：`bh autostart`
+### 登录自启（推荐）
 
 ```powershell
-bh autostart on       # 往 %APPDATA%\...\Startup 写 baihua-native.cmd（登录时 bh start，幂等）
-bh autostart status   # 是否启用 / 用的哪个入口 / OVMS 有没有自己的自启项
+bh autostart on       # 用户级 Startup 写 baihua-wslc.cmd（登录时 bh start，幂等；不需要管理员）
+bh autostart status   # 是否启用 / 入口 / 是否还留着 native 自启项
 bh autostart off      # 删掉自启文件（不影响正在跑的服务）
 ```
 
-要点：用户级 Startup 目录 ⇒ **不需要管理员**，也不注册系统服务；`bh start` 现在幂等（端口上是我们记录的
-那个 pid 就跳过，不会再杀正在服务的进程）；自启只起 `out\native` 下已构建的产物，改了代码先 `bh build`。
+> `autostart on` 会把旧的 `baihua-native.cmd` 改名成 `.disabled`（避免登录时两种形态抢 8788/5177）。
+
+### 首次运行（dev / native 形态，仅供开发）
+
+```powershell
+# ① .NET SDK 10（bh dev build 也会在缺失时用 winget 自动装）
+winget install --id Microsoft.DotNet.SDK.10
+
+# ② 本机 PostgreSQL（dev 形态不管理 PG 安装）
+#    - Windows 服务 postgresql-x64-18；建库：CREATE DATABASE baihua;
+#    - 后端读环境变量 PG_PASSWORD（PG_HOST=127.0.0.1 / PG_USER=postgres / PG_DATABASE=baihua）
+#    - 给当前用户设一次：setx PG_PASSWORD "<你的口令>"
+
+# ③ 停掉 wslc（端口互斥）→ 构建 → 启动
+bh stop
+bh dev build                     # dotnet publish 到 out/native/（增量很快）
+bh dev start
+bh dev status                    # 期望：server 8788 / webui 5177 RUNNING (release)
+bh dev doctor                    # dev 形态体检（含 psql 真实登录、产物完整性标签…）
+```
+
+> dev 形态的 `bh dev autostart` 也能开，但**不要和 wslc 的自启同时开**（两个都会抢 8788/5177）。
+> 日常请只开一个：推荐 `bh autostart on`（wslc）。
+
+> `bh dev doctor` 是 dev 形态的体检入口，覆盖：.NET SDK 10、构建产物、产物完整性标签、
+> PostgreSQL 服务/端口/**真实登录**（psql `select 1`，不弹口令提示）、8788/5177 占用、
+> OVMS 形态与模型、数据目录可写、定位器与 PATH、防火墙 8788、仓库是否脏。
+> 每项输出 `[ OK ] / [WARN] / [FAIL]`，FAIL 下面直接给命令；`--json` 给工具用
+> （退出码 0 = 没有 FAIL 项）。`bh dev start` 也会在 PostgreSQL 不可达/口令未设时先警告。
+
+### dev 专属：一键自动修 `bh dev doctor --fix`
+
+只修「确定性、可回滚、不需要人判断」的项：产物完整性标签（Low → Medium）、PostgreSQL 服务启动、缺库建库、
+防火墙 8788、bh 定位器、OVMS 容器拉起，以及产物缺失时跑 `bh dev build`（构建前在跑的服务会在构建完拉回）。
+需要管理员的两项（防火墙 / 系统服务）会弹 UAC；无人值守场景用 `--no-elevate` 明确跳过（不弹窗）。
+口令错误、数据目录权限这类只报不修 —— 修了也不会对。
+
+### dev 专属：登录自启
+
+`bh dev autostart on` 会往 Startup 写 `baihua-native.cmd`（登录时 `bh dev start`）。
+**日常别开**：它和 wslc 的自启抢 8788/5177，只有整天写代码的机器才考虑。
 
 ### k3s 形态（已从 Windows 退役）
 
@@ -96,36 +118,35 @@ Linux 机器不受影响：`bh`（= k3s 形态）照常可用。
 ## 用法
 
 ```
-bh                           状态总览（= bh status）
-bh <command> [args]           native 命令（Windows，默认形态）
-bh doctor [--json] [--fix]    本机体检；--fix 自动修可修的项（不改口令、不碰权限问题）
-bh autostart [on|off|status]  登录自启（用户级 Startup 目录，登录时执行 bh start）
-bh ovms [status|start|stop|restart|logs]   本地模型服务 OVMS(:8000)
-bh wslc <command> [args]      wslc 命令（Windows，WSL 自带容器 CLI，全容器形态）
-bh lan [on|off|status]        局域网入口（宿主 :80→:8788 portproxy，两种形态通用）
-bh install / uninstall        安装 / 移除定位器（加入用户 PATH）
+bh                           状态总览（= bh status，wslc）
+bh <command> [args]          wslc 命令（Windows 默认形态）
+bh dev <command> [args]      native 命令（开发/调试形态）
+bh doctor [--json]           体检当前形态（默认 wslc）；native 用 bh dev doctor
+bh autostart [on|off|status] 登录自启（默认写 wslc 的自启项）
+bh ovms [status|start|stop|restart|logs]   本地模型服务 OVMS(:8000)，两种形态通用
+bh open-webui <start|stop|status|install>  AI 对话页后端（Windows venv，两种形态共用）
+bh lan [on|off|status]       局域网入口（仅 dev/native：宿主 :80→:8788 portproxy）
+bh install / uninstall       安装 / 移除定位器（加入用户 PATH）
+bh wslc <command> [args]     wslc 的显式写法（= bh <command>，脚本兼容用）
 ```
 
-### native 命令速查（`bh`）
+### dev 命令速查（`bh dev`，开发形态）
 
 | 命令 | 说明 |
 |------|------|
-| `bh build [svc...]` | dotnet publish 到 out/native/（默认全部，可指定 server/webui） |
-| `bh build-restart [svc...]` | build + restart |
-| `bh start [svc...]` | 启动服务（默认全部，按依赖顺序 server→webui） |
-| `bh stop [svc...]` | 停止服务 |
-| `bh restart [svc...]` | stop + start |
-| `bh update` | git pull + build + start + 防火墙放行 |
-| `bh status` | 状态总览（端口/进程/OVMS 形态/访问地址，带颜色）；`bh` 不带参数即此命令 |
-| `bh status --json` | JSON 格式（供 DSH 插件；`openvino` 条目含 `engine`/`container`） |
-| `bh doctor [--json] [--fix]` | 本机体检：.NET / PostgreSQL 登录 / 产物 / 端口 / OVMS / PATH，逐项给修复命令；`--fix` 自动修可修的项 |
-| `bh autostart [on\|off\|status]` | 登录自启：往用户 Startup 目录写 `baihua-native.cmd`（登录时 `bh start`，幂等） |
-| `bh logs <svc> [n] [-f] [-e]` | tail 日志（默认 50 行）；`-f` 跟随，`-e` 看 stderr 日志 |
-| `bh ovms [status\|start\|stop\|restart\|logs [n]]` | 本地模型服务 OVMS(:8000)：自动识别 wslc 容器 / Windows 服务 / 外部进程 |
-| `bh dashboard` | 打开 WebUI（cli-token 自动登录） |
-| `bh lan [on\|off\|status]` | 局域网入口（宿主 :80 → :8788 portproxy） |
+| `bh dev build [svc...]` | dotnet publish 到 `out/native/`（默认全部，可指定 server/webui） |
+| `bh dev build-restart [svc...]` | build + restart |
+| `bh dev start [svc...]` | 启动服务（默认全部，按依赖顺序 server→webui），后台静默、关终端不死 |
+| `bh dev stop [svc...]` | 停止服务 |
+| `bh dev restart [svc...]` | stop + start |
+| `bh dev update` | git pull + build + start + 防火墙放行 |
+| `bh dev status [--json]` | 状态总览（端口/进程/OVMS 形态/访问地址）；`--json` 供 DSH 插件（`cell: native`） |
+| `bh dev doctor [--json] [--fix]` | dev 体检：.NET / PostgreSQL 登录 / 产物 / 端口 / OVMS / PATH；`--fix` 自动修可修项 |
+| `bh dev autostart [on\|off\|status]` | dev 登录自启（写 `baihua-native.cmd`）；**别和 wslc 自启同开** |
+| `bh dev logs <svc> [n] [-f] [-e]` | tail 日志（默认 50 行）；`-f` 跟随，`-e` 看 stderr 日志 |
+| `bh dev dashboard` / `open` | 打开 WebUI（dashboard 走 cli-token 自动登录） |
 
-> native 不管 PostgreSQL 安装（用户自行装 Windows 服务 `postgresql-x64-18`）。
+> dev 形态不管 PostgreSQL 安装（自行装 Windows 服务 `postgresql-x64-18`）。
 > 环境变量：`PG_HOST`（默认 127.0.0.1）、`PG_USER`（默认 postgres）、`PG_PASSWORD`、`PG_DATABASE`（默认 baihua）。
 
 **OVMS（本地模型服务，REST :8000）不是 native 的一部分**，`bh` 只负责「按当前形态启停它」：
@@ -147,25 +168,29 @@ bh ovms logs 100    # wslc logs --tail 100 ovms-gpu
 > 没有 OVMS 也能跑百花，只是本地 AI 功能降级；`bh doctor` 会把这种情况标成 `[WARN]` 而不是失败。
 > 旧入口 `bh start|stop|restart|status openvino` 仍可用（= `bh ovms ...`），文案里说的 `openvino` 就是 OVMS。
 
-### wslc 命令速查（`bh wslc`）
+### wslc 命令速查（`bh`，Windows 默认形态）
 
 前置：**WSL 3**（`wsl --version` 看版本，`wsl --update` 升级；`wslc.exe` 随 WSL 提供，**不需要 Docker Desktop**）。
 架构对应关系：`postgres` + `server`（8788）+ `webui`（5177）+ `nginx`（宿主 :80，浏览器与花记移动端统一入口）四个容器，
 用户自定义网络 `bh-net`，镜像用 `docker/Dockerfile.server|webui` 由 `wslc build` 构建。
 
+> 旧写法 `bh wslc <cmd>` 仍然可用（= `bh <cmd>`），用于脚本兼容；新代码/文档一律写 `bh <cmd>`。
+
 | 命令 | 说明 |
 |------|------|
-| `bh wslc build [server\|webui]` | 构建镜像（首次会拉 .NET SDK 镜像，较慢；源码变更后重跑） |
-| `bh wslc build -Prebuilt` | 预编译路径：宿主机 `dotnet publish -r linux-x64` → 产物打进 `aspnet:10.0` 运行时镜像（拉不到 SDK 镜像时用） |
-| `bh wslc start [svc...]` | 启动（默认全部：postgres → server → webui），等待 8788/5177 就绪 |
-| `bh wslc stop` / `restart` | 停止并删除容器（命名卷保留数据）/ 重启 |
-| `bh wslc status` | `wslc container list --all` + 访问地址 + OVMS 探测 |
-| `bh wslc logs <svc> [n]` | 日志（server / webui / postgres） |
-| `bh wslc exec <svc> <cmd...>` | 在运行中的容器里执行命令（如 `bh wslc exec postgres psql -U baihua -d baihua`） |
-| `bh wslc ps` / `pull` | 容器列表 / 拉取 postgres 镜像 |
-| `bh wslc update` | git pull + build + start |
-| `bh wslc dashboard` / `open` | 打开 WebUI（dashboard 尝试 cli-token 自动登录） |
-| `bh wslc env` | 查看/生成 `docker/.env.wslc`（首次自动生成，含随机 `PG_PASSWORD`） |
+| `bh build [server\|webui]` | 构建镜像（首次会拉 .NET SDK 镜像，较慢；源码变更后重跑） |
+| `bh build -Prebuilt` | 预编译路径：宿主机 `dotnet publish -r linux-x64` → 打进 `aspnet:10.0` 运行时镜像（拉不到 SDK 镜像时用） |
+| `bh start [svc...]` | 启动（默认全部：postgres → server → webui → nginx），等 8788/5177 就绪；**端口被 dev/native 占用会直接拒绝** |
+| `bh stop [svc...]` / `restart` | 停止并删除容器（可只停指定服务；命名卷保留数据）/ 重启 |
+| `bh status [--json]` | 容器列表 + 访问地址 + OVMS + 端口占用者；`--json` 给 DSH 插件（`cell: wslc`） |
+| `bh doctor [--json]` | wslc 体检：wslc/版本、镜像、命名卷、容器、端口冲突、OVMS、AI 对话页后端、.env.wslc |
+| `bh autostart [on\|off\|status]` | 登录自启：写 `baihua-wslc.cmd`（登录时 `bh start`）；会自动停用旧的 native 自启项 |
+| `bh logs <svc> [n]` | 日志（server / webui / postgres / nginx） |
+| `bh exec <svc> <cmd...>` | 在运行中的容器里执行命令（如 `bh exec postgres psql -U baihua -d baihua`） |
+| `bh ps` / `pull` | 容器列表 / 拉取 postgres 镜像 |
+| `bh update` | git pull + build + start |
+| `bh dashboard` / `open` | 打开 WebUI（dashboard 尝试 cli-token 自动登录） |
+| `bh env` | 查看/生成 `docker/.env.wslc`（首次自动生成，含随机 `PG_PASSWORD`） |
 
 要点：
 - **数据**：命名卷 `bh-pgdata`（PostgreSQL，挂 `/var/lib/postgresql`，pg18 布局）、`bh-data`（`/app/data`，密钥/配置）、
@@ -173,24 +198,27 @@ bh ovms logs 100    # wslc logs --tail 100 ovms-gpu
 - **PostgreSQL** 只绑 `127.0.0.1:5433`（避开宿主 5432 上可能已装的 PostgreSQL）。
 - **镜像源**：Docker Hub 在国内常直连超时，`docker/.env.wslc` 的 `BAIHUA_WSL_MIRROR` 默认 `docker.m.daocloud.io`，
   postgres 经它拉取；.NET 基础镜像走 `mcr.microsoft.com`（可直连）。留空则用官方 registry。
-- **OVMS 仍跑在 Windows**（`ovms` 服务，:8000）：容器访问宿主需要宿主 IP，`bh wslc start` 会逐个探测
-  宿主网卡地址并自动把 `OpenVinoOms__BaseUrl` 传进 server 容器；探测不到时可用 `OVMS_HOST_IP` 指定。
-- **局域网 :80 入口**：由 nginx 容器独占（`0.0.0.0:80`，配置 `docker/nginx/wslc.conf`）：
+- **OVMS 是独立容器 `ovms-gpu`**（:8000，不属本栈）：`bh start` 会逐个探测宿主网卡地址，把可达的
+  `OpenVinoOms__BaseUrl` 传进 server 容器（探测不到用 `docker/.env.wslc` 的 `OVMS_HOST_IP` 指定）。
+  `bh ovms status|start|stop` 管它（两形态通用）。
+- **局域网入口**：由 nginx 容器发布到宿主 `0.0.0.0:<BAIHUA_NGINX_PORT>`（默认 80，配置 `docker/nginx/wslc.conf`）：
   `/mg/*`、`/api/*`、`/pair`、`/ws/*`、`/mcp` → server，其余 → WebUI。**wslc 形态不需要 `bh lan on`**
-  （执行会提示）；之前建过 portproxy 的先 `bh lan off`，否则 nginx 无法绑定 :80。
-- **与 native 互斥**：两种形态都占 8788/5177，切换前先 `bh stop` 或 `bh wslc stop`。
-- **重启后**：容器不随 Windows 登录自动拉起（`wslc` 没有 restart policy），需要再 `bh wslc start`；
-  OVMS 是 Windows 服务（AUTO_START），不受影响。
+  （执行会提示）；之前建过 portproxy 的先 `bh lan off`，否则 nginx 无法绑定。
+  **宿主 :80 常被 http.sys/IIS/其它服务占着**：`bh doctor` 会 `[WARN]` 报出来，此时在 `docker/.env.wslc` 里
+  设 `BAIHUA_NGINX_PORT=8080` 再 `bh restart` 即可绕过（8788/5177 直连始终可用）。
+- **与 dev(native) 互斥**：两种形态都占 8788/5177，切换前 `bh stop`（wslc）或 `bh dev stop`（native）；`bh start` 会检测并拒绝。
+- **重启后**：`wslc` 没有 restart policy，容器不会自己回来 —— 用 `bh autostart on` 让登录时跑 `bh start`；
+  OVMS 容器另有自己的开机自启项 `ovms-wslc.cmd`，不受影响。
 - **镜像构建拉不到 SDK 时**：本机实测 `wslc pull mcr.microsoft.com/dotnet/sdk:*` 会卡住（`aspnet:*` 正常），
-  用 `bh wslc build -Prebuilt`（宿主机 publish + 预构建 Dockerfile）即可绕开 SDK 镜像。
+  用 `bh build -Prebuilt`（宿主机 publish + 预构建 Dockerfile）即可绕开 SDK 镜像。
 - **管理 API 来源网段**：容器模式下 server 的 `BAIHUA_ADMIN_ALLOWED_NETS` 额外放行 `169.254.0.0/16`
   （wslc 的 127.0.0.1 端口代理在容器内表现为这个源地址，不放行会让宿主机访问 `/api/*` 返回 403）。
 
 ## 自检（回归）
 
 ```powershell
-pwsh -File scripts/verify-bh-native.ps1          # native：bh-k3s 残留 / docker·kubectl·WSL 发行版依赖 / status(--json) / doctor(--json) / ovms status / autostart status / 裸 bh / 旧写法提示
-pwsh -File scripts/verify-bh-wslc.ps1            # wslc：入口/dispatch/只用 wslc 的静态检查（无 wslc 时跳过运行时项）
+pwsh -File scripts/verify-bh-native.ps1          # dev(native)：bh-k3s 残留 / 无 docker·kubectl·WSL 发行版依赖 / bh dev status(--json) / doctor / autostart / ovms / 旧写法
+pwsh -File scripts/verify-bh-wslc.ps1            # wslc(默认)：默认路由 cell=wslc / doctor / autostart / bh dev 路由 / 只用 wslc 的静态检查
 pwsh -File scripts/verify-bh-native.ps1 -Quiet   # 只输出失败与汇总
 ```
 
@@ -202,19 +230,35 @@ pwsh -File scripts/verify-bh-native.ps1 -Quiet   # 只输出失败与汇总
 在 Linux 机器上 `bh` 等同 k3s 形态（`linux/k8s/bh.sh`）：build/deploy/up/status/logs 等，
 命令速查见 `linux/k8s/README.md`。
 
-## 从 `bh k8s` / `bh-k3s` 迁移（Windows）
+## 从旧写法迁移
 
-k3s 形态已从 Windows 退役，对应关系：
+### 2026-11-16：默认形态调换（native → wslc）
+
+| 旧习惯（当时是 native） | 现在等价写法 |
+|----|----|
+| `bh start` / `bh stop` / `bh status` / `bh logs` | `bh dev start` / `bh dev stop` / `bh dev status` / `bh dev logs` |
+| `bh build`（dotnet publish） | `bh dev build` |
+| `bh wslc start`（显式容器形态） | `bh start`（wslc 已是默认） |
+| `bh native <cmd>` | `bh dev <cmd>`（`bh native` 仍可用，会提示改名） |
+| `bh autostart on`（写 native 自启） | `bh autostart on` 现在写 **wslc** 自启；native 用 `bh dev autostart on` |
+
+> 混淆成本最低的判断法：**要改代码 → `bh dev`；要用百花 → `bh`**。
+
+### 更早：从 `bh k8s` / `bh-k3s` 迁移（k3s 已从 Windows 退役）
 
 | 旧 | 新 |
 |----|----|
-| `bh-k3s status` / `logs` / `dashboard` | `bh status` / `bh logs <svc>` / `bh dashboard`（native） |
-| `bh-k3s build server webui` / `up` | `bh build` / `bh build-restart`（native dotnet publish） |
-| `bh-k3s lan on` | `bh lan on`（会清理 WSL 遗留 portproxy） |
+| `bh-k3s status` / `logs` / `dashboard` | `bh status` / `bh logs <svc>` / `bh dashboard` |
+| `bh-k3s build server webui` / `up` | `bh build` / `bh build-restart`（现在是 wslc 镜像构建；native 用 `bh dev build`） |
+| `bh-k3s lan on` | `bh lan on`（仅 dev/native；wslc 由 nginx 容器占入口） |
 | `bh k8s <cmd>` | 同上（旧子命令已移除） |
-| `bh native <cmd>` | `bh <cmd>`（native 就是默认，无需前缀） |
 
 装完新定位器后重新 `bh install` 一次即可（install 会顺带清理旧版 `bh-k3s.ps1` / `bh-k3s.cmd` 遗留定位器）。
+
+### 数据没跟着搬
+
+两种形态的数据是**分开的**：wslc 用命名卷（`bh-pgdata` / `bh-data` / `bh-logs`），native 用本机 PostgreSQL + `~/.baihua`。
+`bh` 切换形态**不会迁移数据**。要搬家需要单独做 `pg_dump` → `psql` 恢复 + vault/密钥目录同步（还没做成命令，需要时手工或另写脚本）。
 
 ## 安装
 
