@@ -132,7 +132,15 @@ function Start-OpenWebUIDetached {
     # 一直 wait 到它退出 —— 这样任务本身的生命周期 = 服务生命周期，任务结束不会连坐杀掉服务。
     # （2026-11-04 实测：旧实现 Start-Process 后任务立即结束，Task Scheduler 关闭 job object 时
     #  把服务子进程一起杀掉，表现为“启动成功但过一会儿就静默消失”。）
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $self + '" -Detached')
+    # 优先用 bh-launch.exe（GUI 子系统，自身没有控制台）：
+    # `powershell -WindowStyle Hidden` 只是"先创建控制台再隐藏"，而 -Detached 实例要一直持有
+    # open-webui 进程，窗口会挂到它关闭为止（2026-11-17 用户重启后仍看到这个黑框）。
+    $launcher = Join-Path $DataHome 'bin\bh-launch.exe'
+    if (Test-Path $launcher) {
+        $action = New-ScheduledTaskAction -Execute $launcher -Argument ('--ps1 "' + $self + '" -Detached')
+    } else {
+        $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $self + '" -Detached')
+    }
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(2)
     # 不设执行时长上限，且允许电池供电时运行（默认会因“仅交流电”拒绝启动）
     $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew

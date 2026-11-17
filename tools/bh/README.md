@@ -58,12 +58,16 @@ bh dashboard                     # 打开 WebUI（cli-token 自动登录）
 ### 登录自启（推荐）
 
 ```powershell
-bh autostart on       # 用户级 Startup 写 baihua-wslc.cmd（登录时 bh start，幂等；不需要管理员）
+bh autostart on       # 用户级 Startup 写 baihua-wslc.lnk（登录时 bh start，幂等；不需要管理员）
 bh autostart status   # 是否启用 / 入口 / 是否还留着 native 自启项
 bh autostart off      # 删掉自启文件（不影响正在跑的服务）
 ```
 
-> `autostart on` 会把旧的 `baihua-native.cmd` 改名成 `.disabled`（避免登录时两种形态抢 8788/5177）。
+> 自启条目是 **`.lnk` 快捷方式，指向 `%BAIHUA_HOME%\bin\bh-launch.exe`**（GUI 子系统，自身没有控制台），
+> 由它去跑 `powershell -File bh.ps1 start` —— 登录时**一个窗口都不会出现**。
+> 早期版本写的是 `baihua-wslc.cmd`：Explorer 启动 `.cmd` 必然分配一个控制台窗口（`start /min` 也只是最小化），
+> 所以现在 `bh autostart on` 会顺手删掉旧的 `.cmd`。
+> `autostart on` 还会把旧的 `baihua-native.cmd` / `.lnk` 停用（避免登录时两种形态抢 8788/5177）。
 
 ### 首次运行（dev / native 形态，仅供开发）
 
@@ -102,7 +106,7 @@ bh dev doctor                    # dev 形态体检（含 psql 真实登录、�
 
 ### dev 专属：登录自启
 
-`bh dev autostart on` 会往 Startup 写 `baihua-native.cmd`（登录时 `bh dev start`）。
+`bh dev autostart on` 会往 Startup 写 `baihua-native.lnk` → `bh-launch.exe --ps1 bh.ps1 dev start`（同样无窗口）。
 **日常别开**：它和 wslc 的自启抢 8788/5177，只有整天写代码的机器才考虑。
 
 ### k3s 形态（已从 Windows 退役）
@@ -313,6 +317,10 @@ sudo bash tools/bh/bh.sh install       # root → /usr/local/bin（在 sudo secu
 - **`wslc list --format json` 的输出不是合法 JSON**：`Command` 字段被截断成含孤立代理字符的字符串，`ConvertFrom-Json` 必抛错。判断容器状态用 `wslc container inspect <name>` 的文本（正则取 `"Status": "running"`），别解析 list 的 JSON。
 - **端口探测不要用 `TcpClient.Connect`**：有防火墙/WFP 过滤时，对未监听的回环端口不返回 RST 而是等到超时（实测 ~2.05s/次），`bh status` 探 4 个端口会卡 8s。改用 `GetIPGlobalProperties().GetActiveTcpListeners()` 枚举（~30ms，native 与 wslc 两处都已改）。
 - **`bh` 不带参数 = 状态总览**：旧 help 写「打开管理面板」但实现是打印 help（不一致）。现在统一为 `status`——不会突然弹浏览器，只读且附带下一步提示。
+- **Startup 目录里不要放 `.cmd`**（2026-11-17）：Explorer 启动 `.cmd` 必然分配一个控制台窗口，`start /min` 只是最小化。
+  自启条目一律用 `.lnk` 指向 `%BAIHUA_HOME%\bin\bh-launch.exe`（GUI 子系统，无控制台）。
+  同理，open-webui 的 `baihua-open-webui-start` 计划任务也改成 `bh-launch.exe --ps1 <script> -Detached` ——
+  它的 `-Detached` 实例要一直持有服务进程，用 `powershell -WindowStyle Hidden` 的话那个窗口会挂到服务关闭为止。
 - **服务启动是静默的**（2026-11-15）：计划任务在用户会话里直接起控制台程序会分配一个**可见**控制台窗口，而 `start-<svc>.cmd` 是同步等 exe 的，窗口就挂在服务整个生命周期（两个服务 = 两个黑框）。
   现在任务动作是 `out\native\bin\bh-launch.exe <start-<svc>.cmd> <logs 目录>`：**GUI 子系统**的小启动器（自身没有控制台，没有窗口可闪），内部 `Process.Start(cmd.exe /c <cmd>, CreateNoWindow=true)` 并 `WaitForExit`。
   为什么不用 `powershell -WindowStyle Hidden`：它只是"先创建控制台再隐藏"，实测仍有 0.1~0.3s 闪；也不用 `wscript`+VBS（VBScript 已被微软列入弃用路线）。

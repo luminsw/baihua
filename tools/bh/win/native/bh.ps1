@@ -415,31 +415,56 @@ function Invoke-OvmsCommand {
 }
 
 # ---- 静默启动器（GUI 子系统的小 exe）-----------------------------------------
-# 计划任务在用户会话里起控制台程序 → 一定会分配控制台窗口；`powershell -WindowStyle Hidden`
-# 只是"先创建再隐藏"，仍有 0.1~0.3s 闪烁（2026-11-15 用户实测仍能看到黑框）。
+# 计划任务 / Explorer 在用户会话里起控制台程序 → 一定会分配控制台窗口；`powershell -WindowStyle Hidden`
+# 只是"先创建再隐藏"，实测仍会露出窗口（2026-11-15、11-17 两次用户反馈黑框）。
 # 换成一个 WindowsApplication（GUI 子系统）外壳：它自身没有控制台，再用 CreateNoWindow
-# 起 cmd 并 WaitForExit —— 全程没有任何窗口可闪，也不需要 VBScript。
-# 生成失败（没 csc / Add-Type 不支持）时退回 PowerShell 隐藏外壳。
+# 起子进程并 WaitForExit —— 全程没有任何窗口可闪，也不需要 VBScript。
+#
+# 两种调用方式（都保持"父进程一直等到子进程退出"的语义，任务/快捷方式因此继续持有服务）：
+#   bh-launch.exe <script.cmd> [workdir]            → cmd /c <script.cmd>（服务启动用）
+#   bh-launch.exe --ps1 <script.ps1> [args...]      → powershell -File <script> <args>（自启/open-webui 用）
+# 放在 %BAIHUA_HOME%\bin（稳定路径，与 out/ 是否重编无关）；版本号变了会重新编译。
+$script:BhLauncherVersion = '2'
 function Get-BhLauncherExe {
-    $binDir = Join-Path $OutDir 'bin'
+    $binDir = Join-Path $DataHome 'bin'
     $exe = Join-Path $binDir 'bh-launch.exe'
-    if (Test-Path $exe) { return $exe }
+    $verFile = Join-Path $binDir 'bh-launch.version'
+    $ver = if (Test-Path $verFile) { (Get-Content $verFile -Raw).Trim() } else { '' }
+    if ((Test-Path $exe) -and $ver -eq $script:BhLauncherVersion) { return $exe }
     $src = @'
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 public static class BhLaunch
 {
     public static int Main(string[] args)
     {
         if (args == null || args.Length < 1 || string.IsNullOrEmpty(args[0])) return 2;
-        var cmd = args[0];
-        var workDir = (args.Length > 1 && !string.IsNullOrEmpty(args[1])) ? args[1] : Path.GetDirectoryName(cmd);
-        var psi = new ProcessStartInfo("cmd.exe", "/c \"" + cmd + "\"");
+        ProcessStartInfo psi;
+        if (string.Equals(args[0], "--ps1", StringComparison.OrdinalIgnoreCase))
+        {
+            if (args.Length < 2) return 2;
+            var script = args[1];
+            var sb = new StringBuilder("-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\"");
+            for (int i = 2; i < args.Length; i++)
+            {
+                sb.Append(' ');
+                sb.Append(args[i].IndexOf(' ') >= 0 ? "\"" + args[i] + "\"" : args[i]);
+            }
+            psi = new ProcessStartInfo(PowerShellPath(), sb.ToString());
+            psi.WorkingDirectory = Path.GetDirectoryName(script);
+        }
+        else
+        {
+            var cmd = args[0];
+            var workDir = (args.Length > 1 && !string.IsNullOrEmpty(args[1])) ? args[1] : Path.GetDirectoryName(cmd);
+            psi = new ProcessStartInfo("cmd.exe", "/c \"" + cmd + "\"");
+            psi.WorkingDirectory = workDir;
+        }
         psi.UseShellExecute = false;
         psi.CreateNoWindow = true;
-        psi.WorkingDirectory = workDir;
         using (var p = Process.Start(psi))
         {
             if (p == null) return 3;
@@ -447,11 +472,20 @@ public static class BhLaunch
             return p.ExitCode;
         }
     }
+
+    private static string PowerShellPath()
+    {
+        var sys = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        var p = Path.Combine(sys, @"WindowsPowerShell\v1.0\powershell.exe");
+        return File.Exists(p) ? p : "powershell.exe";
+    }
 }
 '@
     try {
         New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+        Remove-Item $exe -Force -ErrorAction SilentlyContinue
         Add-Type -TypeDefinition $src -OutputAssembly $exe -OutputType WindowsApplication -ErrorAction Stop
+        Set-Content -Path $verFile -Value $script:BhLauncherVersion -Encoding ASCII
     } catch {
         Write-Warning ('[launcher] 生成静默启动器失败：' + $_.Exception.Message + '（退回 PowerShell 隐藏外壳）')
         return ''
@@ -1408,15 +1442,20 @@ function Get-BhShimPath {
 }
 
 function Show-Autostart {
-    Write-Host '[autostart] 百花 native 登录自启（用户级 Startup 目录，不需要管理员）'
-    if (Test-Path $AutostartFile) {
-        Write-Host '[autostart] 状态: 已启用' -ForegroundColor Green
-        Write-Host ('[autostart] 文件: ' + $AutostartFile)
-        Write-Host '[autostart] 动作: 登录时执行 bh dev start（幂等：已在跑的服务不会重复起）'
+    $lnk = Join-Path $StartupDir 'baihua-native.lnk'
+    $cmdFile = Join-Path $StartupDir 'baihua-native.cmd'
+    Write-Host '[autostart] 百花 dev(native) 登录自启（用户级 Startup 目录，不需要管理员）'
+    if (Test-Path $lnk) {
+        Write-Host '[autostart] 状态: 已启用（无窗口：.lnk → bh-launch.exe）' -ForegroundColor Green
+        Write-Host ('[autostart] 文件: ' + $lnk)
+    } elseif (Test-Path $cmdFile) {
+        Write-Host '[autostart] 状态: 已启用（旧式 .cmd，登录时会闪一个最小化控制台）' -ForegroundColor Yellow
+        Write-Host ('[autostart] 文件: ' + $cmdFile + '  ← 重新执行 bh dev autostart on 可换成无窗口的 .lnk')
     } else {
         Write-Host '[autostart] 状态: 未启用' -ForegroundColor DarkGray
-        Write-Host '[autostart] 开启: bh autostart on'
+        Write-Host '[autostart] 开启: bh dev autostart on'
     }
+    Write-Host '[autostart] 动作: 登录时执行 bh dev start（幂等：已在跑的服务不会重复起）'
     if (Test-Path (Join-Path $HOME '.local\bin\bh.cmd')) {
         Write-Host ('[autostart] 入口: ' + (Join-Path $HOME '.local\bin\bh.cmd') + '（已安装定位器，仓库搬家不影响）')
     } else {
@@ -1430,28 +1469,57 @@ function Show-Autostart {
     Write-Host '[autostart] 说明: 只启动 out\native 下已构建的产物；改了代码要先 bh build；日志见 bh logs server|webui'
 }
 
+function Get-BhPs1ShimPath {
+    # 自启走 powershell -File <ps1>：优先已安装的定位器（仓库搬家不失效），否则仓库入口
+    $loc = Join-Path $HOME '.local\bin\bh.ps1'
+    if (Test-Path $loc) { return $loc }
+    return (Join-Path $Root 'tools\bh\bh.ps1')
+}
+
 function Enable-Autostart {
     if (-not (Test-Path $StartupDir)) { New-Item -ItemType Directory -Force -Path $StartupDir | Out-Null }
-    $shim = Get-BhShimPath
-    # .cmd 必须纯 ASCII（cmd 按 ANSI 读）：注释也用英文
-    $lines = @(
-        '@echo off',
-        'rem baihua native autostart - generated by: bh autostart on',
-        'rem action: bh dev start (idempotent). disable with: bh dev autostart off',
-        ('start "baihua" /min "' + $shim + '" dev start')
-    )
-    Set-Content -Path $AutostartFile -Value $lines -Encoding ASCII
-    Write-Host ('[autostart] 已启用: ' + $AutostartFile) -ForegroundColor Green
-    if (-not (Test-Path (Join-Path $HOME '.local\bin\bh.cmd'))) {
+    $launcher = Get-BhLauncherExe
+    $ps1Shim = Get-BhPs1ShimPath
+    if ($launcher) {
+        # .lnk → bh-launch.exe（GUI 子系统，无控制台）→ powershell -File bh.ps1 dev start
+        # 必须用 .lnk 而不是 .cmd：Explorer 跑 .cmd 一定会分配一个控制台窗口（start /min 只是最小化）
+        $lnk = Join-Path $StartupDir 'baihua-native.lnk'
+        $shell = New-Object -ComObject WScript.Shell
+        $sc = $shell.CreateShortcut($lnk)
+        $sc.TargetPath = $launcher
+        $sc.Arguments = '--ps1 "' + $ps1Shim + '" dev start'
+        $sc.WorkingDirectory = Split-Path -Parent $ps1Shim
+        $sc.WindowStyle = 7
+        $sc.Description = 'baihua dev autostart (silent)'
+        $sc.Save()
+        Remove-Item (Join-Path $StartupDir 'baihua-native.cmd') -Force -ErrorAction SilentlyContinue
+        Write-Host ('[autostart] 已启用: ' + $lnk) -ForegroundColor Green
+        Write-Host '[autostart] 走 bh-launch.exe（GUI 子系统，无控制台）：登录时不会弹黑框'
+    } else {
+        $shim = Get-BhShimPath
+        $lines = @(
+            '@echo off',
+            'rem baihua native autostart - generated by: bh dev autostart on',
+            'rem action: bh dev start (idempotent). disable with: bh dev autostart off',
+            ('start "baihua" /min "' + $shim + '" dev start')
+        )
+        Set-Content -Path (Join-Path $StartupDir 'baihua-native.cmd') -Value $lines -Encoding ASCII
+        Write-Warning '[autostart] 没能生成 bh-launch.exe，退回 .cmd（登录时会有个最小化控制台窗口）'
+    }
+    if (-not (Test-Path (Join-Path $HOME '.local\bin\bh.ps1'))) {
         Write-Warning '[autostart] 用的是仓库内入口；建议先 bh install（装定位器），仓库搬家后才不用重开自启'
     }
-    Write-Host '[autostart] 下次登录生效（现在想看效果：bh start）'
+    Write-Host '[autostart] 下次登录生效（现在想看效果：bh dev start）'
 }
 
 function Disable-Autostart {
-    if (Test-Path $AutostartFile) {
-        Remove-Item $AutostartFile -Force
-        Write-Host '[autostart] 已关闭（删除 Startup 里的 baihua-native.cmd）' -ForegroundColor Green
+    $removed = @()
+    foreach ($f in @('baihua-native.lnk', 'baihua-native.cmd')) {
+        $path = Join-Path $StartupDir $f
+        if (Test-Path $path) { Remove-Item $path -Force -ErrorAction SilentlyContinue; $removed += $f }
+    }
+    if ($removed.Count -gt 0) {
+        Write-Host ('[autostart] 已关闭（删除 ' + ($removed -join ', ') + '）') -ForegroundColor Green
     } else {
         Write-Host '[autostart] 本来就是关闭状态' -ForegroundColor DarkGray
     }
@@ -1560,6 +1628,12 @@ switch ($Command.ToLower()) {
             $failCount = Show-Doctor
             if ($failCount -gt 0) { exit 1 }
         }
+    }
+    'launcher-path' {
+        # 内部用：确保 bh-launch.exe 存在并打印路径（wslc 的 autostart 也复用它）
+        $lp = Get-BhLauncherExe
+        if ($lp) { Write-Output $lp; exit 0 }
+        exit 1
     }
     'autostart' {
         # 用户级 Startup 目录（不需要管理员）；on=写 baihua-native.cmd，登录时跑 bh start
