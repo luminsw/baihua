@@ -72,17 +72,6 @@ Windows 用户：先开 WSL 终端（`wsl`）再执行上面命令。详见 `scr
 > `25-postgres.yaml` 此前从未被任何部署路径 apply（已在 `deploy.sh` / `bh.sh` 中修好）。
 
 ## 架构设计：OpenVINO 独立容器
-
-### 为什么拆分？
-
-| 维度 | 之前（嵌入后端进程） | 之后（独立容器） |
-|------|---------------------|------------------|
-| 后端镜像大小 | ~3GB（.NET + Python + OpenVINO） | ~800MB（.NET only） |
-| GPU 资源 | 绑定在后端 Pod | 仅 OpenVINO Pod |
-| 升级 OpenVINO | 需重建后端镜像 | 独立重建 OpenVINO 镜像 |
-| 扩缩容 | 后端 + GPU 一起扩 | 可独立扩 OpenVINO |
-| 代码改动 | — | 推理对接 OVMS OpenAI 兼容 /v3 接口 |
-
 ### 通信方式（Intel OVMS）
 
 自 777f860 起，百花本地 OpenVINO 推理由 **Intel OVMS（OpenVINO Model Server，官方 `openvino/model_server` 镜像）** 统一承载，
@@ -112,9 +101,9 @@ PVC: baihua-models-pvc (50Gi, hostPath: /opt/baihua/models)
 
 | 依赖 | 用途 | 自动安装 | 触发 |
 |------|------|---------|------|
-| nerdctl | k8s 镜像构建（直连 containerd） | ✅ `bh-k3s build` 自动装（GitHub release → /usr/local/bin） | build 时 |
+| nerdctl | k8s 镜像构建（直连 containerd） | ✅ `bh build` 自动装（GitHub release → /usr/local/bin） | build 时 |
 | buildkit（buildkitd+buildctl） | nerdctl build 的守护进程 + 客户端 | ✅ 同上，一次下载装两个 | build 时 |
-| .NET SDK 10 | native 部署/构建（linux-native） | ✅ `bh-k3s build` 自动装（dotnet-install.sh → ~/.dotnet） | build 时 |
+| .NET SDK 10 | native 部署/构建（linux-native） | ✅ `bh build` 自动装（dotnet-install.sh → ~/.dotnet） | build 时 |
 | .NET SDK 10 | native 部署/构建（win-native/win-docker） | ✅ winget 自动装 | build 时 |
 | k3s | K8s 运行时 | ❌ 需 root + 网络，手动装 | 见 1 |
 | Traefik（`traefik.io/v1alpha1` CRD） | 统一入口（IngressRoute/Middleware，:80） | ❌ k3s 默认自带；禁用过需手动装 | 见 1 |
@@ -140,7 +129,7 @@ curl -sfL https://get.k3s.io | sh -
 
 > **Traefik 是硬前提**：`24-traefik.yaml` 用的是 `traefik.io/v1alpha1` 的 `IngressRoute` / `Middleware`，
 > 集群里没有这两个 CRD 时 kubectl apply 会直接报 `no matches for kind` 而失败
-> （`bh-k3s deploy` 在基础清单阶段 `exit 1`）。k3s 默认自带 Traefik；若安装时用了 `--disable traefik`
+> （`bh deploy` 在基础清单阶段 `exit 1`）。k3s 默认自带 Traefik；若安装时用了 `--disable traefik`
 > 或 addon 未起来，需自行部署 Traefik v3 后再 deploy。
 > 校验：`kubectl get crd ingressroutes.traefik.io middlewares.traefik.io`
 
@@ -209,7 +198,7 @@ sudo apt install -y intel-opencl-icd libze-dev libze-intel-gpu1 libigdgmm12
 
 ### 3. 构建依赖（自动安装）
 
-`bh-k3s build` 会自动下载安装缺失的 nerdctl 与 buildkit（buildkitd 守护进程 + buildctl 客户端，官方 GitHub release → /usr/local/bin，需 root/sudo）。
+`bh build` 会自动下载安装缺失的 nerdctl 与 buildkit（buildkitd 守护进程 + buildctl 客户端，官方 GitHub release → /usr/local/bin，需 root/sudo）。
 k8s 镜像构建**不需要** .NET SDK（容器内构建，见上表说明）；dotnet 仅 native 部署用，由 `bh-linux-native.sh build` 自动装到 ~/.dotnet。无需手动装：
 
 ```bash
@@ -220,7 +209,7 @@ buildctl --version     # 0.32.x（nerdctl build 需要）
 dotnet --version       # 10.0+（仅 native 部署需要，k8s 构建不需要）
 ```
 
-> buildkitd 是 nerdctl build 的后端守护进程，安装后需运行。`bh-k3s build` 检测到 buildkitd 未运行时按环境给指引：
+> buildkitd 是 nerdctl build 的后端守护进程，安装后需运行。`bh build` 检测到 buildkitd 未运行时按环境给指引：
 >
 > - **systemd 环境（Ubuntu Server 等，默认）**：脚本自动写入 `/etc/systemd/system/buildkit.service`
 >   （GitHub release 的 buildkit **不带** systemd 单元文件），然后执行：
@@ -233,9 +222,9 @@ dotnet --version       # 10.0+（仅 native 部署需要，k8s 构建不需要�
 >   nohup buildkitd -config /etc/buildkit/buildkitd.toml > /tmp/buildkitd.log 2>&1 &
 >   ```
 >
-> `bh-k3s build` 会自动生成 buildkitd.toml（daocloud 镜像加速 + k8s.io namespace，**禁用 OCI worker**）、
+> `bh build` 会自动生成 buildkitd.toml（daocloud 镜像加速 + k8s.io namespace，**禁用 OCI worker**）、
 > `/etc/rancher/k3s/registries.yaml`（k3s 拉镜像走 daocloud，解决 pause/nginx 直连 docker.io 超时）
-> 和 buildkit.service 单元；写 `/etc` 下配置时自动走 sudo（无需先 `sudo bh-k3s build`）。
+> 和 buildkit.service 单元；写 `/etc` 下配置时自动走 sudo（无需先 `sudo bh build`）。
 > 已存在的配置文件不会被覆盖（幂等）。
 >
 > ⚠️ **两个"重启后生效"的坑（2026-08 实测）**：
@@ -247,10 +236,10 @@ dotnet --version       # 10.0+（仅 native 部署需要，k8s 构建不需要�
 >    daocloud 镜像返回 403（不在白名单）。现象：`n images` 看不到刚构建的镜像。
 >
 > ⚠️ **权限注意**：k3s 的 containerd socket（`/run/k3s/containerd/`）与 `k3s.yaml` 仅 root 可访问，
-> 因此 **build/deploy/status 建议整体用 `sudo bh-k3s <cmd>` 执行**（sudo 下脚本内部写配置逻辑同样正确）。
+> 因此 **build/deploy/status 建议整体用 `sudo bh <cmd>` 执行**（sudo 下脚本内部写配置逻辑同样正确）。
 
 > 镜像构建用 `nerdctl -a /run/k3s/containerd/containerd.sock build`，构建完直接进入 k3s 的 containerd，
-> 无需 docker，也无需 load/import。日常入口：`bh-k3s`（`../tools/bh/linux/k8s/bh.sh`）（build/up/status/logs）。
+> 无需 docker，也无需 load/import。日常入口：`bh`（`../tools/bh/linux/k8s/bh.sh`）（build/up/status/logs）。
 
 > **容器系统版本（2026-08 起）**：全部容器基于 Ubuntu 26.04 —— .NET 服务用
 > `mcr.microsoft.com/dotnet/aspnet:10.0-resolute`（sdk-offline 用 `sdk:10.0-resolute`），
@@ -321,7 +310,7 @@ openssl rand -base64 32
 
 ### GPU 按需部署（只有 Intel GPU 才启动 OpenVINO 服务）
 
-`deploy` / `bh-k3s up` 会自动探测节点是否有 Intel GPU，**有才部署** `10-intel-gpu-plugin`（kube-system）与 `22a-openvino`：
+`deploy` / `bh up` 会自动探测节点是否有 Intel GPU，**有才部署** `10-intel-gpu-plugin`（kube-system）与 `22a-openvino`：
 
 - 探测顺序：`BAIHUA_ENABLE_OPENVINO` 环境变量开关 → WSL2 GPU-PV（内核含 microsoft 且 `/dev/dxg` 为字符设备）→ 真机 `/dev/dri` 渲染节点 + `lspci` 厂商为 Intel
 - ⚠️ 不把 `/dev/dxg` 存在当 WSL2 依据：k8s 的 `hostPath type: DirectoryOrCreate`（22a-openvino.yaml 的 dxg 挂载）会在**原生 Linux** 宿主机上自动建出空的 `/dev/dxg` 目录，只有字符设备（`-c`）才是真实的 WSL2 GPU-PV
@@ -335,18 +324,18 @@ BAIHUA_ENABLE_OPENVINO=1 ./deploy.sh deploy   # 无 GPU 也强制部署（不推
 BAIHUA_ENABLE_OPENVINO=0 ./deploy.sh deploy   # 有 GPU 也强制跳过
 ```
 
-运行时按需启停（`bh-k3s openvino …`，清单保留、随时可恢复）：
+运行时按需启停（`bh openvino …`，清单保留、随时可恢复）：
 
 ```bash
-sudo bh-k3s openvino status     # 探测结果 + bh-openvino / intel-gpu-plugin 状态 + 节点 GPU 资源
-sudo bh-k3s openvino off        # 停止：bh-openvino 缩容至 0，intel-gpu-plugin 删除
-sudo bh-k3s openvino on         # 启动：重新 apply 两个清单并恢复副本数（无 GPU 时拒绝，除非 BAIHUA_ENABLE_OPENVINO=1）
+sudo bh openvino status     # 探测结果 + bh-openvino / intel-gpu-plugin 状态 + 节点 GPU 资源
+sudo bh openvino off        # 停止：bh-openvino 缩容至 0，intel-gpu-plugin 删除
+sudo bh openvino on         # 启动：重新 apply 两个清单并恢复副本数（无 GPU 时拒绝，除非 BAIHUA_ENABLE_OPENVINO=1）
 ```
 
 > 部署完成后打开管理面板：
 > ```bash
-> bh-k3s dashboard              # 普通用户：自动带 cli-token 打开默认浏览器
-> sudo bh-k3s dashboard         # root 无桌面授权，会打印带 token 的 URL，复制到浏览器即可
+> bh dashboard              # 普通用户：自动带 cli-token 打开默认浏览器
+> sudo bh dashboard         # root 无桌面授权，会打印带 token 的 URL，复制到浏览器即可
 > ```
 
 #### 5. 下载模型
@@ -381,7 +370,7 @@ OVMS（`config.json`）注册的 3 个模型目录（22a-openvino.yaml 内联 Co
 | `bge-small-zh` | `bge-small-zh-v1.5` | 嵌入 / CPU | gated（或方式 B 转换 BAAI/bge-small-zh-v1.5） |
 
 > 下载/转换完成后，`bh-openvino` Pod 会自动恢复（initContainer 会为已存在的模型目录生成 graph.pbtxt；
-> 若模型目录缺失则跳过，OVMS 只加载已注册且可用的 servable）。可用 `sudo bh-k3s status` 确认。
+> 若模型目录缺失则跳过，OVMS 只加载已注册且可用的 servable）。可用 `sudo bh status` 确认。
 
 #### 6. 验证 GPU + OpenVINO
 
@@ -507,31 +496,14 @@ buildkit 每次构建解析 `FROM` 基础镜像时会直连 `registry-1.docker.i
 
 ### 构建与镜像范围
 
-- `bh-k3s up` / `bh-k3s update` 始终**全量重建**两个 .NET 应用镜像（`server` + `webui`）再 deploy：
+- `bh up` / `bh update` 始终**全量重建**两个 .NET 应用镜像（`server` + `webui`）再 deploy：
   不做源码变更检测（曾用变更检测决定重建哪些，导致"部署镜像与源码脱节、标注撒谎"这类误导）
-- `bh-k3s build server webui` 手动指定只构建部分镜像；`bh-k3s build` 不带参数 = server + webui + openvino
-- `bh-k3s prune` 清空 buildkit 缓存（释放磁盘、修复缓存损坏）；缓存膨胀到百 GB 级时建议定期执行
+- `bh build server webui` 手动指定只构建部分镜像；`bh build` 不带参数 = server + webui + openvino
+- `bh prune` 清空 buildkit 缓存（释放磁盘、修复缓存损坏）；缓存膨胀到百 GB 级时建议定期执行
 
 ### 免 sudo 状态查看
 
-`bh-k3s status` / `bh-k3s logs` / `bh-k3s dashboard` 在 k3s 配置（/etc/rancher/k3s/k3s.yaml，root 600）不可读时自动提权，普通用户可直接使用；`build`/`deploy`/`update` 仍建议 sudo。
-
-## 与 Docker Compose 对比
-
-| 维度 | Docker Compose | K8s |
-|------|---------------|-----|
-| 网络 | host (Linux) / bridge (Windows) | Service DNS |
-| 后端进程 | 1（`server` 8788）+ `webui` 5177 | 1（`bh-server` 8788）+ `bh-webui` 5177 |
-| GPU 访问 | `--gpus all` (仅 NVIDIA) | `intel.com/gpu` (Device Plugin) |
-| OpenVINO | ❌ WSL2 不支持 Intel GPU | ✅ 原生 Linux |
-| OpenVINO 架构 | 独立 `openvino` 容器（`--profile inference`） | 独立 bh-openvino 容器（Intel OVMS，OpenAI 兼容 /v3） |
-| 数据库 | `postgres:18-alpine` 单库 `baihua` | bh-postgres（`postgres:18-alpine` 单库 `baihua`） |
-| 持久化 | bind mount | PVC |
-| 配置 | .env 文件 | ConfigMap + Secret |
-| 反向代理 | nginx container (host net) | Traefik IngressRoute (:80, svclb 绑定) |
-| 扩缩容 | 手动 | `kubectl scale` |
-| 自愈 | restart: unless-stopped | K8s 自动重启 + 健康检查 |
-| 滚动更新 | 手动重建 | `kubectl set image` + RollingUpdate |
+`bh status` / `bh logs` / `bh dashboard` 在 k3s 配置（/etc/rancher/k3s/k3s.yaml，root 600）不可读时自动提权，普通用户可直接使用；`build`/`deploy`/`update` 仍建议 sudo。
 
 ## 故障排查
 
@@ -639,237 +611,3 @@ kubectl -n baihua get endpoints
 5. **日志**：Fluentd/Fluent Bit 收集到 OpenObserve
 6. **镜像仓库**：使用 Harbor / ACR 推送镜像，避免 `imagePullPolicy: IfNotPresent`
 7. **OpenVINO 扩缩容**：多 GPU 节点时可 `kubectl scale deployment/bh-openvino --replicas=N`
-
-## 本机实测备忘（WSL2 + k3s，单后端合并后首次真机部署）
-
-以下都是首次真正部署时踩到并已修好的问题，重装/换机时按此检查。
-
-### 1. k3s 拉不到镜像（症状：`k3s ctr images ls` 为空、Traefik 卡在 ContainerCreating 数天）
-
-本机 WSL **访问不到 registry-1.docker.io**（Windows 侧 hysteria 代理只监听 127.0.0.1，
-WSL 经 NAT 网关够不到），于是 k3s 的 helm 安装（Traefik + CRD）一直拉不到镜像。
-修复：给 k3s containerd 配镜像站并重启（本机已应用）：
-
-```bash
-cat > /etc/rancher/k3s/registries.yaml <<'EOF'
-mirrors:
-  docker.io:
-    endpoint:
-      - "https://docker.m.daocloud.io"
-  registry-1.docker.io:
-    endpoint:
-      - "https://docker.m.daocloud.io"
-EOF
-systemctl restart k3s
-# 卡了很久的 helm job 要删掉让 helm controller 重试（本机删后 60s 内 Traefik + CRD 全部就绪）
-k3s kubectl -n kube-system get jobs
-```
-
-> `k3s ctr images pull docker.io/...` **不读** registries.yaml（那是 CRI 层配置）：用 ctr 手动拉时
-> 要写镜像站全名（`docker.m.daocloud.io/<repo>`）再 `k3s ctr images tag` 回原名。
-
-### 2. 构建应用镜像：代理、BuildKit、SDK 体积
-
-- `/etc/docker/daemon.json` 里若配了 `proxies: http://172.30.208.1:7890`（Windows 代理），
-  从 WSL 不可达 → `docker pull` 全部失败。本机已改为 `{}`（原文件备份为 `daemon.json.bak.*`）。
-- 本机 docker **没有 buildx**：`DOCKER_BUILDKIT=1 docker build` 会报
-  "BuildKit is enabled but the buildx component is missing" → 用 `DOCKER_BUILDKIT=0`（legacy builder）。
-- `docker/Dockerfile.server` 的 build 阶段要拉 ~800MB 的 dotnet SDK 镜像（本机国际链路很慢）。
-  标准源码构建（`bh-k3s build server`）依赖 `bh/sdk-offline` 镜像（内含 SDK + `nuget-local` 离线包源），
-  本机 k3s 里没有该镜像、也不方便把一个 SDK 镜像搬进集群，因此改用**预编译产物**路径
-  （两侧 Dockerfile 都在仓库里，不再是临时文件）：
-  ```bash
-  # 1) 宿主 publish（Windows 侧就有 SDK，无需再往集群塞 SDK）
-  dotnet publish services/Baihua.Server/Baihua.Server.csproj -c Release -r linux-x64 -o out/k8s/server
-  dotnet publish services/Baihua.Web/Baihua.Web.csproj   -c Release -r linux-x64 -o out/k8s/webui
-  # 2) runtime 层（context 是 publish 输出目录，FROM 已在 WSL docker 里的 bh/base-runtime:latest）
-  docker build -DOCKER_BUILDKIT=0 -f k8s/images/Dockerfile.server-prebuilt -t bh-server:latest out/k8s/server
-  docker build -DOCKER_BUILDKIT=0 -f k8s/images/Dockerfile.webui-prebuilt  -t bh-webui:latest  out/k8s/webui
-  # 3) 导入 k3s containerd 并滚动重启
-  docker save bh-server:latest | wsl -u root k3s ctr -n k8s.io images import -
-  docker save bh-webui:latest  | wsl -u root k3s ctr -n k8s.io images import -
-  wsl -u root k3s kubectl -n baihua rollout restart deploy/bh-server deploy/bh-webui
-  ```
-  > `bh/base-runtime:latest` 只需构建一次（`k8s/images/Dockerfile.base-runtime`，FROM .NET runtime aspnet）。
-  > 换了 .NET 大版本或系统依赖时才需要重做它。
-
-### 3. 启动顺序与数据库（已修）
-
-- `20-server.yaml` 带 `initContainer: wait-for-postgres`；后端自身在
-  `Baihua.Server/Program.cs` 还有数据库初始化重试（最多 20 次）兜底 —— 两层都要在，
-  因为 k8s 不保证 Pod 启动顺序，首次实测正是"后端先起、数据库后起"导致缺表。
-- 数据库口令只有一份：`baihua-secret.PG_PASSWORD`（server 走 `envFrom`，postgres 走
-  `secretKeyRef` 读同一键）。**上线前务必改掉默认值。**
-- 表结构由后端启动时的 `DatabaseInitializer` 建：三个 DbContext 共用一个库，缺表按需补齐
-  （半成品 schema 能自愈）。本机实测单库 38 张表（Family 31 + Vault 2 + AI 4 + CodeAgentSessions 1）。
-
-### 4. 入口与地址
-
-- Traefik CRD 是硬前提（`24-traefik.yaml`）。集群未装 Traefik 时 `bh-k3s deploy` 会跳过该清单并提示，
-  可用 `kubectl port-forward svc/bh-server 8788:8788` 临时访问。
-- `01-configmap.yaml` 的 `Baihua__PublicBaseUrl` 决定移动端配对二维码/广播地址。
-  **无需手改**：`bh start|deploy|up|restart` 会按默认路由网卡探测到的宿主 LAN IP 自动 patch 该键
-  （值变了才 patch，并滚动重启 `bh-server`，因为环境变量是启动时读入的）；
-  清单里的字面值只是占位，**不要删掉这个键**（删掉后 `kubectl apply` 会移除它，后端退回 Pod IP，二维码就扫不通）。
-  WSL 节点 IP 会变（本机实测曾为 `172.30.213.225`），但那只影响 Traefik 侧，与配对地址无关。
-  手动核对/查看：`bh-k3s lan status` 或 `kubectl -n baihua get cm baihua-config -o jsonpath='{.data.Baihua__PublicBaseUrl}'`。
-- 本机实测：`http://<节点IP>/health` → 200、`/` → 302（WebUI）、`/mg/*` → 401（需 HMAC 签名，符合预期）。
-
-### 5. OVMS（bh-openvino）在 k3s 里跑起来要注意三件事（本机已踩）
-
-1. **镜像**：`openvino/model_server:latest-gpu` 约 350MB，经 `docker.1ms.run` 约 2 分钟；
-   ctr 要显式写镜像站全名，再打两个标签（清单用 `bh-openvino:latest`）：
-
-   ```bash
-   k3s ctr -n k8s.io images pull docker.1ms.run/openvino/model_server:latest-gpu
-   k3s ctr -n k8s.io images tag docker.1ms.run/openvino/model_server:latest-gpu docker.io/openvino/model_server:latest-gpu
-   k3s ctr -n k8s.io images tag docker.1ms.run/openvino/model_server:latest-gpu docker.io/library/bh-openvino:latest
-   ```
-2. **模型仓库**：`baihua-models-pvc` 的 hostPath 是 WSL 内的 `/opt/baihua/models`，真实模型在 Windows 侧。
-   用**符号链接**指向 Windows 目录（落在 ext4 上，**跨 WSL 重启有效**）：
-
-   ```bash
-   ln -sfn /mnt/c/Users/lumin/.baihua/models /opt/baihua/models
-   ```
-
-   > 早期用的是 `mount --bind /mnt/c/... /opt/baihua/models`，**那个不跨重启**（不写 fstab、也没有
-   > systemd 单元），WSL 一重启 /opt/baihua/models 就变成空目录，OVMS 起不来且报错很隐蔽 —— 已改符号链接。
-   > 同理 `/opt/baihua/data/vaults`（`BAIHUA_HOME/vaults`，容器内 `/app/data/vaults`）也是指向
-   > `/mnt/c/Users/lumin/.baihua/vaults` 的符号链接。
-   > kubelet 解析 hostPath 时会跟随符号链接，所以 PV 定义（hostPath `/opt/baihua/models`）无需改动。
-   > 想更彻底也可以把 PV 的 hostPath 直接写成 `/mnt/c/...`（PV 的 hostPath 不可变，需删 PV/PVC 重建）。
-   模型目录里若有指向 modelscope 缓存的软链，还要把缓存目录挂进 Pod（本机已在部署里加了
-   `modelscope-cache` 卷：hostPath `/mnt/c/Users/lumin/.cache/modelscope` → 容器内同路径）。
-3. **配置驱动**：`22a-openvino.yaml` 用 `--config_path=/ovms-config/config.json`（`model_config_list`，
-   来自 ConfigMap `baihua-ovms-config`），`base_path` 必须是容器内路径（`/models/<模型目录>`）。
-   **不要把模型名硬编码进清单** —— 本机就因为清单里硬编码了不存在的 `Qwen2.5-VL-7B-Instruct-int4-ov`
-   而一直 CrashLoopBackOff。另外 `limits.memory` 必须 ≤ 节点可分配内存（原先写 16Gi、节点只有 15.4Gi，
-   调度器直接判不可调度 → Pod 永远 Pending；已改 12Gi）。
-
-   本机可用的两个模型（GPU）：`qwen3-4b`（Qwen3-4B-int4-ov）、`qwen3-embedding-0.6b`（Qwen3-Embedding-0.6B-int8-ov）。
-   验证：`kubectl -n baihua exec deploy/bh-server -- curl -s http://bh-openvino:8000/v1/models`
-
-4. **改模型挂载时要小心 PVC 悬挂**：`baihua-models-pvc` 若有 Pod 占用时被删，会卡在 `Terminating`
-   （后续 Pod 因卷未绑定而 Pending）。正确顺序（root）：
-
-   ```bash
-   k3s kubectl -n baihua delete deploy bh-openvino --ignore-not-found
-   k3s kubectl -n baihua delete pod -l app=bh-openvino --force --grace-period=0
-   k3s kubectl -n baihua patch pvc baihua-models-pvc -p '{"metadata":{"finalizers":null}}'   # 卡住时
-   k3s kubectl -n baihua delete pvc baihua-models-pvc --force --grace-period=0
-   k3s kubectl delete pv baihua-models-pv --ignore-not-found
-   ln -sfn /mnt/c/Users/lumin/.baihua/models /opt/baihua/models     # 符号链接，跨 WSL 重启有效
-   k3s kubectl apply -f k8s/03-pvc.yaml -f k8s/22a-openvino.yaml
-   ```
-   > `k3s kubectl` 要 root（`/etc/rancher/k3s/k3s.yaml` 仅 root 可读），`mount` 也要 root；
-   > 普通用户执行会报 `permission denied` / `must be superuser`。
-
-5. **本机 AI 链路怎么走通（重要）**：OVMS 只暴露成 ClusterIP，宿主机直连不到 :8000，所以要让宿主机侧
-   （DSH 的 `baihua-local` / `local_ai_small_task`）用上本地模型，必须把它注册成百花的 AI 提供方，
-   再由 shim 暴露出去。链路与实测：
-   ```
-   DSH(local_ai_small_task) → http://127.0.0.1/mg/ai/v1(Traefik :80) → 百花 shim
-     → provider `openvino-local`（baseUrl http://bh-openvino:8000/v3）
-     → bh-openvino → GPU 上的 qwen3-4b
-   ```
-   注册方式（WebUI 里加一个 OpenAI 兼容提供方，或直接调管理 API；幂等）：
-   ```bash
-   # loopback 管理 API（宿主机可经 port-forward 或 :80 访问）
-   curl -s -X POST http://127.0.0.1/api/ai/config/providers -H 'Content-Type: application/json' -d '{
-     "id":"openvino-local","name":"本机 OVMS（k3s bh-openvino）",
-     "baseUrl":"http://bh-openvino:8000/v3","isMain":false,
-     "models":[{"name":"qwen3-4b","isMain":false,"category":"chat"}],
-     "apiKey":"","sortOrder":50,"tier":2 }'
-   ```
-   > provider id 里带 `openvino`/`ovms` 是关键：`baihua-local-ai-dsh-plugin` 按 `owned_by` 白名单
-   > 判断"这是本地模型"，否则会把本地模型当云端模型过滤掉。
-   > 验证：`curl -s http://127.0.0.1/mg/ai/v1/models | grep qwen3-4b`，或让 DSH 跑一次
-   > `local_ai_small_task`（应显示"本地 shim/qwen3-4b"）。
-
-> Windows 上的 native `ovms` 服务（scripts/install-openvino-ovms-service.ps1）已无必要：
-> 后端经 `OpenVinoOms__BaseUrl=http://bh-openvino:8000` 走集群内 OVMS。
-> 退役需管理员权限：`powershell -ExecutionPolicy Bypass -File scripts\install-openvino-ovms-service.ps1 -Remove`
-> （只停服务+删注册，模型目录与 OVMS 二进制保留，可随时重装）。
-
-### 6. Windows 宿主上的访问方式（历史：WSL 包装层已退役）
-
-> **已退役（2026-10-27）**：本机 WSL 已卸载，Windows 侧 `bh-k3s` 包装层（`tools/bh/bh-k3s.ps1`）
-> 与 WSL 保活脚本（`scripts/bh-wsl.ps1` 等）已删除，Windows 一律走 native `bh`（见 `tools/bh/README.md`）。
-> 本节保留「Windows 宿主 + WSL2 + k3s」的原始记录，仅供将来重装 WSL2 时参考；
-> 其中的 `bh-k3s <cmd>` 需改成 WSL 内的 `bh <cmd>`（即 `tools/bh/linux/k8s/bh.sh`）。
-
-- **浏览器（Windows 本机）**：`bh-k3s dashboard` 已能自动打开 Windows 默认浏览器 ——
-  Windows 包装层（`tools/bh/bh-k3s.ps1`）用 `BAIHUA_DASHBOARD_PRINT_ONLY=1` 让 WSL 里只取 cli-token 并回传 URL，
-  再由 Windows 侧 `Start-Process` 打开（WSL 内没有浏览器，原来的实现只会打印 URL）。
-  实测链路：`GET /?cli-token=…` → 302（种 cookie）→ `GET /` → 200（百花页面）。
-- **手机/局域网**：Traefik 绑的是 WSL 的 :80（WSL IP 形如 `172.30.x.x`），Windows 本机能访问，
-  局域网设备访问不到。**不需要用户记脚本** —— `bh-k3s start` / `deploy` / `up` / `restart` / `dashboard`
-  会自动检查并补齐（用连通性判断，已就绪则静默；需要时才弹一次 UAC 自动提权执行转发）：
-
-  ```powershell
-  bh-k3s lan status              # 查看入口状态（WSL IP / 宿主 IP / 是否就绪）
-  bh-k3s lan on                  # 手动确保（等价于自动那步）
-  bh-k3s lan off                 # 撤销转发
-  ```
-
-  之后手机访问 `http://<宿主IP>/`（脚本/`bh-k3s` 会自动用默认路由网卡的地址，已排除 WSL 虚拟网卡）；
-  **WSL 重启后 IP 会变**，下一次 `bh-k3s start`/`dashboard` 会自动重做（脚本幂等）。
-  配对二维码里的地址（`Baihua__PublicBaseUrl`）由 `bh-k3s` 按同一个宿主地址自动校正，无需手改。
-- **零管理员方案（可选，推荐长期用）**：改用 WSL **mirrored 网络**，WSL 与宿主共享网络栈，
-  Traefik 的 :80 直接就在宿主局域网 IP 上，**不再需要任何 portproxy / UAC**：
-
-  ```ini
-  # %USERPROFILE%\.wslconfig
-  [wsl2]
-  networkingMode=mirrored
-  ```
-  然后 `wsl --shutdown` 重启（k3s 会随之重启；hostPath 数据保留，模型 bind-mount 需重做）。
-  `bh-k3s lan status` 会显示 `模式: WSL mirrored（无需转发）`，`bh-k3s` 也就不会再尝试提权。
-  额外好处：Windows 侧代理（127.0.0.1:7890）也能被 WSL/Docker 直接使用，拉镜像不再受限。
-- **客户端真实 IP（X-Forwarded-For）在 portproxy 模式下拿不到，这是转发方式决定的**，实测结论：
-  * `bh-k3s deploy` 会把 k3s 的 Traefik Service 打成 `externalTrafficPolicy: Local`（svclb/klipper-lb 在
-    Cluster 模式下会 SNAT，源 IP 到不了 Traefik）；服务端也配了 `BAIHUA_TRUSTED_PROXY_NETS=10.42.0.0/16`
-    （只采信来自 Pod 网段的 XFF）与 `BAIHUA_ADMIN_ALLOWED_NETS=10.0.0.0/8,192.168.3.0/24`。
-  * 但 **Windows 的 `netsh portproxy` 是用户态转发：它自己新建到 WSL 的连接**，真实客户端 IP 在进 WSL
-    之前就没了。实测把管理网段设成不可能命中的网段后，服务端日志打出的是
-    `[AccessControl] Blocked non-local request from 10.42.0.197`（Traefik Pod IP），而不是手机 IP。
-  * 因此依赖客户端 IP 的策略在这个模式下都会失真（审计日志里的 ipAddress、按 IP 分区等）。
-    **要拿到真实 IP 就走上面的 mirrored 网络**（那时 XFF 链路才有意义）；两者不要同时用。
-  * 不依赖客户端 IP 的补救已落地：配对限流改为**按 `X-Device-Id` 分区**（没有该头才退回 IP），
-    多设备家庭不会再共用一个 5 次/小时的桶。
-- **不要在 Windows 上直接跑 `k3s kubectl`/`mount`**：`/etc/rancher/k3s/k3s.yaml` 仅 root 可读、
-  `mount` 也要 root；普通用户执行会 `permission denied` / `must be superuser`。用 `sudo` 或 `wsl -u root`。
-
-### 7. WSL 保活（否则集群会"莫名反复重启"，看起来像端口冲突）
-
-**本机实测的真因**：WSL 发行版是"按需启动、空闲回收"的生命周期。发行版内最后一个会话结束时，
-**整个 k3s 集群随之消失**，所有容器收到 SIGTERM（退出码 143），restart 计数一路累积
-（实测 `bh-postgres` 107 次、`bh-server` 61 次、`bh-openvino` 63 次），`bh-k3s status` 里 pod 长期
-`0/1`，极像"端口冲突/服务起不来"，其实与端口无关。
-
-**识别**（两条任选，都很快）：
-
-```bash
-wsl -u root -e bash -lc "uptime"                     # 只启动几十秒 → 发行版刚被回收后冷启动
-wsl -u root -e bash -lc "journalctl --list-boots"    # 大量 30~60 秒的短会话 = 反复回收
-```
-
-**修复**（Windows 管理员终端，幂等）：
-
-```powershell
-bh-k3s autostart on          # 常驻 wsl.exe 保活 + 登录自启计划任务 + 写 .wslconfig 资源上限
-bh-k3s autostart status      # 查看保活进程 / 计划任务 / .wslconfig 状态
-```
-
-> ⚠️ **无效做法（实测）**：`wsl ... -c "nohup sleep infinity &"`。命令返回后 WSL 判定会话结束，
-> 发行版立刻回收（`wsl -l -v` 随即显示 `Stopped`），后台进程连同集群一起消失。
-> 必须让 **Windows 侧的 `wsl.exe` 进程本身**常驻（约 8 MB）。同理，无 systemd 环境下
-> `install-baihua.sh` 用 `nohup k3s server &` 起的集群也活不过会话结束 —— 因此 Windows + WSL2
-> 场景下保活是**必做项**。
-
-**另外**：宿主内存紧张会加剧回收。`.wslconfig` 限制 `memory`/`swap`/`processors`
-（`bh-k3s autostart on` 仅在**该文件不存在**时写入，已存在则不动、只提示）。
-本机实测 `vmmemWSL` 曾占 10.2 GB、宿主仅剩 4.1 GB 可用，属高压力区间。
-
-
-
