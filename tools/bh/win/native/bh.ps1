@@ -1456,6 +1456,8 @@ function Show-Autostart {
         Write-Host '[autostart] 开启: bh dev autostart on'
     }
     Write-Host '[autostart] 动作: 登录时执行 bh dev start（幂等：已在跑的服务不会重复起）'
+    $ps1Shim = if (Test-Path (Join-Path $HOME '.local\bin\bh.ps1')) { Join-Path $HOME '.local\bin\bh.ps1' } else { Join-Path $Root 'tools\bh\bh.ps1' }
+    Write-Host ('[autostart] 入口: ' + $ps1Shim)
     if (Test-Path (Join-Path $HOME '.local\bin\bh.cmd')) {
         Write-Host ('[autostart] 入口: ' + (Join-Path $HOME '.local\bin\bh.cmd') + '（已安装定位器，仓库搬家不影响）')
     } else {
