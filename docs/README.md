@@ -13,6 +13,7 @@
 | [sync_protocol.md](sync_protocol.md) | 移动端与后端同步协议（manifest → 文件 → 本地写入） |
 | [mobile_vault_distribution.md](mobile_vault_distribution.md) | 移动端知识库分发/导入（多库 vaultId 隔离） |
 | [openclaw-openvino-integration.md](openclaw-openvino-integration.md) | OpenClaw 本地 AI（OVMS / llama.cpp / Ollama / LM Studio）集成 |
+| [BAISHI_MASTER_SKILL.md](BAISHI_MASTER_SKILL.md) | 「拜师」AI 导师方法论（出题→批改→落库→跨会话续学），对应 DSH preset `baihua-baishi` + skill `baishi-master` |
 
 ## 其它文档位置
 
