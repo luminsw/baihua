@@ -72,16 +72,15 @@ C:\Users\lumin\src\
 
 | 项目 | Linux/Mac | Windows |
 |------|-----------|---------|
-| 百花 | `./tools/bh/bh.sh`（Linux 上即 k3s 形态；或显式 `./tools/bh/linux/k8s/bh.sh`） | `bh`（native，默认识别）；`bh wslc <cmd>`（WSL 容器，自带 `wslc.exe`，无需 Docker Desktop）；cmd 下同名 `.cmd` |
+| 百花 | `./tools/bh/bh.sh`（Linux 上即 k3s 形态；或显式 `./tools/bh/linux/k8s/bh.sh`） | `bh`（wslc 容器，默认）；`bh dev <cmd>`（native 开发形态）；cmd 下同名 `.cmd` |
 | 花阁 | `./hg` | `.\hg.ps1` |
 
 > 百花 CLI 在 Windows 上有**两种互斥形态**（都占 8788/5177，同时只能跑一种）：
-> - `bh <cmd>` = **native**（默认）：dotnet 进程直接跑在 Windows，不依赖容器/WSL；
-> - `bh wslc <cmd>` = **容器**：WSL 3 自带的 `wslc.exe` 跑 postgres/server/webui（不经 Docker Desktop），宿主机不需要 .NET/PG。
+> - `bh <cmd>` = **wslc（默认）**：WSL 3 自带的 `wslc.exe` 跑 postgres/server/webui/nginx，宿主机不需要 .NET/PG；
+> - `bh dev <cmd>` = **native（开发）**：dotnet 进程跑在 Windows + 本机 PostgreSQL（.NET SDK 10）。
 >
-> 旧写法 `bh k8s <cmd>` 与 `bh-k3s <cmd>` 均已移除（k3s 形态已随本机 WSL 卸载退役，2026-10-27；
-> Linux 侧 k3s 实现保留在 `tools/bh/linux/k8s/`，与 Windows bh 无关）。
-> 首次运行见 `tools/bh/README.md`「首次运行」「wslc 命令速查」。
+> `bh wslc <cmd>` 是 `bh <cmd>` 的等价显式写法。Linux 上 `bh` 只有 k3s 形态（`tools/bh/linux/k8s/bh.sh`）。
+> 首次运行与完整命令见 `tools/bh/README.md`。
 
 > 当前架构为**单一后端进程**：`Baihua.Server`（8788）承载家庭 / AI / 知识库三个模块，
 > 业务代码拆在三个类库里；WebUI（5177，Blazor Server）仍是独立进程。
@@ -89,8 +88,7 @@ C:\Users\lumin\src\
 > - **Baihua.Modules.Family / .Ai / .Vault** — 业务模块类库（家庭/亲子、AI、知识库）
 > - **Baihua.Web** (5177) — WebUI，独立进程
 >
-> 合并前是 `Baihua.Family`(8788) / `Baihua.AI`(8791) / `Baihua.Vault`(8790) 三个独立服务 + 三库 + 服务间 HTTP 互调，
-> 已在 commit `aa053f1` 合并（历史仅在本文件与 `docs/` 的历史章节中保留）。
+> 合并前是三个独立服务 + 三库 + 服务间 HTTP 互调，已在 commit `aa053f1` 合并为单进程（历史见 git 提交记录）。
 >
 > **单一 PostgreSQL 数据库**（默认 `baihua`，可用 `PG_DATABASE` 覆盖；`PG_HOST`/`PG_USER`/`PG_PASSWORD` 不变），
 > 一个 `public` schema，各模块保留自己的 `DbContext`（`Baihua.Data` 的 `FamilyDbContext`/`VaultDbContext`/`AIDbContext`），
@@ -166,7 +164,7 @@ C:\Users\lumin\src\
 - `services/Baihua.Core/`：共享服务层（含 VaultSettingsService、DeviceService 等；跨模块接口在 `Baihua.Core/Modules/`）
 - `services/Baihua.Data/`：共享 EF Core 数据层（单库多 DbContext + `DatabaseInitializer`）
 - `services/BaiHua.slnx`：服务端解决方案（包含所有 services/ 项目及 libs/MobileContract）
-- `tools/bh/`：极简 CLI 工具（Windows：`bh` = `win/native` dotnet 进程，`bh wslc` = `win/wslc` WSL 容器；k3s 形态已退役，Linux 侧实现保留在 `linux/k8s/`）
+- `tools/bh/`：百花 CLI（Windows：`bh` = `win/wslc` 容器（默认），`bh dev` = `win/native` dotnet 进程；Linux 侧 k3s 实现保留在 `linux/k8s/`）
 - `libs/BaihuaSdk/`：跨平台移动端 SDK（net9.0;net10.0，零 MAUI 依赖，主要 target net10.0）
 - `libs/MobileContract/`：移动端契约（DTO、接口定义）
 - `clients/Huapu/`：花圃（BaiHua.Nursery）— 移动端技术实验与验证工具（非正式发布 App，详见下方说明）
@@ -208,8 +206,9 @@ dotnet build services/BaiHua.slnx -c Release
 |------|------|------|
 | Baihua.Server | 8788 | 唯一后端 HTTP API（家庭/亲子、AI、知识库三模块合一；含 MCP `/mcp`） |
 | Baihua.Web | 5177 | HTTP Blazor Server（仍是独立进程） |
-
-> 合并前的 `Baihua.AI`(8791) / `Baihua.Vault`(8790) 两个端口已随服务合并消失；除 8788 / 5177 之外不再有后端端口。
+| OVMS（本地推理） | 8000 | OpenAI 兼容；Windows 为 wslc 容器 `ovms-gpu`，Linux 为 `bh-openvino` |
+| Open WebUI | 8080 | AI 对话页后端（Windows venv，独立应用；Web 的 `/open-webui` 只做 302 跳转） |
+| 局域网入口 | 80 | wslc 的 nginx 容器 / k8s 的 Traefik |
 
 **路由命名（合并后）**：单进程下 `api/AI/*` 与 `api/ai/*` 在 ASP.NET Core 大小写不敏感路由下冲突，
 助手域（ask / chat / chat-stream / providers / prompt-templates / generate-missing-note / functions-call）
@@ -238,20 +237,18 @@ dotnet build services/BaiHua.slnx -c Release
 > `FamilyApi:BaseUrl` / `AiApi:BaseUrl` / `VaultApi:BaseUrl` 三个配置键（源码里 `FamilyApi`/`AiApi`/`VaultApi`
 > 仅作为 HttpClient 名字保留兼容别名，实际都指向唯一的 `BaihuaServer:BaseUrl`）。
 
-**部署形态**（Windows：native / wslc；Linux：k8s）：
-- **native（Windows 默认形态）**：`bh-server.exe`（8788）+ `bh-webui.exe`（5177）以 dotnet 进程直接跑在 Windows 上，
-  不依赖 WSL/Docker/k3s；PostgreSQL 由用户自行安装（Windows 服务 `postgresql-x64-18`），
-  OpenVINO 用 Windows 服务 `ovms`（AUTO_START，REST :8000；安装须走 OVMS 自带的
-  `install_ovms_service.bat <模型目录>` + `sc config ovms start= auto`——直接 `sc create` 注册控制台程序会 1053）。
-  `bh build` → `bh start`（详见 `tools/bh/README.md`）。
-- **wslc（Windows 可选形态，2026-11-04 起）**：`bh wslc <cmd>` 用 WSL 3 自带的 `wslc.exe`（**不需要 Docker Desktop**）
+**部署形态**（Windows：wslc = `bh`（默认）/ native = `bh dev`（开发）；Linux：k8s）：
+- **native（Windows 开发形态 `bh dev`）**：`bh-server.exe`（8788）+ `bh-webui.exe`（5177）以 dotnet 进程跑在 Windows，
+  不依赖容器；PostgreSQL 由用户自行安装（Windows 服务 `postgresql-x64-18`）。
+  `bh dev build` → `bh dev start`（启动经计划任务 + GUI 启动器，无控制台窗口）。
+- **wslc（Windows 默认形态）**：`bh <cmd>` 用 WSL 3 自带的 `wslc.exe`（**不需要 Docker Desktop**）
   跑 `postgres` + `server`（8788）+ `webui`（5177）+ `nginx`（宿主 :80，浏览器/移动端统一入口）四个容器，
   自定义网络 `bh-net`，镜像由 `docker/Dockerfile.server|webui` 构建；
   命名卷 `bh-pgdata`（挂 `/var/lib/postgresql`，pg18 布局）、`bh-data`、`bh-logs`，知识库目录 `VAULTS_DIR` 绑定挂载；
-  PostgreSQL 只绑 127.0.0.1:5433；宿主机 OVMS 由 `bh wslc start` 探测宿主 IP 后注入 `OpenVinoOms__BaseUrl`。
+  PostgreSQL 只绑 127.0.0.1:5433；OVMS 为独立容器 `ovms-gpu`，`bh start` 探测宿主 IP 后注入 `OpenVinoOms__BaseUrl`。
   与 native 互斥（同占 8788/5177）。配置见 `docker/.env.wslc`（gitignore）。
-  局域网 :80 由 nginx 容器独占（`0.0.0.0:80`），**wslc 形态不需要 `bh lan on`**（执行会提示；历史 portproxy 用 `bh lan off` 清理）。
-  拉不到 `mcr.microsoft.com/dotnet/sdk` 时用 `bh wslc build -Prebuilt`（宿主机 publish + `aspnet:10.0` 运行时镜像）。
+  局域网入口由 nginx 容器发布到宿主 `BAIHUA_NGINX_PORT`（默认 80），**不需要 `bh lan on`**；:80 被占用时改该变量后 `bh restart`。
+  拉不到 `mcr.microsoft.com/dotnet/sdk` 时用 `bh build -Prebuilt`（宿主机 publish + `aspnet:10.0` 运行时镜像）。
 - **k8s（仅 Linux，`tools/bh/linux/k8s/`）**：`server`（8788）+ `webui`（5177）+ `postgres` + `openvino`（OVMS，profile 可选）等工作负载全部容器化；
   k8s 清单见 `k8s/20-server.yaml` / `23-webui.yaml` / `25-postgres.yaml` / `22a-openvino.yaml`，Linux 上 `bh build server webui` → `bh deploy` / `bh up`。
   **Windows 侧 k3s 形态（原 `bh-k3s`，经 WSL）已随本机 WSL 卸载退役（2026-10-27）**：`bh-k3s` 入口/定位器已删除，
@@ -262,8 +259,9 @@ dotnet build services/BaiHua.slnx -c Release
   Windows 容器形态走 `bh wslc`（wslc 没有 compose，由 cell 直接建网络/卷/容器）。
 - 已退役：合并前 `family`/`ai`/`vault` 三容器、`docker-ai` profile、`host.docker.internal:8791` 跨进程访问、
   `tools/bh` 的 `linux/native` cell；Windows Docker Desktop 形态（`bh docker`）也已弃用，统一走 `bh wslc`。
-- **OpenVINO 推理**仍与后端进程分离：native cell 用 Windows `ovms` 进程/系统服务（REST :8000，`scripts/install-openvino-ovms-service.ps1` 安装），
-  k8s cell 用工作负载 `bh-openvino`（OVMS，REST :8000）；后端经 `OpenVinoOms__BaseUrl` 访问。
+- **OpenVINO 推理**与后端进程分离：Windows 用 wslc 容器 `ovms-gpu`（REST :8000，`bh ovms start|status|logs` 管理；
+  `scripts/install-openvino-ovms-service.ps1` 仅作回滚到 Windows 服务的备选），k8s 用工作负载 `bh-openvino`（:8000）；
+  后端经 `OpenVinoOms__BaseUrl` 访问（默认 `http://127.0.0.1:8000`，OpenAI 兼容路径 `/v1`）。
 
 **OpenObserve 凭据约定**（默认口令 `Complexpass#123` 已废弃，appsettings 中不再有默认值）：
 - `openobserve` 为可选观测栈（compose profile `observability` / k8s 可选清单）；
@@ -412,7 +410,7 @@ Debug 构建跳过 TLS 证书验证（方便本地自签名证书开发），Rel
 **单元测试**（无需服务器，覆盖核心算法和逻辑）：
 
 ```bash
-dotnet test tests/BaihuaSdk.Tests/BaihuaSdk.Tests.csproj --filter Unit
+dotnet test tests/Baihua.Sdk.Tests/Baihua.Sdk.Tests.csproj --filter Unit
 ```
 
 覆盖模块：
@@ -427,7 +425,7 @@ dotnet test tests/BaihuaSdk.Tests/BaihuaSdk.Tests.csproj --filter Unit
 export BaiHua_TEST_URL=http://192.168.x.x:8788
 export BaiHua_TEST_SECRET=<shared-secret>
 export BaiHua_TEST_VAULT_ID=<vault-id>
-dotnet test tests/BaihuaSdk.Tests/BaihuaSdk.Tests.csproj --filter Integration
+dotnet test tests/Baihua.Sdk.Tests/Baihua.Sdk.Tests.csproj --filter Integration
 ```
 
 测试完整流程：配对 → 获取知识库列表 → 获取 manifest → 同步文件
@@ -437,7 +435,7 @@ dotnet test tests/BaihuaSdk.Tests/BaihuaSdk.Tests.csproj --filter Integration
 **DI 回归测试**（确保所有服务可正确构造）：
 
 ```bash
-dotnet test tests/MobileApp.Maui.Tests/MobileApp.Maui.Tests.csproj
+dotnet test tests/Huapu.Tests/Huapu.Tests.csproj
 ```
 
 ### 后端测试（tests/Baihua.Family.Tests）
