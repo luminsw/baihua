@@ -260,14 +260,15 @@ dotnet build services/BaiHua.slnx -c Release
   与 native 互斥（同占 8788/5177）。配置见 `docker/.env.wslc`（gitignore）。
   `bh backup [目录]` / `bh restore <备份目录>`：数据卷冷备份/恢复（`bh-pgdata`/`bh-data`/`bh-openwebui-data` + `docker/.env.wslc` 成对备份；
   备份自动停栈→tar 卷→**恢复演练**（scratch 卷起一次性 postgres 验证）→重启，产物在 `backup/baihua-backup-<时间>/`（gitignore）；
-  restore 删卷重建后还原配置，需输 `yes` 确认。
+  restore 删卷重建后还原配置，需输 `yes` 确认。真机验收手册：`docs/WSLC_BACKUP_RESTORE_TEST.md`。
   局域网入口由 nginx 容器发布到宿主 `BAIHUA_NGINX_PORT`（默认 80），**不需要 `bh lan on`**；:80 被占用时改该变量后 `bh restart`。
   拉不到 `mcr.microsoft.com/dotnet/sdk` 时用 `bh build -Prebuilt`（宿主机 publish + `aspnet:10.0` 运行时镜像）。
 - **k8s（仅 Linux，`tools/bh/linux/k8s/`）**：`server`（8788）+ `webui`（5177）+ `postgres` + `openvino`（OVMS，profile 可选）等工作负载全部容器化；
   k8s 清单见 `k8s/20-server.yaml` / `23-webui.yaml` / `25-postgres.yaml` / `22a-openvino.yaml`，Linux 上 `bh build server webui` → `bh deploy` / `bh up`。
   `sudo bh backup [目录]` / `sudo bh restore <备份目录> [-y]`：数据卷冷备份/恢复（缩容→tar hostPath PV（postgres/data/openwebui/vaults，
   跳过 logs/models）→pg_controldata 恢复演练→按原副本数扩容；恢复时旧目录挪 `*.pre-restore-<时间>`、回放 secret/configmap、pg_isready 健康检查；
-  产物含 `backup.meta` + `k8s-config/pv/pvc.yaml`，与 wslc 形态的 backup/restore 口径对齐，详见 `k8s/README.md`）。
+  产物含 `backup.meta` + `k8s-config/pv/pvc.yaml`，与 wslc 形态的 backup/restore 口径对齐，详见 `k8s/README.md`；
+  真机验收手册：`docs/K8S_BACKUP_RESTORE_TEST.md`）。
   **Windows 侧 k3s 形态（原 `bh-k3s`，经 WSL）已随本机 WSL 卸载退役（2026-10-27）**：`bh-k3s` 入口/定位器已删除，
   `bh install` 会清理旧版遗留定位器；`bh lan on` 会清理指向已消失 WSL IP 的遗留 portproxy 规则。
   历史：WSL2 + k3s 在部分环境下不稳定（init 系统反复 poweroff、发行版空闲回收拖垮集群），这是当初 native 成为默认、最终 WSL 被卸载的原因。

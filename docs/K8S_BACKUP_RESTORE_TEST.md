@@ -1,5 +1,7 @@
 # k8s 形态 `bh backup` / `bh restore` 真机验收手册
 
+> 对应 Windows wslc 形态的手册：`docs/WSLC_BACKUP_RESTORE_TEST.md`（两份口径对齐，报告模板同构）。
+
 > **给执行本手册的 AI 助手**：你在 Linux 服务器上按本手册逐步执行并验收。
 > - 全程以 **root** 执行（`sudo -i` 或直接 root 登录）。
 > - 每步对照「预期结果」逐项核对，**任何一步失败立即停止**：保留现场（不要清理）、完整摘录命令输出，按文末模板汇报。

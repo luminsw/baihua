@@ -52,6 +52,8 @@ bh dev doctor
 | `bh update` | 源码仓库：git pull + 本地构建；部署包：从 registry 拉镜像 + 重建容器（数据卷保留） |
 | `bh backup [目录]` | 冷备份全部数据卷（bh-pgdata/bh-data/bh-openwebui-data）+ `docker/.env.wslc`；自动停栈、备份后做恢复演练、再重启。产物在 `<目录>/baihua-backup-<时间>/`（默认仓库根 `backup/`） |
 | `bh restore <备份目录> [-y]` | 从备份恢复数据卷与配置（删卷重建 + 还原 `.env.wslc`）；覆盖现有数据，需输 `yes` 确认 |
+
+两形态 backup/restore 的真机验收手册：Windows wslc 见 `docs/WSLC_BACKUP_RESTORE_TEST.md`，Linux k8s 见 `docs/K8S_BACKUP_RESTORE_TEST.md`。
 | `bh autostart on\|off\|status` | 登录自启（写 `baihua-wslc.lnk`） |
 
 **dev（`bh dev`）**
