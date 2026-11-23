@@ -1,0 +1,45 @@
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    @{
+        var _basePath = Configuration.GetValue<string>("BasePath") ?? "/";
+        if (_basePath != "/" && !_basePath.EndsWith("/"))
+            _basePath += "/";
+    }
+    <base href="@_basePath" />
+    <ResourcePreloader />
+    <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
+    <link rel="stylesheet" href="@Assets["lib/bootstrap-icons/bootstrap-icons.min.css"]" />
+    <link rel="stylesheet" href="@Assets["lib/highlightjs/github.min.css"]" />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["bh-webui.styles.css"]" />
+    <ImportMap />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <title>@L["App_Title"]</title>
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+</head>
+
+<body>
+    <Routes />
+    <ReconnectModal />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="@Assets["js/markdown-copy.js"]"></script>
+    <script src="@Assets["js/download-file.js"]"></script>
+    <script src="@Assets["js/smart-select.js"]"></script>
+    <script src="@Assets["js/enhanced-select.js"]"></script>
+    <script src="@Assets["js/speech.js"]"></script>
+
+    <script src="@Assets["lib/highlightjs/highlight.min.js"]"></script>
+    <script src="@Assets["lib/signalr/signalr.min.js"]"></script>
+    <script src="@Assets["lib/qrcode.min.js"]"></script>
+    <script src="@Assets["js/qr-tool.js"]"></script>
+    <script src="@Assets["js/fab-menu.js"]"></script>
+
+</body>
+
+</html>

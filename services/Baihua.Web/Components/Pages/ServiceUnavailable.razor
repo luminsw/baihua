@@ -1,0 +1,241 @@
+@page "/service-unavailable"
+@using Microsoft.AspNetCore.Hosting
+@inject NavigationManager Navigation
+@inject Baihua.Web.Services.IApiService ApiService
+@inject IWebHostEnvironment Environment
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>@L["ServiceUnavailable_PageTitle"]</PageTitle>
+
+<div class="service-unavailable-container">
+    <div class="error-card">
+        <div class="error-icon">⚠️</div>
+        <h1>@L["ServiceUnavailable_Title"]</h1>
+        <p class="error-description">
+            @((MarkupString)L["ServiceUnavailable_Description"].Value)
+        </p>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="error-detail">
+                <code>@errorMessage</code>
+            </div>
+        }
+
+        <div class="help-section">
+            <h3>@L["ServiceUnavailable_HelpTitle"]</h3>
+            <ol>
+                <li>
+                    <strong>@L["ServiceUnavailable_Step1_StartService"]</strong>
+                    @if (Environment.IsDevelopment())
+                    {
+                        <div class="command-block">
+                            <code>cd services/Baihua.Server && dotnet run --urls "http://localhost:8788"</code>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="command-block">
+                            <code>./bh-server --urls "http://localhost:8788"</code>
+                        </div>
+                        <p class="release-hint">
+                            @L["ServiceUnavailable_ReleaseHint"]
+                        </p>
+                    }
+                </li>
+                <li>@L["ServiceUnavailable_Step2"]</li>
+                <li>@L["ServiceUnavailable_Step3"]</li>
+            </ol>
+        </div>
+
+        <div class="action-buttons">
+            <button class="btn btn-primary btn-lg" @onclick="RetryConnection" disabled="@isRetrying">
+                @if (isRetrying)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <span>@L["ServiceUnavailable_Checking"]</span>
+                }
+                else
+                {
+                    <span>@L["ServiceUnavailable_RetryButton"]</span>
+                }
+            </button>
+
+            <button class="btn btn-outline-secondary" @onclick="GoToHome">
+                @L["ServiceUnavailable_GoHomeButton"]
+            </button>
+        </div>
+
+        @if (retryMessage != null)
+        {
+            <div class="alert @(retrySuccess ? "alert-success" : "alert-danger") mt-3">
+                @retryMessage
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .service-unavailable-container {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+
+    .error-card {
+        background: white;
+        border-radius: 16px;
+        padding: 3rem;
+        max-width: 600px;
+        width: 100%;
+        text-align: center;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    }
+
+    .error-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    h1 {
+        color: #c94c4c;
+        font-size: 1.8rem;
+        margin-bottom: 1rem;
+    }
+
+    .error-description {
+        color: #5a6a72;
+        font-size: 1.1rem;
+        margin-bottom: 1.5rem;
+        line-height: 1.6;
+    }
+
+    .error-detail {
+        background: #f5f8fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .error-detail code {
+        color: #c94c4c;
+        font-size: 0.9rem;
+    }
+
+    .help-section {
+        text-align: left;
+        background: #f5f8fa;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .help-section h3 {
+        font-size: 1.1rem;
+        margin-bottom: 1rem;
+        color: #4a5860;
+    }
+
+    .help-section ol {
+        padding-left: 1.2rem;
+        margin-bottom: 0;
+    }
+
+    .help-section li {
+        margin-bottom: 0.75rem;
+        color: #4a5860;
+    }
+
+    .help-section li:last-child {
+        margin-bottom: 0;
+    }
+
+    .command-block {
+        background: #1e3a4c;
+        color: #c8d4dc;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        margin-top: 0.5rem;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.85rem;
+        overflow-x: auto;
+    }
+
+    .command-block code {
+        color: #c8d4dc;
+        background: none;
+        padding: 0;
+    }
+
+    .release-hint {
+        font-size: 0.85rem;
+        color: #5a6a72;
+        margin-top: 0.5rem;
+        margin-bottom: 0;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .action-buttons .btn-lg {
+        padding: 0.75rem 2rem;
+        font-size: 1.1rem;
+    }
+</style>
+
+@code {
+    private string? errorMessage;
+    private bool isRetrying;
+    private string? retryMessage;
+    private bool retrySuccess;
+
+    protected override void OnInitialized()
+    {
+        // Get error info from query parameters
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).TryGetValue("error", out var error))
+        {
+            errorMessage = error;
+        }
+    }
+
+    private async Task RetryConnection()
+    {
+        isRetrying = true;
+        retryMessage = null;
+
+        try
+        {
+            await ApiService.CheckHealthFastAsync();
+            retrySuccess = true;
+            retryMessage = L["ServiceUnavailable_RetrySuccess"];
+
+            // Delay before redirect
+            await Task.Delay(1500);
+            Navigation.NavigateTo("", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            retrySuccess = false;
+            retryMessage = string.Format(L["ServiceUnavailable_RetryFailed"], ex.Message);
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isRetrying = false;
+        }
+    }
+
+    private void GoToHome()
+    {
+        Navigation.NavigateTo("");
+    }
+}

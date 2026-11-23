@@ -1,0 +1,31 @@
+# 统一使用 UTF-8 编码保存所有文本文件，防止 Windows 上的编码损坏
+# 注意：不要加 BOM，否则 .NET Core 编译可能报错
+
+*.cs        text working-tree-encoding=UTF-8 eol=crlf
+*.razor     text working-tree-encoding=UTF-8 eol=crlf
+*.csproj    text working-tree-encoding=UTF-8 eol=crlf
+*.slnx      text working-tree-encoding=UTF-8 eol=crlf
+*.sln       text working-tree-encoding=UTF-8 eol=crlf
+*.resx      text working-tree-encoding=UTF-8 eol=crlf
+*.json      text working-tree-encoding=UTF-8 eol=crlf
+*.xml       text working-tree-encoding=UTF-8 eol=crlf
+*.md        text working-tree-encoding=UTF-8 eol=crlf
+*.yml       text working-tree-encoding=UTF-8 eol=crlf
+*.yaml      text working-tree-encoding=UTF-8 eol=crlf
+*.ps1       text working-tree-encoding=UTF-8 eol=crlf
+*.sh        text working-tree-encoding=UTF-8 eol=crlf eol=lf
+*.ts        text working-tree-encoding=UTF-8 eol=crlf
+*.css       text working-tree-encoding=UTF-8 eol=crlf
+*.html      text working-tree-encoding=UTF-8 eol=crlf
+*.js        text working-tree-encoding=UTF-8 eol=crlf
+
+# 二进制文件不转换
+*.png       binary
+*.jpg       binary
+*.ico       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+
+# Git 会尊重 .gitattributes 的设置，read-tree 或 checkout 时会自动转换编码
+# 已在 git 中的文件需要 git add --renormalize . 来重新规范化编码

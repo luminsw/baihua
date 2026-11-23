@@ -1,0 +1,217 @@
+// /learn/generate 页面端到端验证（粘贴题库包 → 校验预览 → 删除一题 → 确认导入）
+// 说明：不依赖 AI provider，走「粘贴题库包」通道，验证生成页的校验/预览/append 导入全链路。
+const { chromium } = require('playwright');
+
+const stamp = Date.now().toString().slice(-8);
+const INDUSTRY = 'e2e_ind';
+const BANK = 'e2e_' + stamp;
+const BANK_NAME = 'E2E 测试题库 ' + stamp;
+
+function makeQuestion(code, itemCode, stem, analysis) {
+  return {
+    questionCode: code,
+    itemCode,
+    questionType: 'single_choice',
+    target: 'formula',
+    stem,
+    stemDetail: { patient: 'E2E 测试对象，男，40 岁', signs: ['条件一', '条件二'] },
+    options: [
+      { key: 'A', content: '错误选项甲', isCorrect: false, explanation: '与条件二不符' },
+      { key: 'B', content: '正确选项', isCorrect: true, explanation: '同时满足两个条件' },
+      { key: 'C', content: '错误选项乙', isCorrect: false, explanation: '缺少条件一' },
+      { key: 'D', content: '错误选项丙', isCorrect: false, explanation: '方向相反' },
+    ],
+    analysis,
+    discrimination: [{ versus: '错误选项甲', point: '是否具备条件二' }],
+    difficulty: 3,
+    sourceRef: '',
+  };
+}
+
+const packageJson = JSON.stringify({
+  formatVersion: 1,
+  industry: { code: INDUSTRY, name: 'E2E 测试行业' },
+  bank: { code: BANK, name: BANK_NAME, version: 'v1', description: 'playwright 自动验证' },
+  items: [
+    {
+      itemCode: 'e2e_item_1',
+      itemType: 'concept',
+      name: 'E2E 条目一',
+      summary: '自动验证用条目',
+      content: {
+        indications: ['情形一'],
+        discriminations: [{ versus: '条目二', point: '关键区分点' }],
+      },
+    },
+  ],
+  questions: [
+    makeQuestion('e2e_q_1', 'e2e_item_1', 'E2E 题干一：根据条件选择最合适的答案。', '解析一：条件一与条件二共同指向正确选项。'),
+    makeQuestion('e2e_q_2', 'e2e_item_1', 'E2E 题干二：根据条件选择最合适的答案。', '解析二：由条件一可排除错误选项。'),
+  ],
+}, null, 2);
+
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+
+  // 项目全局 JS 会把 select 增强（data-enhanced），原生 select 被隐藏；
+  // 直接赋值 + 派发 change 事件即可触发 Blazor 的 @bind / @bind:after。
+  const setSelect = async (locator, value) => {
+    await locator.evaluate((el, v) => {
+      el.value = v;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, value);
+  };
+
+  const tokenResp = await page.request.post('http://127.0.0.1:5177/api/auth/cli-token');
+  const { token } = await tokenResp.json();
+
+  await page.goto(`http://127.0.0.1:5177/learn/generate?cli-token=${token}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.source-tabs, .preview-q', { timeout: 20000 });
+  if ((await page.locator('.preview-q').count()) > 0) {
+    // 最近有生成成功的任务时会自动打开结果：先回到表单再走粘贴通道
+    await page.click('button:has-text("返回修改")');
+    await page.waitForSelector('.source-tabs', { timeout: 20000 });
+    console.log('✓ 已从自动打开的历史结果返回表单');
+  }
+  console.log('✓ 生成页渲染');
+
+  const hasTopicField = await page.locator('label:has-text("生成主题")').count();
+  if (!hasTopicField) throw new Error('缺少生成主题字段');
+  console.log('✓ 表单字段齐全');
+
+  // 普通用户只填名称和主题：代码类字段收进「高级选项」且默认折叠
+  const advanced = page.locator('details.advanced');
+  if (await advanced.count() === 0) throw new Error('缺少高级选项折叠区');
+  if (await advanced.getAttribute('open') !== null) throw new Error('高级选项不应默认展开');
+  console.log('✓ 代码类字段已折叠到高级选项');
+
+  // 题量支持「自适应」
+  const countSelect = page.locator('.form-grid select').nth(2);
+  const countOptions = await countSelect.locator('option').allTextContents();
+  if (!countOptions.some(t => t.includes('自适应'))) {
+    throw new Error('题量下拉缺少自适应选项：' + countOptions.join(' | '));
+  }
+  console.log('✓ 题量支持自适应（AI 决定覆盖所需题量）');
+
+  // 行业画像：行业下拉应包含多行业；切换行业后题型动态变化
+  const industrySelect = page.locator('.form-grid select').first();
+  const industryOptions = await industrySelect.locator('option').allTextContents();
+  if (!industryOptions.some(t => t.includes('编程'))) {
+    throw new Error('行业下拉缺少编程画像：' + industryOptions.join(' | '));
+  }
+  if (!industryOptions.some(t => t.includes('驾照'))) {
+    throw new Error('行业下拉缺少驾照画像：' + industryOptions.join(' | '));
+  }
+  console.log('✓ 行业下拉含多行业画像（' + industryOptions.length + ' 项）');
+
+  await setSelect(industrySelect, 'programming');
+  await page.waitForTimeout(600);
+  const targetSelect = page.locator('.form-grid select').nth(1);
+  const programmingTargets = await targetSelect.locator('option').allTextContents();
+  if (!programmingTargets.some(t => t.includes('选输出结果'))) {
+    throw new Error('切换编程行业后题型未更新：' + programmingTargets.join(' | '));
+  }
+  console.log('✓ 切换行业后题型动态更新：', programmingTargets.slice(0, 3).join(' / '));
+
+  await setSelect(page.locator('.form-grid select').first(), 'tcm');
+  await page.waitForTimeout(500);
+  const tcmTargets = await page.locator('.form-grid select').nth(1).locator('option').allTextContents();
+  if (!tcmTargets.some(t => t.includes('选方剂'))) {
+    throw new Error('切回中医后题型未更新：' + tcmTargets.join(' | '));
+  }
+  console.log('✓ 切回中医题型：', tcmTargets.slice(0, 2).join(' / '));
+
+  await page.click('button:has-text("粘贴题库包 JSON")');
+  await page.waitForTimeout(400);
+
+  const pasteBox = page.locator('textarea[placeholder^="{"]');
+  if (await pasteBox.count() !== 1) throw new Error('未找到粘贴 JSON 输入框');
+  await pasteBox.fill(packageJson);
+  console.log('✓ 已粘贴题库包 JSON');
+
+  await page.click('button:has-text("校验并预览")');
+  await page.waitForSelector('.preview-q', { timeout: 20000 });
+  await page.waitForTimeout(400);
+
+  const before = await page.locator('.preview-q').count();
+  if (before !== 2) throw new Error(`预览题目数应为 2，实际 ${before}`);
+  console.log('✓ 校验并进入预览，题目数：', before);
+  console.log('  预览头：', (await page.textContent('.meta-line')).replace(/\s+/g, ' ').trim().slice(0, 80));
+
+  const errorPanel = await page.locator('.alert-error').count();
+  if (errorPanel > 0) throw new Error('预览出现校验错误：' + (await page.textContent('.alert-error')));
+  console.log('✓ 校验无 errors');
+
+  await page.click('.preview-q >> nth=0 >> button:has-text("删除")');
+  await page.waitForTimeout(1200);
+  const after = await page.locator('.preview-q').count();
+  if (after !== 1) throw new Error(`删除后题目数应为 1，实际 ${after}`);
+  console.log('✓ 删除一题后重新校验，题目数：', after);
+
+  const importBtn = page.locator('button:has-text("确认导入")');
+  if (await importBtn.isDisabled()) throw new Error('校验通过后导入按钮不应禁用');
+  await importBtn.click();
+  await page.waitForSelector('.success-panel', { timeout: 20000 });
+  await page.waitForTimeout(400);
+
+  const successText = (await page.textContent('.success-panel')).replace(/\s+/g, ' ').trim();
+  console.log('✓ 导入成功：', successText.slice(0, 90));
+
+  // 回题库页确认新题库出现
+  await page.goto(`http://127.0.0.1:5177/learn?cli-token=${token}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.bank-card', { timeout: 20000 });
+  const bankCards = await page.locator('.bank-name').allTextContents();
+  if (!bankCards.some(t => t.includes(BANK_NAME))) {
+    throw new Error('题库列表未出现新建的 E2E 题库：' + bankCards.join(' | '));
+  }
+  console.log('✓ 题库列表已出现新建题库');
+
+  // 导出题库包（WebUI 端点代取后端文件）：浏览器点击应直接下载 JSON
+  const exportLink = page.locator('.bank-card', { hasText: BANK_NAME }).locator('a:has-text("导出")');
+  const [download] = await Promise.all([page.waitForEvent('download'), exportLink.click()]);
+  const downloadPath = await download.path();
+  const downloadSize = downloadPath ? require('fs').statSync(downloadPath).size : 0;
+  if (!download.suggestedFilename().endsWith('.json')) {
+    throw new Error('导出文件名不是 .json：' + download.suggestedFilename());
+  }
+  if (downloadSize < 100) throw new Error('导出内容过小：' + downloadSize + ' 字节');
+  console.log('✓ 导出题库包：', download.suggestedFilename(), downloadSize, '字节');
+
+  // 删除题库（两步确认）：顺带清掉本次 E2E 写入的数据
+  const card = page.locator('.bank-card', { hasText: BANK_NAME });
+  if (await card.count() !== 1) throw new Error('未找到本次 E2E 题库卡片');
+  await card.locator('button:has-text("删除")').click();
+  await page.waitForTimeout(400);
+  const confirmBtn = card.locator('button:has-text("确认删除")');
+  if (await confirmBtn.count() !== 1) throw new Error('删除按钮未进入二次确认状态');
+  const notice = await page.locator('.bank-notice').textContent();
+  if (!notice.includes('不可撤销')) throw new Error('删除前未提示不可撤销：' + notice);
+  console.log('✓ 删除二次确认：', notice.replace(/\s+/g, ' ').trim().slice(0, 60));
+
+  await confirmBtn.click();
+  await page.waitForTimeout(2500);
+  const afterDelete = await page.locator('.bank-name').allTextContents();
+  if (afterDelete.some(t => t.includes(BANK_NAME))) {
+    throw new Error('删除后题库仍在列表：' + afterDelete.join(' | '));
+  }
+  const deleteNotice = (await page.locator('.bank-notice').textContent()).replace(/\s+/g, ' ').trim();
+  if (!deleteNotice.includes('已删除')) throw new Error('删除后未显示结果提示：' + deleteNotice);
+  console.log('✓ 题库已删除：', deleteNotice.slice(0, 80));
+
+  // 后端确实没了（列表接口与导出接口都不再返回该题库）
+  const banksResp = await page.request.get('http://127.0.0.1:8788/api/learn/banks');
+  const remainingBanks = await banksResp.json();
+  if (remainingBanks.some(b => b.bankCode === BANK)) throw new Error('后端仍存在已删除的题库');
+  console.log('✓ 后端题库列表已不含该题库');
+
+  const shot = require('path').join(require('os').tmpdir(), 'verify-learn-generate.png');
+  await page.screenshot({ path: shot, fullPage: true });
+  console.log('✓ 截图已存', shot);
+
+  await browser.close();
+  console.log(`\n=== /learn/generate 端到端验证全部通过（含删除题库） ===`);
+  console.log(`E2E 已自行清理：industry=${INDUSTRY} bank=${BANK}`);
+})().catch(e => { console.error('✗ 验证失败：', e.message); process.exit(1); });
+
+

@@ -1,0 +1,39 @@
+@using Markdig
+@inject Microsoft.Extensions.Logging.ILogger<MarkdownView> Logger
+
+<div class="markdown-content">
+    @if (string.IsNullOrEmpty(RenderedContent))
+    {
+        <p><em>（无内容）</em></p>
+    }
+    else
+    {
+        @((MarkupString)RenderedContent)
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string? Content { get; set; }
+
+    private string? _renderedContent;
+
+    protected override void OnParametersSet()
+    {
+        Logger.LogInformation("MarkdownView 收到内容，长度：{Length}", Content?.Length ?? 0);
+        
+        if (!string.IsNullOrEmpty(Content))
+        {
+            var pipeline = new MarkdownPipelineBuilder().DisableHtml().Build();
+            _renderedContent = Markdown.ToHtml(Content, pipeline);
+            Logger.LogInformation("Markdown 渲染完成，HTML 长度：{Length}", _renderedContent?.Length ?? 0);
+        }
+        else
+        {
+            _renderedContent = "<p><em>（无内容）</em></p>";
+            Logger.LogWarning("MarkdownView 内容为空");
+        }
+    }
+
+    private string? RenderedContent => _renderedContent;
+}

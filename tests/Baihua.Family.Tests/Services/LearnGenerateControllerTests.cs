@@ -1,0 +1,180 @@
+using Baihua.Contracts.Learn;
+using Baihua.Data;
+using Baihua.Modules.Family.Controllers;
+using Baihua.Modules.Family.Services;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
+
+namespace Baihua.Family.Tests.Services;
+
+/// <summary>
+/// 生成页控制器测试：只覆盖不依赖 AI 的 validate / import 两个端点
+/// （AI 生成预览由 QuizBankGeneratorService 的解析/分批测试与人工验证覆盖）。
+/// </summary>
+public class LearnGenerateControllerTests
+{
+    private sealed class NoopGenerator : IQuizBankGenerator
+    {
+        public Task<QuizGeneratePreviewDto> PreviewAsync(
+            QuizGenerateRequestDto request,
+            IProgress<QuizGenerateProgress>? progress,
+            CancellationToken ct = default)
+            => Task.FromResult(new QuizGeneratePreviewDto { Success = false, Error = "not used" });
+    }
+
+    private static (LearnGenerateController Controller, DbContextOptions<FamilyDbContext> Options) Create()
+    {
+        var options = QuizBankTestSupport.CreateInMemoryOptions();
+        var service = QuizBankTestSupport.CreateService(options);
+        // validate / import 不使用 generator，测试时传 null 以隔离 AI 依赖
+        return (new LearnGenerateController(service, null!,
+            new QuizGenerateJobService(new NoopGenerator(), NullLogger<QuizGenerateJobService>.Instance)), options);
+    }
+
+    [Fact]
+    public void Validate_ValidPackage_ReturnsOkWithNoErrors()
+    {
+        var (controller, _) = Create();
+
+        var action = controller.Validate(QuizBankTestSupport.CreateSamplePackage());
+
+        var ok = Assert.IsType<OkObjectResult>(action.Result);
+        var validation = Assert.IsType<QuizBankValidationResultDto>(ok.Value);
+        Assert.True(validation.IsValid);
+        Assert.Empty(validation.Errors);
+    }
+
+    [Fact]
+    public async Task Import_InvalidPackage_ReturnsBadRequestAndWritesNothing()
+    {
+        var (controller, options) = Create();
+        var package = QuizBankTestSupport.CreateSamplePackage();
+        package.Questions[0].Analysis = "";
+
+        var action = await controller.Import(new QuizBankImportRequestDto { Package = package });
+
+        Assert.IsType<BadRequestObjectResult>(action.Result);
+        await using var db = new FamilyDbContext(options);
+        Assert.Equal(0, await db.QuizBanks.CountAsync());
+    }
+
+    [Fact]
+    public async Task Import_ValidPackage_AppendsAndReturnsCounts()
+    {
+        var (controller, options) = Create();
+
+        var action = await controller.Import(new QuizBankImportRequestDto
+        {
+            Package = QuizBankTestSupport.CreateSamplePackage(),
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(action.Result);
+        var result = Assert.IsType<QuizBankImportResultDto>(ok.Value);
+        Assert.Equal(2, result.ItemsImported);
+        Assert.Equal(3, result.QuestionsImported);
+
+        await using var db = new FamilyDbContext(options);
+        Assert.Equal(3, await db.QuizQuestions.CountAsync());
+    }
+
+    [Fact]
+    public async Task Import_DefaultIsAppend_DoesNotOverwriteExisting()
+    {
+        var (controller, options) = Create();
+        await controller.Import(new QuizBankImportRequestDto
+        {
+            Package = QuizBankTestSupport.CreateSamplePackage(),
+        });
+
+        var changed = QuizBankTestSupport.CreateSamplePackage();
+        changed.Questions[0].Stem = "被改的题干";
+        var action = await controller.Import(new QuizBankImportRequestDto { Package = changed });
+
+        var ok = Assert.IsType<OkObjectResult>(action.Result);
+        var result = Assert.IsType<QuizBankImportResultDto>(ok.Value);
+        Assert.Equal(0, result.QuestionsImported);
+        Assert.Equal(3, result.QuestionsSkipped);
+
+        await using var db = new FamilyDbContext(options);
+        var q1 = await db.QuizQuestions.SingleAsync(q => q.QuestionCode == "q_001");
+        Assert.Equal("患者甲，证见测试主证一。最适宜的方剂是？", q1.Stem);
+    }
+
+    [Fact]
+    public async Task Import_OverwriteFlag_UpdatesExisting()
+    {
+        var (controller, options) = Create();
+        await controller.Import(new QuizBankImportRequestDto
+        {
+            Package = QuizBankTestSupport.CreateSamplePackage(),
+        });
+
+        var changed = QuizBankTestSupport.CreateSamplePackage();
+        changed.Questions[0].Stem = "改后的题干";
+        var action = await controller.Import(new QuizBankImportRequestDto
+        {
+            Package = changed,
+            OverwriteExisting = true,
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(action.Result);
+        Assert.Equal(3, Assert.IsType<QuizBankImportResultDto>(ok.Value).QuestionsImported);
+
+        await using var db = new FamilyDbContext(options);
+        var q1 = await db.QuizQuestions.SingleAsync(q => q.QuestionCode == "q_001");
+        Assert.Equal("改后的题干", q1.Stem);
+    }
+
+    [Fact]
+    public async Task Industries_ReturnsBuiltInProfiles()
+    {
+        var (controller, _) = Create();
+
+        var action = await controller.Industries();
+
+        var ok = Assert.IsType<OkObjectResult>(action.Result);
+        var profiles = Assert.IsType<List<QuizIndustryProfileDto>>(ok.Value);
+        Assert.Contains(profiles, p => p.Code == "tcm");
+        Assert.Contains(profiles, p => p.Code == "programming");
+        Assert.Contains(profiles, p => p.Code == "driving");
+        Assert.Contains(profiles, p => p.Code == "general");
+        Assert.All(profiles, p => Assert.NotEmpty(p.Targets));
+    }
+
+    // ============ 删除题库（管理动作，只挂 api/learn） ============
+
+    [Fact]
+    public async Task DeleteBank_ExistingBank_ReturnsCountsAndRemovesRows()
+    {
+        var (controller, options) = Create();
+        await controller.Import(new QuizBankImportRequestDto
+        {
+            Package = QuizBankTestSupport.CreateSamplePackage(),
+        });
+
+        var action = await controller.DeleteBank(QuizBankTestSupport.BankCode);
+
+        var ok = Assert.IsType<OkObjectResult>(action.Result);
+        var result = Assert.IsType<QuizBankDeleteResultDto>(ok.Value);
+        Assert.Equal(QuizBankTestSupport.BankCode, result.BankCode);
+        Assert.Equal(2, result.ItemsDeleted);
+        Assert.Equal(3, result.QuestionsDeleted);
+        Assert.True(result.IndustryRemoved);
+
+        await using var db = new FamilyDbContext(options);
+        Assert.Equal(0, await db.QuizBanks.CountAsync());
+        Assert.Equal(0, await db.QuizQuestions.CountAsync());
+    }
+
+    [Fact]
+    public async Task DeleteBank_UnknownBank_ReturnsNotFound()
+    {
+        var (controller, _) = Create();
+
+        var action = await controller.DeleteBank("ghost_bank");
+
+        Assert.IsType<NotFoundObjectResult>(action.Result);
+    }
+}

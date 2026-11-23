@@ -1,0 +1,7 @@
+@page "/"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["Home_PageTitle"]</PageTitle>
+
+<FamilyHome />

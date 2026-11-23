@@ -1,0 +1,185 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using Baihua.Web.Services
+@inject IJSRuntime JSRuntime
+@inject ILogger<PairingRequestModal> Logger
+@inject IHttpClientFactory HttpClientFactory
+
+@if (IsVisible)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5); z-index: 9999;" @onclick="OnBackdropClick">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        📱 新设备配对请求
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <div class="device-icon mb-3">
+                            <span style="font-size: 4rem;">📱</span>
+                        </div>
+                        <h4 class="mb-2">@CurrentRequest?.DeviceInfo</h4>
+                        <p class="text-muted mb-0">请求连接到你的知识库</p>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <strong>📍 设备信息</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>设备名称: <strong>@CurrentRequest?.DeviceInfo</strong></li>
+                            <li>IP 地址: <code>@CurrentRequest?.IpAddress</code></li>
+                            <li>请求时间: @CurrentRequest?.CreatedAt?.ToLocalTime().ToString("HH:mm:ss")</li>
+                        </ul>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <strong>⚠️ 安全提示</strong>
+                        <p class="mb-0 mt-1">
+                            只有在你信任的设备上点击"允许"。授权后，该设备可以同步你的知识库数据。
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="RejectPairing" disabled="@IsProcessing">
+                        ❌ 拒绝
+                    </button>
+                    <button type="button" class="btn btn-success" @onclick="AuthorizePairing" disabled="@IsProcessing">
+                        @if (IsProcessing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            <span>处理中...</span>
+                        }
+                        else
+                        {
+                            <span>✅ 允许</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .device-icon {
+        width: 100px;
+        height: 100px;
+        margin: 0 auto;
+        background: linear-gradient(135deg, #2e8baf 0%, #257a9e 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+</style>
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+    [Parameter] public PairingRequest? CurrentRequest { get; set; }
+    [Parameter] public EventCallback OnAuthorized { get; set; }
+    [Parameter] public EventCallback OnRejected { get; set; }
+
+    private bool IsProcessing { get; set; }
+
+    private async Task CloseModal()
+    {
+        IsVisible = false;
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task OnBackdropClick()
+    {
+        // 点击背景不关闭，必须通过按钮操作
+    }
+
+    private async Task AuthorizePairing()
+    {
+        if (CurrentRequest == null || IsProcessing) return;
+
+        IsProcessing = true;
+        try
+        {
+            var client = HttpClientFactory.CreateClient("FamilyApi");
+            var response = await client.PostAsJsonAsync("api/pairing/authorize", new
+            {
+                challenge = CurrentRequest.Challenge,
+                deviceFingerprint = CurrentRequest.DeviceInfo
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<AuthorizeResponse>();
+                if (result?.Success == true)
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", $"设备已授权！\n设备: {CurrentRequest.DeviceInfo}\n设备ID: {result.DeviceId?.Substring(0, 8)}...");
+                    await OnAuthorized.InvokeAsync();
+                    await CloseModal();
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", $"授权失败: {result?.Error ?? "未知错误"}");
+                }
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                await JSRuntime.InvokeVoidAsync("alert", $"授权失败: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "授权配对失败");
+            await JSRuntime.InvokeVoidAsync("alert", $"授权失败: {ex.Message}");
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    private async Task RejectPairing()
+    {
+        if (CurrentRequest == null || IsProcessing) return;
+
+        IsProcessing = true;
+        try
+        {
+            var client = HttpClientFactory.CreateClient("FamilyApi");
+            var response = await client.PostAsJsonAsync("api/pairing/reject", new
+            {
+                challenge = CurrentRequest.Challenge
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                await OnRejected.InvokeAsync();
+                await CloseModal();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                Logger.LogWarning("拒绝配对失败: {Error}", error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "拒绝配对失败");
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    public class AuthorizeResponse
+    {
+        public bool Success { get; set; }
+        public string? AccessToken { get; set; }
+        public string? DeviceId { get; set; }
+        public long ExpiresIn { get; set; }
+        public string? Error { get; set; }
+    }
+}

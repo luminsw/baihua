@@ -1,0 +1,10 @@
+global using Baihua.Contracts.Tasks;
+global using Baihua.Contracts.Search;
+global using Baihua.Contracts.Achievements;
+global using Baihua.Contracts.Ai;
+global using Baihua.Contracts.Anki;
+global using Baihua.Contracts.Vaults;
+global using Baihua.Contracts.Platform;
+global using Baihua.Contracts.Metrics;
+global using Baihua.Contracts.Backup;
+global using Baihua.Contracts.Git;

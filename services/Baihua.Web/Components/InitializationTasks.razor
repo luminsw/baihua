@@ -1,0 +1,522 @@
+@inject Baihua.Web.Services.OnboardingService OnboardingService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject ILogger<InitializationTasks> Logger
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+@if (isVisible && tasksResponse != null && tasksResponse.TotalCount > 0 && !tasksResponse.AllCompleted)
+{
+    <div class="init-tasks-panel">
+        <div class="panel-header">
+            <div class="header-left">
+                <span class="header-icon">🚀</span>
+                <h3>新手引导</h3>
+                <span class="progress-badge">@tasksResponse.CompletedCount / @tasksResponse.TotalCount</span>
+            </div>
+            <button class="btn-close-tasks" @onclick="DismissTasks" title="暂时隐藏">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+
+        <div class="progress-bar">
+            <div class="progress-fill" style="width: @((tasksResponse.TotalCount > 0 ? tasksResponse.CompletedCount * 100 / tasksResponse.TotalCount : 0))%"></div>
+        </div>
+
+        <div class="tasks-list">
+            @foreach (var task in tasksResponse.Tasks)
+            {
+                <div class="task-item @(task.IsCompleted ? "completed" : "") @(activeTaskId == task.TaskId ? "active" : "")">
+                    <div class="task-status">
+                        @if (task.IsCompleted)
+                        {
+                            <span class="status-icon done">✓</span>
+                        }
+                        else
+                        {
+                            <span class="status-icon pending">○</span>
+                        }
+                    </div>
+
+                    <div class="task-content">
+                        <div class="task-title-row">
+                            <span class="task-icon">@task.Icon</span>
+                            <span class="task-title">@task.Title</span>
+                        </div>
+                        <p class="task-description">@task.Description</p>
+
+                        @if (!task.IsCompleted && activeTaskId == task.TaskId)
+                        {
+                            <div class="task-action-area">
+                                @if (task.TaskType == InitTaskType.AddFamilyMember)
+                                {
+                                    <div class="action-box">
+                                        <p>📱 让家庭成员用手机扫描首页二维码，然后在首页批准连接</p>
+                                        <div class="qr-placeholder" @onclick="GoToHome">
+                                            <span>点击前往首页查看二维码</span>
+                                        </div>
+                                        <div class="action-buttons">
+                                            <button class="btn btn-sm btn-primary" @onclick="GoToHome">前往首页</button>
+                                            <button class="btn btn-sm btn-outline" @onclick="() => MarkTaskComplete(task.TaskId)">已完成</button>
+                                        </div>
+                                    </div>
+                                }
+                                else if (task.TaskType == InitTaskType.CreateComputerVault)
+                                {
+                                    <div class="action-box">
+                                        <p>💻 一键创建「计算机」知识库，包含 AI 知识入门笔记</p>
+                                        <div class="action-buttons">
+                                            <button class="btn btn-sm btn-primary" @onclick="() => CreateSampleVault(task.TaskId)" disabled="@isCreatingVault">
+                                                @(isCreatingVault ? "创建中..." : "一键创建")
+                                            </button>
+                                            <button class="btn btn-sm btn-outline" @onclick="() => MarkTaskComplete(task.TaskId)">我自己建</button>
+                                        </div>
+                                    </div>
+                                }
+                                else if (task.TaskType == InitTaskType.CreateTcmVault)
+                                {
+                                    <div class="action-box">
+                                        <p>🌿 一键创建「中医」知识库，包含脾胃病知识笔记</p>
+                                        <div class="action-buttons">
+                                            <button class="btn btn-sm btn-primary" @onclick="() => CreateSampleVault(task.TaskId)" disabled="@isCreatingVault">
+                                                @(isCreatingVault ? "创建中..." : "一键创建")
+                                            </button>
+                                            <button class="btn btn-sm btn-outline" @onclick="() => MarkTaskComplete(task.TaskId)">我自己建</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else if (!task.IsCompleted)
+                        {
+                            <button class="btn btn-sm btn-outline btn-do-it" @onclick="() => ExpandTask(task.TaskId)">
+                                去完成 →
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .init-tasks-panel {
+        background: white;
+        border-radius: 16px;
+        padding: 1.25rem;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        margin-bottom: 1.5rem;
+        border: 1px solid #e8eef2;
+    }
+
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .header-icon {
+        font-size: 1.25rem;
+    }
+
+    .panel-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        color: #1e3a4c;
+    }
+
+    .progress-badge {
+        background: linear-gradient(135deg, #2e8baf 0%, #257a9e 100%);
+        color: white;
+        padding: 0.15rem 0.5rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .btn-close-tasks {
+        background: none;
+        border: none;
+        color: #a0aeb6;
+        cursor: pointer;
+        padding: 0.25rem;
+        font-size: 1rem;
+        transition: color 0.2s;
+    }
+
+    .btn-close-tasks:hover {
+        color: #4a5860;
+    }
+
+    .progress-bar {
+        height: 6px;
+        background: #e8eef2;
+        border-radius: 3px;
+        margin-bottom: 1rem;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #2e8baf 0%, #257a9e 100%);
+        border-radius: 3px;
+        transition: width 0.5s ease;
+    }
+
+    .tasks-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .task-item {
+        display: flex;
+        gap: 0.75rem;
+        padding: 0.875rem;
+        background: #f5f8fa;
+        border-radius: 12px;
+        border: 2px solid transparent;
+        transition: all 0.2s ease;
+    }
+
+    .task-item:hover {
+        background: #e8eef2;
+    }
+
+    .task-item.active {
+        border-color: #2e8baf;
+        background: #f3f4ff;
+    }
+
+    .task-item.completed {
+        opacity: 0.7;
+    }
+
+    .task-item.completed .task-title {
+        text-decoration: line-through;
+        color: #5a6a72;
+    }
+
+    .task-status {
+        flex-shrink: 0;
+        padding-top: 0.15rem;
+    }
+
+    .status-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        font-size: 0.8rem;
+    }
+
+    .status-icon.done {
+        background: #6b9e75;
+        color: white;
+    }
+
+    .status-icon.pending {
+        border: 2px solid #a0aeb6;
+        color: #a0aeb6;
+    }
+
+    .task-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .task-title-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .task-icon {
+        font-size: 1rem;
+    }
+
+    .task-title {
+        font-weight: 600;
+        color: #1e3a4c;
+        font-size: 0.95rem;
+    }
+
+    .task-description {
+        margin: 0;
+        font-size: 0.85rem;
+        color: #5a6a72;
+        line-height: 1.4;
+    }
+
+    .btn-do-it {
+        margin-top: 0.5rem;
+    }
+
+    .task-action-area {
+        margin-top: 0.75rem;
+    }
+
+    .action-box {
+        background: white;
+        border-radius: 8px;
+        padding: 1rem;
+        border: 1px solid #d8e2e8;
+    }
+
+    .action-box p {
+        margin: 0 0 0.75rem;
+        font-size: 0.9rem;
+        color: #4a5860;
+    }
+
+    .qr-placeholder {
+        background: #f5f8fa;
+        border-radius: 8px;
+        padding: 1.5rem;
+        text-align: center;
+        margin-bottom: 0.75rem;
+        cursor: pointer;
+        border: 2px dashed #d8e2e8;
+        transition: all 0.2s;
+    }
+
+    .qr-placeholder:hover {
+        border-color: #2e8baf;
+        background: #f3f4ff;
+    }
+
+    .qr-placeholder span {
+        color: #2e8baf;
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        padding: 0.4rem 0.875rem;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+    }
+
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #2e8baf 0%, #257a9e 100%);
+        color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-outline {
+        background: white;
+        color: #2e8baf;
+        border: 1px solid #2e8baf;
+    }
+
+    .btn-outline:hover:not(:disabled) {
+        background: #2e8baf;
+        color: white;
+    }
+
+    /* === 暗色模式（随全局 data-bs-theme 切换） === */
+    [data-bs-theme="dark"] .init-tasks-panel {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.12);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+    }
+    [data-bs-theme="dark"] .panel-header h3,
+    [data-bs-theme="dark"] .task-title {
+        color: rgba(255, 255, 255, 0.92);
+    }
+    [data-bs-theme="dark"] .btn-close-tasks {
+        color: rgba(255, 255, 255, 0.45);
+    }
+    [data-bs-theme="dark"] .btn-close-tasks:hover {
+        color: rgba(255, 255, 255, 0.8);
+    }
+    [data-bs-theme="dark"] .progress-bar {
+        background: rgba(255, 255, 255, 0.12);
+    }
+    [data-bs-theme="dark"] .task-item {
+        background: rgba(255, 255, 255, 0.06);
+    }
+    [data-bs-theme="dark"] .task-item:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+    [data-bs-theme="dark"] .task-item.active {
+        background: rgba(46, 139, 175, 0.22);
+        border-color: rgba(46, 139, 175, 0.6);
+    }
+    [data-bs-theme="dark"] .task-item.completed .task-title {
+        color: rgba(255, 255, 255, 0.45);
+    }
+    [data-bs-theme="dark"] .status-icon.pending {
+        border-color: rgba(255, 255, 255, 0.45);
+        color: rgba(255, 255, 255, 0.45);
+    }
+    [data-bs-theme="dark"] .task-description,
+    [data-bs-theme="dark"] .action-box p {
+        color: rgba(255, 255, 255, 0.65);
+    }
+    [data-bs-theme="dark"] .action-box {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+    [data-bs-theme="dark"] .qr-placeholder {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+    [data-bs-theme="dark"] .qr-placeholder:hover {
+        border-color: #2e8baf;
+        background: rgba(46, 139, 175, 0.22);
+    }
+    [data-bs-theme="dark"] .btn-outline {
+        background: rgba(255, 255, 255, 0.08);
+        color: #4db8d9;
+        border-color: #2e8baf;
+    }
+    [data-bs-theme="dark"] .btn-outline:hover:not(:disabled) {
+        background: #2e8baf;
+        color: white;
+    }
+</style>
+
+<ConfirmDialog Message="@createVaultFailMessage"
+               Visible="@(createVaultFailMessage != null)"
+               OnConfirm="ConfirmCreateVaultManual"
+               OnCancel="CancelCreateVaultManual" />
+
+@code {
+    private InitTasksResponse? tasksResponse;
+    private bool isVisible = true;
+    private string? activeTaskId;
+    private bool isCreatingVault = false;
+
+    [Parameter]
+    public EventCallback OnTasksChanged { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTasksAsync();
+    }
+
+    public async Task RefreshAsync()
+    {
+        await LoadTasksAsync();
+        await OnTasksChanged.InvokeAsync();
+    }
+
+    private async Task LoadTasksAsync()
+    {
+        try
+        {
+            tasksResponse = await OnboardingService.GetTasksAsync(forceRefresh: true);
+            isVisible = tasksResponse != null && !tasksResponse.AllCompleted;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "加载任务失败");
+        }
+    }
+
+    private void ExpandTask(string taskId)
+    {
+        activeTaskId = activeTaskId == taskId ? null : taskId;
+    }
+
+    private async Task MarkTaskComplete(string taskId)
+    {
+        var success = await OnboardingService.CompleteTaskAsync(taskId);
+        if (success)
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task CreateSampleVault(string taskId)
+    {
+        isCreatingVault = true;
+        try
+        {
+            var (vaultName, vaultType) = taskId switch
+            {
+                "create-computer-vault" => ("计算机", "computer"),
+                "create-tcm-vault" => ("中医", "tcm"),
+                _ => ("", "")
+            };
+            if (string.IsNullOrEmpty(vaultName)) return;
+
+            var result = await OnboardingService.CreateSampleVaultAsync(vaultName, vaultType);
+            if (result?.Success == true)
+            {
+                VaultsService.ClearCache();
+                await MarkTaskComplete(taskId);
+            }
+            else
+            {
+                // 如果一键创建失败，引导用户手动创建
+                createVaultFailMessage = string.Format(L["InitializationTasks_ConfirmCreateVaultBody"], result?.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "创建知识库失败");
+        }
+        finally
+        {
+            isCreatingVault = false;
+        }
+    }
+
+    private async Task GoToHome()
+    {
+        await JSRuntime.InvokeVoidAsync("eval", "document.querySelector('.qr-card h3')?.scrollIntoView({ behavior: 'smooth', block: 'start' })");
+    }
+
+    private void DismissTasks()
+    {
+        isVisible = false;
+    }
+
+    private string? createVaultFailMessage;
+
+    private void CancelCreateVaultManual()
+    {
+        createVaultFailMessage = null;
+    }
+
+    private void ConfirmCreateVaultManual()
+    {
+        createVaultFailMessage = null;
+        Navigation.NavigateTo("vaults");
+    }
+}

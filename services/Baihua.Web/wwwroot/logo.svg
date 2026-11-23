@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <path d="M30 80L30 160C30 165.5 34.5 170 40 170L160 170C165.5 170 170 165.5 170 160L170 80C170 74.5 165.5 70 160 70L40 70C34.5 70 30 74.5 30 80Z" fill="#FFE4E9"/>
+  <path d="M40 70L40 160L160 160L160 70" stroke="#FFB6C1" stroke-width="2"/>
+  <path d="M35 85L35 155C35 157.8 37.2 160 40 160L160 160C162.8 160 165 157.8 165 155L165 85" fill="#FFF5F7"/>
+  <rect x="45" y="95" width="110" height="8" fill="#FFE4E9" rx="1"/>
+  <rect x="45" y="110" width="100" height="8" fill="#FFE4E9" rx="1"/>
+  <rect x="45" y="125" width="90" height="8" fill="#FFE4E9" rx="1"/>
+  <rect x="45" y="140" width="80" height="8" fill="#FFE4E9" rx="1"/>
+  
+  <path d="M100 120C100 120 70 90 70 70C70 55 82 45 100 45C118 45 130 55 130 70C130 90 100 120 100 120Z" fill="#FFB6C1"/>
+  <path d="M100 115C100 115 75 85 75 65C75 55 85 48 100 48C115 48 125 55 125 65C125 85 100 115 100 115Z" fill="#FFC0CB"/>
+  
+  <circle cx="100" cy="65" r="8" fill="#FFD700"/>
+  <path d="M100 57L100 73M92 65L108 65" stroke="#FFD700" stroke-width="2"/>
+  
+  <path d="M85 60C85 60 65 45 60 35C58 30 62 25 67 27C85 35 85 60 85 60Z" fill="#FFB6C1"/>
+  <path d="M115 60C115 60 135 45 140 35C142 30 138 25 133 27C115 35 115 60 115 60Z" fill="#FFB6C1"/>
+  <path d="M90 50C90 50 75 30 80 20C82 15 87 13 90 18C95 25 90 50 90 50Z" fill="#FFC0CB"/>
+  <path d="M110 50C110 50 125 30 120 20C118 15 113 13 110 18C105 25 110 50 110 50Z" fill="#FFC0CB"/>
+  
+  <path d="M65 90C65 90 45 75 40 65C38 60 42 55 47 57C65 65 65 90 65 90Z" fill="#FFB6C1"/>
+  <path d="M135 90C135 90 155 75 160 65C162 60 158 55 153 57C135 65 135 90 135 90Z" fill="#FFB6C1"/>
+  
+  <path d="M55 100C55 100 35 85 30 75C28 70 32 65 37 67C55 75 55 100 55 100Z" fill="#FFC0CB"/>
+  <path d="M145 100C145 100 165 85 170 75C172 70 168 65 163 67C145 75 145 100 145 100Z" fill="#FFC0CB"/>
+  
+  <path d="M70 130L70 170" stroke="#228B22" stroke-width="3" stroke-linecap="round"/>
+  <path d="M70 150C70 150 55 145 50 150C47 152 47 157 50 159C58 165 70 155 70 155" fill="#32CD32"/>
+  
+  <path d="M130 130L130 170" stroke="#228B22" stroke-width="3" stroke-linecap="round"/>
+  <path d="M130 150C130 150 145 145 150 150C153 152 153 157 150 159C142 165 130 155 130 155" fill="#32CD32"/>
+  
+  <path d="M100 130L100 165" stroke="#228B22" stroke-width="4" stroke-linecap="round"/>
+  <path d="M100 145C100 145 85 140 80 145C77 147 77 152 80 154C90 160 100 150 100 150" fill="#32CD32"/>
+  <path d="M100 150C100 150 115 145 120 150C123 152 123 157 120 159C110 165 100 155 100 155" fill="#32CD32"/>
+</svg>

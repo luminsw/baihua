@@ -1,0 +1,60 @@
+/* 共享确认弹窗（与全站 modal-overlay/modal-content 视觉一致） */
+.confirm-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+    outline: none;
+}
+
+.confirm-dialog-box {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    padding: 1.5rem;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+}
+
+.confirm-dialog-box h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1.05rem;
+    color: #c94c4c;
+}
+
+.confirm-dialog-body p {
+    margin: 0;
+    color: #444;
+    line-height: 1.6;
+    white-space: pre-line;
+    word-break: break-word;
+}
+
+.confirm-dialog-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    margin-top: 1.25rem;
+}
+
+/* 暗色模式适配 */
+[data-bs-theme="dark"] .confirm-dialog-box {
+    background: #232a3b;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+[data-bs-theme="dark"] .confirm-dialog-box h3 {
+    color: #e08a8a;
+}
+
+[data-bs-theme="dark"] .confirm-dialog-body p {
+    color: #c0c8d0;
+}

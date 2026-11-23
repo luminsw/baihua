@@ -1,0 +1,17 @@
+{
+  "name": "doctor-notes-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "npx playwright test",
+    "test:navigation": "npx playwright test --project=navigation",
+    "test:search": "npx playwright test --project=search",
+    "test:vaults": "npx playwright test --project=vaults",
+    "test:ai-build": "npx playwright test --project=ai-build",
+    "test:backup": "npx playwright test --project=backup",
+    "test:smoke": "npx playwright test --project=smoke"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
+  }
+}

@@ -1,0 +1,42 @@
+# Baihua.Web — WebUI（Blazor Server，5177）
+#
+# 与 Dockerfile.server 一样改为官方 .NET 镜像多阶段构建，不依赖预构建的 bh/base-* 镜像，
+# Windows 上 `bh wslc build` / Linux 上 docker compose 都可直接构建。
+
+# ==================== Build 阶段 ====================
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY services/Baihua.Contracts/Baihua.Contracts.csproj services/Baihua.Contracts/
+COPY services/Baihua.Web/Baihua.Web.csproj services/Baihua.Web/
+RUN dotnet restore services/Baihua.Web/Baihua.Web.csproj
+
+COPY services/ services/
+RUN dotnet publish services/Baihua.Web/Baihua.Web.csproj \
+    -c Release -o /app/publish --no-restore
+
+# ==================== Runtime 阶段 ====================
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+# 健康检查用 curl，aspnet 基础镜像不带
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+
+COPY --from=build /app/publish .
+
+ARG GIT_COMMIT=unknown
+ARG GIT_BRANCH=unknown
+LABEL git.commit=$GIT_COMMIT
+LABEL git.branch=$GIT_BRANCH
+
+EXPOSE 5177
+
+ENV ASPNETCORE_URLS=http://0.0.0.0:5177
+ENV WEBUI_CONFIG_DIR=/app/data
+# 后端已合并为单一服务 Baihua.Server（8788）：WebUI 只需一个后端地址；
+# docker compose 里用服务名 server 覆盖（BaihuaServer__BaseUrl=http://server:8788/）
+ENV BaihuaServer__BaseUrl=http://127.0.0.1:8788/
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:5177/ || exit 1
+
+ENTRYPOINT ["dotnet", "bh-webui.dll"]

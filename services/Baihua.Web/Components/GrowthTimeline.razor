@@ -1,0 +1,30 @@
+@using Baihua.Contracts.Achievements
+
+<div class="growth-timeline section">
+    <h2>成长时间线</h2>
+    @if (Events.Count == 0)
+    {
+        <div class="empty-hint">
+            <p>还没有学习记录，开始今天的学习吧</p>
+        </div>
+    }
+    else
+    {
+        <div class="timeline-list">
+            @foreach (var evt in Events)
+            {
+                <div class="timeline-item">
+                    <span class="tl-date">@(evt.Date?.ToString("MM-dd") ?? "--")</span>
+                    <span class="tl-learner">@evt.LearnerName</span>
+                    <span class="tl-desc">@evt.Description</span>
+                </div>
+            }
+        </div>
+        <div class="timeline-paging">每页 @PageSize 条 · 最近 30 天</div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<GrowthTimelineItemDto> Events { get; set; } = new();
+    [Parameter] public int PageSize { get; set; } = 20;
+}

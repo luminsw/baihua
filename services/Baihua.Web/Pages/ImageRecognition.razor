@@ -1,0 +1,284 @@
+@page "/image-recognition"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Components.Forms
+@using Baihua.Contracts.Ai
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Microsoft.Extensions.Localization.IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<PageTitle>@L["Vision_PageTitle"]</PageTitle>
+
+<h1>🖼️ @L["Vision_Title"]</h1>
+
+@if (status == null)
+{
+    <div class="loading-spinner">@L["Common_Loading"]</div>
+}
+else if (!status.Enabled)
+{
+    <div class="alert alert-warning">@L["Vision_NotEnabled"]</div>
+}
+else
+{
+    @if (!status.ServerRunning)
+    {
+        <div class="alert alert-warning d-flex align-items-center gap-2">
+            <span>⚠️ @L["Vision_ServerDown"]</span>
+            <button class="btn btn-primary btn-sm" @onclick="StartServerAsync" disabled="@isStartingServer">
+                @(isStartingServer ? L["Vision_StartingServer"] : "▶️ " + L["Vision_StartServer"])
+            </button>
+            @if (!string.IsNullOrEmpty(status.Message))
+            {
+                <span class="text-error small">@status.Message</span>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-success d-flex align-items-center gap-2">
+            <span>✅ @string.Format(L["Vision_Running"], status.Port)</span>
+            <button class="btn btn-outline-danger btn-sm" @onclick="StopServerAsync" disabled="@isStoppingServer">
+                @(isStoppingServer ? L["Vision_Stopping"] : L["Vision_StopServer"])
+            </button>
+        </div>
+    }
+
+    <div class="vision-layout">
+        <!-- 左：上传与预览 -->
+        <div class="vision-upload">
+            <div class="card">
+                <div class="card-body">
+                    <h5>@L["Vision_UploadLabel"]</h5>
+                    <InputFile OnChange="OnFileSelected" accept="image/*" />
+                    <div class="form-text mb-2">@L["Vision_UploadHint"]</div>
+
+                    @if (!string.IsNullOrEmpty(imagePreviewBase64))
+                    {
+                        <img src="@imagePreviewBase64" class="vision-preview" alt="preview" />
+                    }
+                    else
+                    {
+                        <div class="vision-placeholder">🖼️</div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- 右：提问与结果 -->
+        <div class="vision-config">
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">@L["Vision_ModelLabel"]</label>
+                        <select class="form-select" @bind="selectedModel">
+                            @foreach (var m in status.Models.Where(m => m.Exists))
+                            {
+                                <option value="@m.Id">@(m.Id == "3b" ? L["Vision_Model3B"] : L["Vision_Model7B"])</option>
+                            }
+                        </select>
+                        @if (status.Models.Any(m => !m.Exists))
+                        {
+                            <div class="form-text text-warning">
+                                @L["Vision_ModelMissing", string.Join("、", status.Models.Where(m => !m.Exists).Select(m => m.Path))]
+                            </div>
+                        }
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">@L["Vision_PromptLabel"]</label>
+                        <textarea class="form-control" rows="3" @bind="prompt">@prompt</textarea>
+                    </div>
+
+                    <button class="btn btn-primary" @onclick="RecognizeAsync" disabled="@(isRecognizing || string.IsNullOrEmpty(imagePreviewBase64))">
+                        @(isRecognizing ? "⏳ " + L["Vision_Recognizing"] : "🔍 " + L["Vision_RecognizeBtn"])
+                    </button>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(resultText))
+            {
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="mb-0">📝 @L["Vision_ResultLabel"]</h5>
+                            <div class="d-flex align-items-center gap-2">
+                                @if (elapsedMs > 0)
+                                {
+                                    <span class="text-muted small">@L["Vision_Elapsed", (elapsedMs / 1000.0).ToString("F1")]</span>
+                                }
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CopyResultAsync">📋 @L["Vision_CopyBtn"]</button>
+                            </div>
+                        </div>
+                        <pre class="vision-result">@resultText</pre>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .vision-layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 380px) 1fr;
+        gap: 1.25rem;
+        align-items: start;
+    }
+
+    .vision-preview {
+        max-width: 100%;
+        max-height: 340px;
+        border-radius: 8px;
+        border: 1px solid #e8eef2;
+        margin-top: 0.5rem;
+    }
+
+    .vision-placeholder {
+        height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 3rem;
+        color: #ccc;
+        border: 1px dashed #d8e2e8;
+        border-radius: 8px;
+        margin-top: 0.5rem;
+    }
+
+    .vision-result {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #f5f8fa;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        font-size: 0.95rem;
+        line-height: 1.6;
+        margin-bottom: 0;
+    }
+
+    .loading-spinner {
+        padding: 2rem;
+        text-align: center;
+        color: #666;
+    }
+
+    @@media (max-width: 900px) {
+        .vision-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@code {
+    private VisionStatusDto? status;
+    private string? imagePreviewBase64;
+    private byte[]? imageBytes;
+    private string prompt = "";
+    private string selectedModel = "3b";
+    private string resultText = "";
+    private long elapsedMs;
+    private bool isRecognizing;
+    private bool isStartingServer;
+    private bool isStoppingServer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        prompt = L["Vision_PromptDefault"];
+        status = await ApiService.GetVisionStatusAsync();
+        if (status.Models.Count > 0 && status.Models.Any(m => m.Id == "3b" && m.Exists))
+            selectedModel = "3b";
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        await using var ms = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024).CopyToAsync(ms);
+        imageBytes = ms.ToArray();
+        var mime = file.ContentType ?? "image/png";
+        imagePreviewBase64 = $"data:{mime};base64,{Convert.ToBase64String(imageBytes)}";
+        resultText = "";
+        elapsedMs = 0;
+    }
+
+    private async Task RecognizeAsync()
+    {
+        if (imageBytes == null || imageBytes.Length == 0)
+        {
+            resultText = L["Vision_NoImage"];
+            return;
+        }
+
+        isRecognizing = true;
+        resultText = "";
+        try
+        {
+            var result = await ApiService.RecognizeImageAsync(imageBytes, prompt, selectedModel);
+            resultText = result.Text;
+            elapsedMs = result.ElapsedMs;
+        }
+        catch (Exception ex)
+        {
+            resultText = $"❌ {ex.Message}";
+        }
+        finally
+        {
+            isRecognizing = false;
+        }
+    }
+
+    private async Task StartServerAsync()
+    {
+        isStartingServer = true;
+        try
+        {
+            status = await ApiService.StartVisionServerAsync();
+        }
+        catch (Exception ex)
+        {
+            status = new VisionStatusDto
+            {
+                Enabled = true,
+                ServerRunning = false,
+                Message = string.Format(L["Vision_ServerStartFail"], ex.Message),
+            };
+        }
+        finally
+        {
+            isStartingServer = false;
+        }
+    }
+
+    private async Task StopServerAsync()
+    {
+        isStoppingServer = true;
+        try
+        {
+            status = await ApiService.StopVisionServerAsync();
+        }
+        catch (Exception ex)
+        {
+            status = new VisionStatusDto
+            {
+                Enabled = true,
+                ServerRunning = false,
+                Message = string.Format(L["Vision_StopFailed"], ex.Message),
+            };
+        }
+        finally
+        {
+            isStoppingServer = false;
+        }
+    }
+
+    private async Task CopyResultAsync()
+    {
+        if (string.IsNullOrEmpty(resultText)) return;
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", resultText);
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

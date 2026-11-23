@@ -1,0 +1,73 @@
+# Git
+.git
+.gitignore
+
+# 构建产物
+**/bin
+**/obj
+**/publish
+
+# IDE
+.vs
+.vscode
+.idea
+*.user
+*.suo
+
+# Docker 数据目录
+docker/data
+
+# 测试
+tests
+
+# 文档
+docs
+*.md
+
+# 脚本（不需要进入构建上下文）
+scripts
+
+# systemd 配置（宿主机直接部署用）
+docker/systemd
+
+# Windows 脚本
+docker/start.bat
+docker/stop.bat
+
+# Nginx 配置和证书（由 docker-compose 挂载，不需要在构建上下文中）
+# 注意：如果 Nginx 容器需要 COPY 这些文件，则不要忽略
+# docker/nginx
+
+# 临时文件
+*.log
+*.tmp
+*.cache
+
+# 本地数据/构建中间产物（多阶段源码构建 context=仓库根，必须排除）
+# nuget-local：已沉入 bh/sdk-offline 基础镜像（Dockerfile.sdk-offline），context 无需再携带
+data
+models
+logs
+out
+tmp
+nuget-local
+k8s-test-data
+.baihua-dev
+.fam35
+.testout
+.artifacts-*
+.arts
+.cache
+.claude
+.codeartsdoer
+.deveco
+.hvigor
+.reasonix
+.trae
+.github
+
+# macOS
+.DS_Store
+
+# 其他不需要的目录
+project-manager

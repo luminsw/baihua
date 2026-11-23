@@ -1,0 +1,330 @@
+@page "/family/checkin"
+@page "/checkin"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject Microsoft.Extensions.Logging.ILogger<Checkin> Logger
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@using Baihua.Contracts.Achievements
+
+<PageTitle>@L["Checkin_Title"]</PageTitle>
+
+<div class="checkin-page">
+    <h1>@L["Checkin_Title"]</h1>
+
+    @if (isLoading)
+    {
+        <div class="loading-skeleton" aria-busy="true">
+            <div class="skeleton skeleton-title"></div>
+            <div class="skeleton skeleton-line"></div>
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+        </div>
+    }
+    else if (loadError)
+    {
+        <div class="checkin-error">
+            <p class="error-text">@L["Checkin_LoadFailed"]</p>
+            <button class="retry-btn" @onclick="LoadCheckinAsync">@L["Checkin_Retry"]</button>
+        </div>
+    }
+    else
+    {
+        <!-- 连续打卡 + 最近 7 天日历 -->
+        <section class="streak-section">
+            <div class="streak-banner">
+                <span class="flame">🔥</span>
+                <span class="streak-num">@data.FamilyStreak</span>
+                <span class="streak-label">@L["Checkin_StreakDays"]</span>
+            </div>
+            @if (data.StreakStatus == "今天还没学")
+            {
+                <div class="streak-grace">@string.Format(L["Checkin_StreakGraceToday"], data.FamilyStreak)</div>
+            }
+            else if (!string.IsNullOrEmpty(data.StreakStatus))
+            {
+                <div class="streak-grace">@data.StreakStatus</div>
+            }
+            @if (data.FamilyStreak >= 7)
+            {
+                <div class="streak-motivation">@L["Checkin_StreakMotivation"]</div>
+            }
+            <div class="calendar7">
+                @foreach (var day in data.Last7Days)
+                {
+                    <div class="cal-cell @(day.IsToday ? "today" : "") @(day.IsMakeupable ? "makeupable" : "")"
+                         title="@(day.Date?.ToString("MM-dd"))"
+                         @onclick="() => TryOpenMakeup(day)">
+                        <div class="cal-mark">@(day.IsChecked ? "🔥" : "⬜")</div>
+                        @if (day.IsMakeupable)
+                        {
+                            <div class="cal-makeup-hint">@L["Checkin_MakeupHint"]</div>
+                        }
+                        <div class="cal-date">@(day.Date?.ToString("dd"))</div>
+                    </div>
+                }
+            </div>
+        </section>
+
+        @if (showMakeupDialog)
+        {
+            <div class="makeup-dialog-mask" @onclick="CloseMakeupDialog">
+                <div class="makeup-dialog" @onclick:stopPropagation="true">
+                    <h3>@string.Format(L["Checkin_MakeupDialogTitle"], makeupTarget?.ToString("M月d日"))</h3>
+                    <p class="makeup-quota">@string.Format(L["Checkin_MakeupQuota"], data.MakeupRemaining)</p>
+                    @if (!string.IsNullOrEmpty(makeupError))
+                    {
+                        <p class="makeup-error">@makeupError</p>
+                    }
+                    <div class="makeup-actions">
+                        <button class="btn btn-secondary" @onclick="CloseMakeupDialog">@L["Checkin_Cancel"]</button>
+                        <button class="btn btn-primary" @onclick="ConfirmMakeupAsync" disabled="@isMakingUp">@L["Checkin_ConfirmMakeup"]</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(makeupToast))
+        {
+            <div class="makeup-toast">@makeupToast</div>
+        }
+
+        <!-- 今日学习清单（按 Learner 分组） -->
+        <section class="today-section">
+            <h2>@L["Checkin_TodayList"]</h2>
+
+            @if (data.TodayRecords.Count == 0)
+            {
+                <!-- 空态引导 -->
+                <div class="empty-state">
+                    <div class="empty-icon">🌱</div>
+                    <p class="empty-text">@L["Checkin_EmptyToday"]</p>
+                    <a class="cta-btn" href="/daily-card">@L["Checkin_GoDailyCard"]</a>
+                </div>
+            }
+            else
+            {
+                @foreach (var group in data.TodayRecords.GroupBy(r => r.LearnerName))
+                {
+                    <div class="learner-group">
+                        <div class="group-header">👤 @group.Key <span class="group-count">@group.Count()</span></div>
+                        @foreach (var record in group)
+                        {
+                            <div class="record-item" @onclick="() => ToggleDetail(record)">
+                                <span class="rec-status">@(record.IsCompleted ? "✅" : "⏳")</span>
+                                <span class="rec-content">@record.Content</span>
+                                <span class="rec-time">@(record.Time?.ToString("HH:mm"))</span>
+                                <span class="rec-source">@record.Source</span>
+                            </div>
+                            @if (expandedRecord == record)
+                            {
+                                <div class="record-detail">
+                                    <div class="detail-row"><span>@L["Checkin_Source"]</span><span>@record.Source</span></div>
+                                    <div class="detail-row"><span>@L["Checkin_StartTime"]</span><span>@(record.StartTime?.ToString("HH:mm"))</span></div>
+                                    <div class="detail-row"><span>@L["Checkin_EndTime"]</span><span>@(record.EndTime?.ToString("HH:mm"))</span></div>
+                                    <div class="detail-row"><span>@L["Checkin_CardCount"]</span><span>@record.CardCount</span></div>
+                                    <div class="detail-row"><span>@L["Checkin_Accuracy"]</span><span>@record.Accuracy.ToString("F0")%</span></div>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            }
+        </section>
+    }
+</div>
+
+<style>
+    .checkin-page { max-width: 800px; margin: 0 auto; padding: 1rem; }
+    .checkin-page h1 { margin-bottom: 1.5rem; }
+
+    .streak-section { background: #fff; border: 1px solid #e8eef2; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; text-align: center; }
+    .streak-banner { display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
+    .flame { font-size: 1.8rem; }
+    .streak-num { font-size: 2.6rem; font-weight: 800; color: #e67e22; }
+    .streak-label { color: #666; }
+    .streak-motivation { color: #e67e22; margin-top: 0.4rem; font-weight: 600; }
+
+    .calendar7 { display: flex; justify-content: space-between; gap: 0.4rem; margin-top: 1rem; }
+    .cal-cell { flex: 1; background: #f8fafc; border: 2px solid transparent; border-radius: 8px; padding: 0.5rem 0; cursor: default; }
+    .cal-cell.today { border-color: #20c997; box-shadow: 0 0 0 2px rgba(32, 201, 151, 0.2); }
+    .cal-cell.makeupable { border: 2px dashed #e67e22; cursor: pointer; }
+    .cal-cell.makeupable:hover { background: #fff6ec; }
+    .cal-mark { font-size: 1.2rem; }
+    .cal-date { font-size: 0.75rem; color: #888; }
+    .cal-makeup-hint { font-size: 0.7rem; color: #e67e22; font-weight: 700; }
+    .streak-grace { color: #e67e22; margin-top: 0.4rem; font-weight: 600; font-size: 0.9rem; }
+
+    .makeup-dialog-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .makeup-dialog { background: #fff; border-radius: 12px; padding: 1.5rem; min-width: 300px; box-shadow: 0 8px 30px rgba(0,0,0,0.2); }
+    .makeup-dialog h3 { margin: 0 0 0.5rem; }
+    .makeup-quota { color: #666; margin-bottom: 0.75rem; }
+    .makeup-error { color: #c0392b; font-size: 0.85rem; margin-bottom: 0.75rem; }
+    .makeup-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    .makeup-toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 0.6rem 1.2rem; border-radius: 8px; z-index: 1100; }
+
+    /* FAM-32 响应式：手机 ≤768px（日历不换行缩小、清单紧凑） */
+    @@media (max-width: 768px) {
+        .checkin-page { padding: 0.5rem; }
+        .calendar7 { gap: 0.2rem; }
+        .cal-cell { padding: 0.35rem 0; }
+        .cal-mark { font-size: 1rem; }
+        .cal-date { font-size: 0.65rem; }
+        .streak-num { font-size: 2rem; }
+        .record-item { flex-wrap: wrap; gap: 0.3rem; }
+        .rec-time { font-size: 0.8rem; }
+        .makeup-dialog { min-width: 0; width: calc(100% - 2rem); }
+    }
+
+    /* FAM-32 响应式：平板 769-1024px */
+    @@media (min-width: 769px) and (max-width: 1024px) {
+        .checkin-page { max-width: 100%; }
+    }
+
+    /* FAM-32 响应式：桌面 ≥1025px（锚） */
+    @@media (min-width: 1025px) {
+        .checkin-page { max-width: 800px; }
+    }
+
+    .today-section h2 { font-size: 1.1rem; margin-bottom: 0.75rem; color: #333; }
+    .learner-group { margin-bottom: 1rem; background: #fff; border: 1px solid #e8eef2; border-radius: 10px; padding: 0.75rem; }
+    .group-header { font-weight: 700; color: #333; margin-bottom: 0.5rem; }
+    .group-count { color: #aaa; font-size: 0.85rem; }
+
+    .record-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.4rem; border-bottom: 1px dashed #eef2f5; cursor: pointer; }
+    .record-item:hover { background: #f8fafc; }
+    .rec-status { font-size: 1rem; }
+    .rec-content { flex: 1; color: #444; }
+    .rec-time { color: #888; font-size: 0.85rem; }
+    .rec-source { background: #eef7f3; color: #1d9c73; font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 10px; }
+
+    .record-detail { background: #f8fafc; border-radius: 6px; padding: 0.6rem 0.8rem; margin: 0.4rem 0; }
+    .detail-row { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.2rem 0; color: #555; }
+
+    /* 空态 */
+    .empty-state { text-align: center; padding: 2.5rem 1rem; background: #f8fafc; border-radius: 10px; }
+    .empty-icon { font-size: 2.5rem; margin-bottom: 0.6rem; }
+    .empty-text { color: #666; margin-bottom: 1rem; }
+    .cta-btn { display: inline-block; background: #20c997; color: #fff; border-radius: 8px; padding: 0.6rem 1.5rem; text-decoration: none; font-weight: 600; }
+
+    /* 骨架屏 / 错误 */
+    .loading-skeleton { display: flex; flex-direction: column; gap: 0.75rem; }
+    .skeleton { background: linear-gradient(90deg, #f0f3f5 25%, #e2e8ec 37%, #f0f3f5 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; border-radius: 6px; }
+    .skeleton-title { height: 2rem; width: 40%; }
+    .skeleton-line { height: 1rem; width: 100%; }
+    .skeleton-card { height: 6rem; width: 100%; }
+    @@keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+    .checkin-error { text-align: center; padding: 3rem 1rem; background: #fff7f7; border: 1px solid #f5c6c6; border-radius: 10px; }
+    .error-text { color: #c0392b; margin-bottom: 1rem; }
+    .retry-btn { background: #c0392b; color: #fff; border: none; border-radius: 6px; padding: 0.5rem 1.5rem; cursor: pointer; font-size: 1rem; }
+</style>
+
+@code {
+    private CheckinDataDto data = new();
+    private CheckinRecordDto? expandedRecord;
+    private bool isLoading = true;
+    private bool loadError = false;
+
+    // FAM-33 补签
+    private DateTime? makeupTarget;
+    private bool showMakeupDialog = false;
+    private bool isMakingUp = false;
+    private string makeupError = "";
+    private string? makeupToast;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await LoadCheckinAsync();
+    }
+
+    private void ToggleDetail(CheckinRecordDto record)
+    {
+        expandedRecord = expandedRecord == record ? null : record;
+    }
+
+    private void TryOpenMakeup(CheckinCalendarDayDto day)
+    {
+        if (!day.IsMakeupable || !day.Date.HasValue) return;
+        makeupTarget = day.Date.Value;
+        makeupError = "";
+        showMakeupDialog = true;
+    }
+
+    private void CloseMakeupDialog()
+    {
+        showMakeupDialog = false;
+        makeupTarget = null;
+    }
+
+    private async Task ConfirmMakeupAsync()
+    {
+        if (!makeupTarget.HasValue || isMakingUp) return;
+        isMakingUp = true;
+        makeupError = "";
+        try
+        {
+            var vaults = await VaultsService.GetVaultsAsync();
+            var vaultId = vaults.Vaults.FirstOrDefault()?.Id;
+            var result = await ApiService.MakeupCheckinAsync(new CheckinMakeupRequest
+            {
+                Date = makeupTarget.Value,
+                VaultId = vaultId
+            });
+            if (result.Success)
+            {
+                showMakeupDialog = false;
+                makeupTarget = null;
+                makeupToast = string.Format(L["Checkin_MakeupSuccess"], result.Remaining);
+                await LoadCheckinAsync();
+                await Task.Delay(2500);
+                makeupToast = null;
+                await InvokeAsync(StateHasChanged);
+            }
+            else
+            {
+                makeupError = result.Message;
+                if (result.Message.Contains("已用完"))
+                {
+                    makeupToast = result.Message;
+                    await Task.Delay(2500);
+                    makeupToast = null;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "补签失败");
+            makeupError = L["Checkin_MakeupFailed"].Value;
+        }
+        finally
+        {
+            isMakingUp = false;
+        }
+    }
+
+    private async Task LoadCheckinAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var vaults = await VaultsService.GetVaultsAsync();
+            data = await ApiService.GetCheckinDataAsync(vaults.Vaults.FirstOrDefault()?.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "加载学习打卡页失败");
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}
+

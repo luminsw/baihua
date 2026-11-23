@@ -1,0 +1,425 @@
+@page "/log-settings"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.SettingsService SettingsService
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["LogSettings_PageTitle"]</PageTitle>
+
+<h1>@L["LogSettings_Heading"]</h1>
+
+<div class="settings-form">
+    <p class="form-description">
+        @L["LogSettings_Description"]
+    </p>
+
+    @if (isLoading)
+    {
+        <div class="loading-spinner">
+            <span class="spinner"></span> @L["LogSettings_Loading"]
+        </div>
+    }
+    else if (errorMessage != null)
+    {
+        <div class="alert alert-error">@errorMessage</div>
+    }
+    else
+    {
+        <div class="sink-config-section">
+            <h4>@L["LogSettings_SinkHeading"]</h4>
+            <div class="form-group">
+                <label>@L["LogSettings_UserLabel"]</label>
+                <input type="text" class="form-control" @bind="user"
+                       placeholder="root@example.com" />
+            </div>
+            <div class="form-group">
+                <label>@L["LogSettings_PasswordLabel"]</label>
+                <input type="password" class="form-control" @bind="password"
+                       placeholder="@L["LogSettings_PasswordPlaceholder"]" />
+            </div>
+            <div class="form-group">
+                <label>@L["LogSettings_WebUrlLabel"]</label>
+                <input type="text" class="form-control" @bind="webUrl"
+                       placeholder="http://localhost:5082" />
+                <small class="form-text">@L["LogSettings_WebUrlHint"]</small>
+            </div>
+        </div>
+
+        <!-- 打开 Web UI 按钮 -->
+        <div class="form-group" style="margin-top: 1rem;">
+            <button class="btn btn-secondary" @onclick="OpenWebUI" @disabled="string.IsNullOrEmpty(webUrl)">
+                @L["LogSettings_OpenWebUI"]
+            </button>
+            @if (!string.IsNullOrEmpty(webUrl))
+            {
+                <small class="form-text" style="margin-left: 0.5rem;">@webUrl</small>
+            }
+        </div>
+
+        <!-- 保存按钮 -->
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="SaveConfig" @disabled="isSaving">
+                @(isSaving ? L["LogSettings_Saving"] : L["LogSettings_SaveConfig"])
+            </button>
+            @if (saveMessage != null)
+            {
+                <span class="save-message @saveMessageClass">@saveMessage</span>
+            }
+        </div>
+
+        <!-- Docker 部署提示 -->
+        <details class="deploy-hint" style="margin-top: 2rem;">
+            <summary>@L["LogSettings_DockerSummary"]</summary>
+            <div class="hint-content">
+                <p>@L["LogSettings_DockerHint"]</p>
+                <pre><code>cd docker
+docker compose -f docker-compose.observability.yml up -d</code></pre>
+                <table class="port-table">
+                    <thead>
+                        <tr><th>@L["LogSettings_ServiceColumn"]</th><th>@L["LogSettings_PortColumn"]</th><th>@L["LogSettings_DescriptionColumn"]</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>@L["LogSettings_OpenObserveHttp"]</td><td>5082</td><td>@L["LogSettings_HttpPortDesc"]</td></tr>
+                        <tr><td>@L["LogSettings_OpenObserveGrpc"]</td><td>5083</td><td>@L["LogSettings_GrpcPortDesc"]</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string? errorMessage;
+    private string? saveMessage;
+    private string saveMessageClass = "";
+
+    private string user = "";
+    private string password = "";
+    private string webUrl = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var backendUrl = SettingsService.BackendUrl;
+            var response = await Http.GetAsync($"{backendUrl}/api/log-sink");
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                var config = System.Text.Json.JsonSerializer.Deserialize<OpenObserveConfigDto>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (config != null)
+                {
+                    user = config.User ?? user;
+                    password = config.Password ?? password;
+                    webUrl = config.WebUrl ?? webUrl;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = string.Format(L["LogSettings_LoadConfigFailed"], ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveConfig()
+    {
+        isSaving = true;
+        saveMessage = null;
+        try
+        {
+            var config = new OpenObserveConfigDto
+            {
+                User = user,
+                Password = password,
+                WebUrl = webUrl
+            };
+
+            var backendUrl = SettingsService.BackendUrl;
+            var json = System.Text.Json.JsonSerializer.Serialize(config,
+                new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+            var response = await Http.PutAsync($"{backendUrl}/api/log-sink", content);
+            if (response.IsSuccessStatusCode)
+            {
+                saveMessage = L["LogSettings_SaveSuccess"];
+                saveMessageClass = "success";
+            }
+            else
+            {
+                saveMessage = string.Format(L["LogSettings_SaveFailed"], response.StatusCode);
+                saveMessageClass = "error";
+            }
+        }
+        catch (Exception ex)
+        {
+            saveMessage = string.Format(L["LogSettings_SaveFailed"], ex.Message);
+            saveMessageClass = "error";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task OpenWebUI()
+    {
+        if (!string.IsNullOrEmpty(webUrl))
+        {
+            await JS.InvokeVoidAsync("open", webUrl, "_blank");
+        }
+    }
+
+    private class OpenObserveConfigDto
+    {
+        public string? User { get; set; }
+        public string? Password { get; set; }
+        public string? WebUrl { get; set; }
+    }
+}
+
+<style>
+    .form-description {
+        color: #555;
+        margin-bottom: 1.5rem;
+        font-size: 0.9rem;
+    }
+
+    .sink-config-section {
+        background: #f5f8fa;
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+        margin: 1rem 0;
+    }
+
+    .sink-config-section h4 {
+        margin-bottom: 1rem;
+        color: #1e3a4c;
+    }
+
+    .form-group {
+        margin-bottom: 1rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.3rem;
+        font-size: 0.85rem;
+        color: #444;
+        font-weight: 500;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #d8e2e8;
+        border-radius: 6px;
+        background: #fff;
+        color: #333;
+        font-size: 0.9rem;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #4a9eff;
+        box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.15);
+    }
+
+    .form-text {
+        display: block;
+        margin-top: 0.25rem;
+        font-size: 0.78rem;
+        color: #888;
+    }
+
+    .form-actions {
+        margin-top: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .btn {
+        padding: 0.5rem 1.25rem;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s;
+    }
+
+    .btn-primary {
+        background: #4a9eff;
+        color: #fff;
+    }
+
+    .btn-primary:hover {
+        background: #3a8eef;
+    }
+
+    .btn-secondary {
+        background: #e8eef2;
+        color: #4a5860;
+    }
+
+    .btn-secondary:hover {
+        background: #d8e2e8;
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .save-message {
+        font-size: 0.85rem;
+    }
+
+    .save-message.success {
+        color: #6b9e75;
+    }
+
+    .save-message.error {
+        color: #c94c4c;
+    }
+
+    .alert-error {
+        background: rgba(244, 67, 54, 0.15);
+        border: 1px solid rgba(244, 67, 54, 0.3);
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        color: #c94c4c;
+    }
+
+    .deploy-hint {
+        background: #f5f8fa;
+        border: 1px solid #e8eef2;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+    }
+
+    .deploy-hint summary {
+        cursor: pointer;
+        color: #666;
+        font-size: 0.85rem;
+    }
+
+    .hint-content {
+        margin-top: 0.75rem;
+        color: #555;
+        font-size: 0.85rem;
+    }
+
+    .hint-content pre {
+        background: #e8eef2;
+        border-radius: 4px;
+        padding: 0.5rem 0.75rem;
+        overflow-x: auto;
+    }
+
+    .hint-content code {
+        color: #333;
+        font-size: 0.82rem;
+    }
+
+    .port-table {
+        width: 100%;
+        margin-top: 0.75rem;
+        border-collapse: collapse;
+    }
+
+    .port-table th, .port-table td {
+        padding: 0.35rem 0.5rem;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+    }
+
+    .port-table th {
+        color: #888;
+        font-weight: 500;
+    }
+
+    .loading-spinner {
+        text-align: center;
+        padding: 2rem;
+        color: #888;
+    }
+
+    /* === 暗色模式 === */
+    [data-bs-theme="dark"] .form-description {
+        color: rgba(255,255,255,0.65);
+    }
+    [data-bs-theme="dark"] .sink-config-section {
+        background: rgba(255,255,255,0.05);
+    }
+    [data-bs-theme="dark"] .sink-config-section h4 {
+        color: rgba(255,255,255,0.85);
+    }
+    [data-bs-theme="dark"] .form-group label {
+        color: rgba(255,255,255,0.7);
+    }
+    [data-bs-theme="dark"] .form-control {
+        background: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.15);
+        color: #ffffff;
+    }
+    [data-bs-theme="dark"] .form-control:focus {
+        border-color: #4a9eff;
+        box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.25);
+    }
+    [data-bs-theme="dark"] .form-text {
+        color: rgba(255,255,255,0.4);
+    }
+    [data-bs-theme="dark"] .btn-secondary {
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.75);
+    }
+    [data-bs-theme="dark"] .btn-secondary:hover {
+        background: rgba(255,255,255,0.15);
+    }
+    [data-bs-theme="dark"] .save-message.success {
+        color: #7bb88a;
+    }
+    [data-bs-theme="dark"] .save-message.error {
+        color: #e06666;
+    }
+    [data-bs-theme="dark"] .alert-error {
+        background: rgba(244, 67, 54, 0.2);
+        border-color: rgba(244, 67, 54, 0.4);
+        color: #e06666;
+    }
+    [data-bs-theme="dark"] .deploy-hint {
+        background: rgba(255,255,255,0.04);
+        border-color: rgba(255,255,255,0.1);
+    }
+    [data-bs-theme="dark"] .deploy-hint summary {
+        color: rgba(255,255,255,0.5);
+    }
+    [data-bs-theme="dark"] .hint-content {
+        color: rgba(255,255,255,0.55);
+    }
+    [data-bs-theme="dark"] .hint-content pre {
+        background: rgba(255,255,255,0.06);
+    }
+    [data-bs-theme="dark"] .hint-content code {
+        color: rgba(255,255,255,0.8);
+    }
+    [data-bs-theme="dark"] .port-table th, [data-bs-theme="dark"] .port-table td {
+        border-bottom-color: rgba(255,255,255,0.08);
+    }
+    [data-bs-theme="dark"] .port-table th {
+        color: rgba(255,255,255,0.45);
+    }
+    [data-bs-theme="dark"] .loading-spinner {
+        color: rgba(255,255,255,0.4);
+    }
+</style>

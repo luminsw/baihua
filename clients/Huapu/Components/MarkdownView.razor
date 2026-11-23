@@ -1,0 +1,24 @@
+@using MobileApp.Maui.Utils
+
+<div class="markdown-content">
+    @if (string.IsNullOrEmpty(_renderedHtml))
+    {
+        <p><em>（无内容）</em></p>
+    }
+    else
+    {
+        @((MarkupString)_renderedHtml)
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string? Content { get; set; }
+
+    private string _renderedHtml = "";
+
+    protected override void OnParametersSet()
+    {
+        _renderedHtml = SafeMarkdown.ToHtml(Content);
+    }
+}

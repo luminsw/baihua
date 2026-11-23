@@ -1,0 +1,931 @@
+@page "/generate"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Components.Web
+@using Baihua.Contracts.Generate
+@inject NavigationManager Navigation
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject Microsoft.Extensions.Logging.ILogger<KnowledgeGenerate> Logger
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@using Microsoft.JSInterop
+@using Microsoft.Extensions.Localization
+
+<PageTitle>@L["KnowledgeGen_PageTitle"]</PageTitle>
+
+<h1>@L["KnowledgeGen_Title"]</h1>
+
+<p class="text-muted mb-3">@L["KnowledgeGen_Subtitle"]</p>
+
+@if (isInitializing)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">@L["KnowledgeGen_LoadingVisuallyHidden"]</span>
+        </div>
+        <p class="mt-3 text-muted">@L["KnowledgeGen_LoadingConfig"]</p>
+    </div>
+}
+else
+{
+    <div class="generate-section">
+        <!-- Topic/Query Input (Top) -->
+        <div class="form-group">
+            <label>
+                @(generationMode == "vault" ? L["KnowledgeGen_TopicLabel"] : L["KnowledgeGen_QueryLabel"])
+            </label>
+            @if (generationMode == "vault")
+            {
+                <input type="text" @bind="aiQuery" class="form-control" placeholder="@L["KnowledgeGen_TopicPlaceholder"]" />
+                <div class="form-text">@L["KnowledgeGen_TopicHint"]</div>
+            }
+            else
+            {
+                <textarea @bind="aiQuery" @bind:event="oninput" class="form-control" rows="4"
+                          placeholder="@L["KnowledgeGen_QueryPlaceholder"]"></textarea>
+                <div class="form-text">@L["KnowledgeGen_QueryHint"]</div>
+            }
+        </div>
+
+        <!-- 灵感主题（AI 每日推荐，点击填入主题框） -->
+        <div class="form-group">
+            <label>💡 @L["KnowledgeGen_TopicInspirationLabel"] <small class="text-muted fw-normal">@L["KnowledgeGen_TopicClickHint"]</small></label>
+            @if (topicsLoading)
+            {
+                <div class="text-muted small py-2">
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                    @L["KnowledgeGen_TopicLoading"]
+                </div>
+            }
+            else if (topicSuggestions.Count > 0)
+            {
+                <div class="topic-grid">
+                    @foreach (var s in topicSuggestions)
+                    {
+                        <button type="button" class="topic-card" @onclick="() => ApplyTopic(s)" title="@s.Description">
+                            <span class="topic-cat">@s.Category</span>
+                            <span class="topic-title">@s.Title</span>
+                            <span class="topic-desc">@s.Description</span>
+                        </button>
+                    }
+                </div>
+                <div class="d-flex align-items-center gap-2 mt-2">
+                    <small class="text-muted">@string.Format(L["KnowledgeGen_TopicsSourceFormat"], topicsSource == "ai" ? L["KnowledgeGen_SourceAi"] : L["KnowledgeGen_SourceBuiltin"])</small>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RefreshTopics" disabled="@topicsLoading">🔄 @L["KnowledgeGen_RefreshTopics"]</button>
+                </div>
+            }
+        </div>
+
+        <!-- Generation Mode Selection -->
+        <div class="form-group">
+            <label>@L["KnowledgeGen_GenerationModeLabel"]</label>
+            <div class="btn-group" role="group">
+                <button class="btn @(generationMode == "vault" ? "btn-primary" : "btn-outline-primary")"
+                        @onclick='() => generationMode = "vault"'>
+                    @L["KnowledgeGen_GenerateFullVault"]
+                </button>
+                <button class="btn @(generationMode == "note" ? "btn-primary" : "btn-outline-primary")"
+                        @onclick='() => generationMode = "note"'>
+                    @L["KnowledgeGen_GenerateSingleNote"]
+                </button>
+            </div>
+        </div>
+
+        <!-- Industry Selection (AI auto-infer + manual input) -->
+        <div class="form-group">
+            <label>@L["KnowledgeGen_IndustryLabel"]</label>
+            <div class="d-flex flex-wrap gap-1 mb-2">
+                <button class="btn @(string.IsNullOrEmpty(selectedIndustry) && !manualIndustryMode ? "btn-primary" : "btn-outline-primary") btn-sm"
+                        @onclick="SelectAutoIndustry">
+                    @L["KnowledgeGen_AiAutoInfer"]
+                </button>
+                @foreach (var industry in GetIndustryOptions())
+                {
+                    <button class="btn @(!manualIndustryMode && selectedIndustry == industry ? "btn-primary" : "btn-outline-primary") btn-sm"
+                            @onclick="() => OnIndustryChanged(industry)">
+                        @industry
+                    </button>
+                }
+                <button class="btn @(manualIndustryMode ? "btn-primary" : "btn-outline-secondary") btn-sm"
+                        @onclick="EnableManualIndustry">
+                    @L["KnowledgeGen_Custom"]
+                </button>
+            </div>
+            @if (manualIndustryMode)
+            {
+                <input type="text" class="form-control form-control-sm" @bind="manualIndustryValue" @bind:event="oninput"
+                       @bind:after="SyncManualIndustry"
+                       placeholder="@L["KnowledgeGen_CustomIndustryPlaceholder"]" style="max-width: 250px;" />
+            }
+            else if (string.IsNullOrEmpty(selectedIndustry))
+            {
+                <div class="form-text text-info">@L["KnowledgeGen_AutoInferHint"]</div>
+            }
+        </div>
+
+        <!-- AI Model Selection -->
+        @if (aiProviders.Count > 0)
+        {
+            <div class="form-group">
+                <label>@L["KnowledgeGen_AiModelLabel"]</label>
+                <div class="ai-model-selector">
+                    @foreach (var provider in aiProviders)
+                    {
+                        <div style="font-size: 0.85rem; color: #666; margin-bottom: 0.25rem;">
+                            @provider.Name @(provider.IsMain ? L["KnowledgeGen_MainSuffix"] : "")
+                        </div>
+                        <div class="model-options">
+                            @foreach (var model in provider.Models)
+                            {
+                                var modelName = model.Name;
+                                var displayName = modelName.Split('/').LastOrDefault() ?? modelName;
+                                <button type="button"
+                                        class="model-option @(selectedModel == modelName ? "selected" : "")"
+                                        @onclick="() => SelectModel(modelName)"
+                                        title="@modelName">
+                                    @displayName
+
+                                    @if (model.IsMain)
+                                    {
+                                        <span class="tag tag-default" style="margin-left: 0.3rem;">@L["KnowledgeGen_DefaultTag"]</span>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Vault Selection -->
+        <div class="form-group">
+            <label>@L["KnowledgeGen_TargetVaultLabel"]</label>
+            <div class="vault-selector">
+                <select class="form-select form-select-sm" @bind="selectedVaultId">
+                    @foreach (var vault in GetFilteredVaults())
+                    {
+                        <option value="@vault.Id">@vault.Name</option>
+                    }
+                    @if (!string.IsNullOrEmpty(vaultRootPath))
+                    {
+                        <option value="__new__">@L["KnowledgeGen_NewVaultOption"]</option>
+                    }
+                </select>
+                @if (!string.IsNullOrEmpty(selectedVaultId) && selectedVaultId != "__new__")
+                {
+                    var selectedVault = GetFilteredVaults().FirstOrDefault(v => v.Id == selectedVaultId);
+                    @if (selectedVault?.Tags?.Any() == true)
+                    {
+                        <div class="d-flex flex-wrap gap-1 align-items-center mt-2">
+                            @foreach (var tag in selectedVault.Tags)
+                            {
+                                <span class="badge bg-info text-dark" style="font-size: 0.7em;">@tag</span>
+                            }
+                        </div>
+                    }
+                }
+                @if (!string.IsNullOrEmpty(vaultRootPath))
+                {
+                    <small class="text-muted mt-2 d-block">
+                        @L["KnowledgeGen_VaultRootPath"]<code>@vaultRootPath</code>
+                        @if (selectedVaultId == "__new__")
+                        {
+                            <span class="ms-2 text-info">@L["KnowledgeGen_NewVaultSubdirHint"]</span>
+                        }
+                    </small>
+                }
+                else if (GetFilteredVaults().Count == 0)
+                {
+                    <div class="alert alert-warning mt-2">
+                        @L["KnowledgeGen_NoVaultsInIndustry_Prefix"]<a href="vaults" class="alert-link">@L["KnowledgeGen_ConfigureVaults"]</a>@L["KnowledgeGen_Or"]<a href="vaults" class="alert-link">@L["KnowledgeGen_SetRootPath"]</a>@L["KnowledgeGen_Dot"]
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (selectedVaultId == "__new__")
+        {
+            <div class="new-vault-hint alert alert-info mb-3">
+                <strong>@L["KnowledgeGen_NewVaultMode"]</strong>
+                <small class="ms-2 text-muted">@L["KnowledgeGen_NewVaultModeDesc"]</small>
+            </div>
+
+            <!-- Generate Cards Option (new vault mode only) -->
+            <div class="form-group">
+                <label class="form-check-label">
+                    <input type="checkbox" @bind="generateCards" class="form-check-input" />
+                    @L["KnowledgeGen_AutoGenerateCards"]
+                </label>
+                <div class="form-text text-muted">@L["KnowledgeGen_AutoGenerateCardsHint"]</div>
+            </div>
+
+            <!-- 详细度档位（新知识库模式） -->
+            <div class="form-group">
+                <label class="form-label fw-bold">@L["KnowledgeGen_DetailLabel"]</label>
+                @if (!string.IsNullOrEmpty(globalDetailLevel))
+                {
+                    <div class="form-text text-muted mb-2">@L["KnowledgeGen_FollowGlobalPrefix"]<b>@(globalDetailLevel == "concise" ? L["Settings_DetailConcise"] : globalDetailLevel == "comprehensive" ? L["Settings_DetailComprehensive"] : L["Settings_DetailBalanced"])</b>@L["KnowledgeGen_FollowGlobalSuffix"]</div>
+                }
+                <div class="d-flex gap-4 flex-wrap">
+                    <label class="form-check">
+                        <input type="radio" name="detailLevel" class="form-check-input"
+                               checked="@(detailLevel == "concise")" @onchange='() => SetDetailLevel("concise")' />
+                        <span class="form-check-label">@L["Settings_DetailConcise"]</span>
+                        <small class="text-muted d-block">@L["KnowledgeGen_DetailCountConcise"]</small>
+                    </label>
+                    <label class="form-check">
+                        <input type="radio" name="detailLevel" class="form-check-input"
+                               checked="@(detailLevel == "balanced")" @onchange='() => SetDetailLevel("balanced")' />
+                        <span class="form-check-label">@L["KnowledgeGen_DetailBalanced"]</span>
+                        <small class="text-muted d-block">@L["KnowledgeGen_DetailCountBalanced"]</small>
+                    </label>
+                    <label class="form-check">
+                        <input type="radio" name="detailLevel" class="form-check-input"
+                               checked="@(detailLevel == "comprehensive")" @onchange='() => SetDetailLevel("comprehensive")' />
+                        <span class="form-check-label">@L["Settings_DetailComprehensive"]</span>
+                        <small class="text-muted d-block">@L["KnowledgeGen_DetailCountComprehensive"]</small>
+                    </label>
+                </div>
+            </div>
+        }
+
+        <!-- Prompt Editor -->
+        <div class="form-group">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => showPromptEditor = !showPromptEditor">
+                @(showPromptEditor ? L["KnowledgeGen_CollapsePrompt"] : L["KnowledgeGen_EditPrompt"])
+            </button>
+        </div>
+
+        @if (showPromptEditor)
+        {
+            <div class="form-group">
+                <label>@L["KnowledgeGen_SystemPromptLabel"]</label>
+                <textarea class="form-control" @bind="customSystemPrompt" rows="6"
+                          placeholder="@L["KnowledgeGen_SystemPromptPlaceholder"]"></textarea>
+                <div class="form-text">
+                    @if (string.IsNullOrWhiteSpace(customSystemPrompt))
+                    {
+                        <span class="text-muted">@L["KnowledgeGen_UsingDefaultPrompt"]</span>
+                    }
+                    else
+                    {
+                        <span class="text-info">@L["KnowledgeGen_CustomPromptSuffix"]</span>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Generation Button -->
+        <div class="form-actions">
+            <button @onclick="ExecuteGeneration"
+                    class="btn btn-primary btn-lg"
+                    disabled="@(isProcessing || string.IsNullOrWhiteSpace(aiQuery) || string.IsNullOrWhiteSpace(selectedVaultId))"
+                    title="@(string.IsNullOrWhiteSpace(aiQuery) ? L["KnowledgeGen_TitleNeedsQuery"] : string.IsNullOrWhiteSpace(selectedVaultId) ? L["KnowledgeGen_TitleNeedsVault"] : "") ">
+                @if (isProcessing)
+                {
+                    <span>⏳ @processingStep...</span>
+                }
+                else if (generationMode == "vault")
+                {
+                    <span>@L["KnowledgeGen_GenerateVaultBtn"]@(generateCards ? L["KnowledgeGen_WithCards"] : "")</span>
+                }
+                else
+                {
+                    <span>@L["KnowledgeGen_GenerateNoteBtn"]@(generateCards ? L["KnowledgeGen_WithCards"] : "")</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    <!-- Cards Entry -->
+    <div class="mt-3">
+        <a href="cards" class="btn btn-outline-info">
+            <span>@L["KnowledgeGen_ViewCards"]</span>
+        </a>
+    </div>
+}
+
+<style>
+    .generate-section {
+        background: #f5f8fa;
+        border: 1px solid #e8eef2;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        max-width: 650px;
+    }
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    .form-group label {
+        display: block;
+        font-weight: 600;
+        color: #4a5860;
+        margin-bottom: 0.5rem;
+    }
+    .form-actions {
+        margin-top: 1.5rem;
+    }
+    .ai-model-selector {
+        padding: 0.5rem;
+        background: white;
+        border-radius: 4px;
+        border: 1px solid #e8eef2;
+    }
+    .model-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .model-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.4rem 0.75rem;
+        background: white;
+        border: 2px solid #d8e2e8;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: all 0.2s ease;
+    }
+    .model-option:hover {
+        border-color: #a0aeb6;
+    }
+    .model-option.selected {
+        border-color: #2e8baf;
+        background: #e0ecf4;
+        box-shadow: 0 0 0 2px rgba(0,123,255,0.2);
+    }
+    .tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.1rem 0.3rem;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 500;
+    }
+    .tag-default {
+        background: #5a6a72;
+        color: white;
+    }
+    .tag-paid {
+        background: #f5eee0;
+        color: #6a5a3a;
+        border: 1px solid #d4a574;
+    }
+    .vault-selector code {
+        font-size: 0.85em;
+        background: #e8eef2;
+        padding: 0.15rem 0.4rem;
+        border-radius: 3px;
+    }
+    .new-vault-hint {
+        padding: 0.75rem 1rem;
+    }
+    .topic-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        gap: 0.5rem;
+    }
+    .topic-card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        text-align: left;
+        padding: 0.5rem 0.65rem;
+        background: white;
+        border: 1px solid #d8e2e8;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .topic-card:hover {
+        border-color: #2e8baf;
+        box-shadow: 0 0 0 2px rgba(0,123,255,0.15);
+    }
+    .topic-cat {
+        font-size: 0.68rem;
+        color: #2e8baf;
+        background: #e0ecf4;
+        border-radius: 4px;
+        padding: 0 0.35rem;
+        align-self: flex-start;
+    }
+    .topic-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #2c3e50;
+        line-height: 1.25;
+    }
+    .topic-desc {
+        font-size: 0.75rem;
+        color: #8a97a0;
+    }
+</style>
+
+@code {
+    private List<AiProviderInfo> aiProviders = new();
+    private string selectedModel = "";
+    private bool isInitializing = true;
+    private bool isProcessing = false;
+    private string processingStep = "";
+
+    private string generationMode = "vault";
+
+    private string selectedIndustry = "";
+    private bool manualIndustryMode = false;
+    private string manualIndustryValue = "";
+    private string aiQuery = "";
+    private bool generateCards = true;
+    private string detailLevel = "balanced";
+    private string globalDetailLevel = "";
+
+    // 灵感主题（AI 每日推荐）
+    private List<TopicSuggestion> topicSuggestions = new();
+    private bool topicsLoading = false;
+    private string topicsSource = "";
+
+    private async Task LoadTopicSuggestionsAsync(bool refresh = false)
+    {
+        if (topicsLoading) return;
+        topicsLoading = true;
+        StateHasChanged();
+        try
+        {
+            // 个性化上下文：已有知识库的行业/名称摘要（最多 8 个）
+            var context = string.Join(",", vaults.Take(8).Select(v =>
+                string.IsNullOrWhiteSpace(v.Industry) ? v.Name : $"{v.Industry}/{v.Name}"));
+            if (context.Length > 150) context = context[..150];
+            var resp = await ApiService.GetTopicSuggestionsAsync(context, refresh);
+            topicSuggestions = resp?.Suggestions ?? new List<TopicSuggestion>();
+            topicsSource = resp?.Source ?? "";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "灵感主题加载失败");
+            topicSuggestions = new List<TopicSuggestion>();
+        }
+        finally
+        {
+            topicsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyTopic(TopicSuggestion s)
+    {
+        if (string.IsNullOrWhiteSpace(s.Title)) return;
+        aiQuery = s.Title;
+        StateHasChanged();
+    }
+
+    private void RefreshTopics() => _ = LoadTopicSuggestionsAsync(refresh: true);
+    private async Task LoadGlobalDetailAsync()
+    {
+        try
+        {
+            globalDetailLevel = await ApiService.GetGlobalDetailLevelAsync();
+            // 未手动选择过时，跟随全局（默认最简洁）
+            detailLevel = globalDetailLevel;
+        }
+        catch { }
+    }
+
+    private void SetDetailLevel(string level) => detailLevel = level;
+
+    private List<VaultConfig> vaults = new();
+    private string selectedVaultId = "";
+    private string vaultRootPath = "";
+    private int aiTimeoutSeconds = 90;
+    private bool saveToVault = true;
+    private bool autoSplitAfterGenerate = true;
+    private string customSystemPrompt = "";
+    private bool showPromptEditor = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !isInitializing) return;
+
+        try
+        {
+            var loadProvidersTask = LoadAiProviders();
+            var loadVaultsTask = LoadVaults();
+            var loadPlatformTask = LoadAiTimeoutConfig();
+            var loadDetailTask = LoadGlobalDetailAsync();
+
+            await Task.WhenAll(loadProvidersTask, loadVaultsTask, loadPlatformTask, loadDetailTask);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, L["KnowledgeGen_InitLoadFailed"]);
+        }
+        finally
+        {
+            isInitializing = false;
+            StateHasChanged();
+        }
+
+        // 灵感主题不阻塞页面初始化（后台加载，AI 生成可能需要几十秒）
+        _ = LoadTopicSuggestionsAsync();
+    }
+
+    private List<string> GetIndustryOptions()
+    {
+        var predefined = new List<string> { "中医", "计算机", "通用" };
+        var fromVaults = vaults.Select(v => v.Industry)
+                               .Where(i => !string.IsNullOrWhiteSpace(i))
+                               .Distinct();
+        return predefined.Concat(fromVaults)
+                         .Distinct()
+                         .OrderBy(i => i)
+                         .ToList();
+    }
+
+    private List<VaultConfig> GetFilteredVaults() =>
+        string.IsNullOrWhiteSpace(selectedIndustry)
+            ? vaults
+            : vaults.Where(v => v.Industry == selectedIndustry).ToList();
+
+    private async Task LoadVaults()
+    {
+        try
+        {
+            var vaultsResponse = await VaultsService.GetVaultsAsync();
+            vaults = vaultsResponse.Vaults;
+
+            vaultRootPath = await VaultsService.GetVaultRootPathPreferenceAsync();
+
+            selectedVaultId = !string.IsNullOrEmpty(vaultRootPath) ? "__new__" : GetFilteredVaults().FirstOrDefault()?.Id ?? "";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, L["KnowledgeGen_LoadVaultsFailed"]);
+            vaults = new List<VaultConfig>();
+        }
+    }
+
+    private async Task LoadAiProviders()
+    {
+        try
+        {
+            aiProviders = await ApiService.GetAiProvidersAsync();
+            var mainProvider = aiProviders.FirstOrDefault(p => p.IsMain) ?? aiProviders.FirstOrDefault();
+            var mainModel = mainProvider?.Models.FirstOrDefault(m => m.IsMain)?.Name
+                ?? mainProvider?.Models.FirstOrDefault()?.Name;
+            if (!string.IsNullOrWhiteSpace(mainModel))
+            {
+                selectedModel = mainModel;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, L["KnowledgeGen_LoadProvidersFailed"]);
+            aiProviders = new List<AiProviderInfo>();
+        }
+    }
+
+    private void SelectModel(string modelName)
+    {
+        selectedModel = modelName;
+    }
+
+    private void SelectAutoIndustry()
+    {
+        OnIndustryChanged("");
+    }
+
+    private void OnIndustryChanged(string industry)
+    {
+        selectedIndustry = industry;
+        manualIndustryMode = false;
+        customSystemPrompt = "";
+        selectedVaultId = !string.IsNullOrEmpty(vaultRootPath) ? "__new__" : GetFilteredVaults().FirstOrDefault()?.Id ?? "";
+    }
+
+    private void EnableManualIndustry()
+    {
+        manualIndustryMode = !manualIndustryMode;
+        if (manualIndustryMode)
+        {
+            selectedIndustry = manualIndustryValue?.Trim() ?? "";
+        }
+    }
+
+    private void SyncManualIndustry()
+    {
+        if (manualIndustryMode)
+        {
+            selectedIndustry = manualIndustryValue?.Trim() ?? "";
+        }
+    }
+
+    private async Task LoadAiTimeoutConfig()
+    {
+        try
+        {
+            var platformInfo = await ApiService.GetPlatformAsync();
+            if (platformInfo != null && platformInfo.AiRequestTimeoutMinutes > 0)
+            {
+                aiTimeoutSeconds = 30;
+            }
+        }
+        catch { }
+    }
+
+    private async Task<string?> InferIndustryAsync(string query)
+    {
+        try
+        {
+            var options = string.Join("、", GetIndustryOptions());
+            var prompt = $"根据以下内容，判断它属于哪个行业。只返回以下预定义行业之一（不要返回其他内容）：{options}\n\n内容：{query}";
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(aiTimeoutSeconds));
+            var response = await ApiService.ChatAsync(prompt, cts.Token);
+            if (response.Success && !string.IsNullOrWhiteSpace(response.Reply))
+            {
+                var inferred = response.Reply.Trim();
+                var available = GetIndustryOptions();
+                var matched = available.FirstOrDefault(i => inferred.Contains(i));
+                if (!string.IsNullOrEmpty(matched))
+                {
+                    Logger.LogInformation(L["KnowledgeGen_InferIndustryMatched"], inferred, matched);
+                    return matched;
+                }
+                Logger.LogWarning(L["KnowledgeGen_InferIndustryNoMatch"], inferred);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.LogWarning(L["KnowledgeGen_InferIndustryTimeout"]);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, L["KnowledgeGen_InferIndustryFailed"]);
+        }
+        return "通用";
+    }
+
+    private async Task ExecuteGeneration()
+    {
+        if (string.IsNullOrWhiteSpace(aiQuery)) return;
+
+        var industry = manualIndustryMode ? manualIndustryValue?.Trim() : selectedIndustry;
+        if (string.IsNullOrWhiteSpace(industry))
+        {
+            isProcessing = true;
+            processingStep = L["KnowledgeGen_InferringIndustry"];
+            StateHasChanged();
+
+            var inferred = await InferIndustryAsync(aiQuery);
+            industry = inferred ?? "通用";
+            selectedIndustry = industry;
+
+            if (selectedVaultId == "__new__" || string.IsNullOrWhiteSpace(selectedVaultId))
+            {
+                selectedVaultId = !string.IsNullOrEmpty(vaultRootPath) ? "__new__" : GetFilteredVaults().FirstOrDefault()?.Id ?? "";
+            }
+
+            isProcessing = false;
+            StateHasChanged();
+        }
+
+        if (generationMode == "vault")
+        {
+            await GenerateFullVault(industry);
+        }
+        else
+        {
+            await GenerateSingleNote(industry);
+        }
+    }
+
+    private async Task GenerateFullVault(string industry)
+    {
+        isProcessing = true;
+        processingStep = L["KnowledgeGen_SubmittingTask"];
+        try
+        {
+            var response = await ApiService.CreateVaultGenerationTaskAsync(industry.Trim(), aiQuery.Trim(), selectedModel, generateCards: generateCards, detailLevel: detailLevel);
+            if (response.Success && !string.IsNullOrWhiteSpace(response.TaskId))
+            {
+                Navigation.NavigateTo("tasks");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", string.IsNullOrWhiteSpace(response.Message) ? L["KnowledgeGen_TaskCreateFailed"] : response.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "生成知识库失败");
+            await JS.InvokeVoidAsync("alert", $"{L["KnowledgeGen_GenerateFailed"]}{ex.Message}");
+        }
+        finally
+        {
+            isProcessing = false;
+            processingStep = "";
+        }
+    }
+
+
+    private async Task GenerateSingleNote(string industry)
+    {
+        if (selectedVaultId == "__new__")
+        {
+            if (string.IsNullOrEmpty(vaultRootPath))
+            {
+                await JS.InvokeVoidAsync("alert", (string)L["KnowledgeGen_NeedRootPath"]);
+                return;
+            }
+
+            isProcessing = true;
+            processingStep = L["KnowledgeGen_CreatingVault"];
+            try
+            {
+                var vaultName = await GenerateVaultNameAsync(aiQuery, industry);
+                if (string.IsNullOrWhiteSpace(vaultName))
+                {
+                    Logger.LogWarning(L["KnowledgeGen_UnableToGenerateName"]);
+                    await JS.InvokeVoidAsync("alert", (string)L["KnowledgeGen_VaultNameGenFailed"]);
+                    return;
+                }
+
+                var vaultPath = System.IO.Path.Combine(vaultRootPath, "local", industry, vaultName);
+                var (success, vault, error) = await VaultsService.AddVaultAsync(vaultName, vaultPath, industry);
+                if (!success || vault == null)
+                {
+                    await JS.InvokeVoidAsync("alert", $"{L["KnowledgeGen_CreateVaultFailed"]}{error}");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(vault.Id))
+                {
+                    Logger.LogError("AddVaultAsync 返回了无效的 vault.Id");
+                    await JS.InvokeVoidAsync("alert", (string)L["KnowledgeGen_InvalidVaultId"]);
+                    return;
+                }
+
+                selectedVaultId = vault.Id;
+                var vaultsResponse = await VaultsService.GetVaultsAsync(forceRefresh: true);
+                vaults = vaultsResponse.Vaults;
+
+                Logger.LogInformation(L["KnowledgeGen_VaultCreationComplete"], vaultName, vault.Id);
+
+                processingStep = L["KnowledgeGen_GeneratingNote"];
+                StateHasChanged();
+
+                var response = await ApiService.CreateAiTaskAsync(aiQuery, saveToVault, vault.Id, selectedModel, autoSplitAfterGenerate, customSystemPrompt, industry);
+
+                if (response.Success)
+                {
+                    if (generateCards && !string.IsNullOrWhiteSpace(response.TaskId))
+                    {
+                        processingStep = L["KnowledgeGen_WaitingForTask"];
+                        StateHasChanged();
+
+                        await WaitForTaskCompletion(response.TaskId);
+                        await GenerateAnkiCards(vault.Id);
+                    }
+                    Navigation.NavigateTo("tasks");
+                }
+                else
+                {
+                    await JS.InvokeVoidAsync("alert", $"{L["KnowledgeGen_CreateTaskFailed"]}{response.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                await JS.InvokeVoidAsync("alert", $"{L["KnowledgeGen_CreateFailed"]}{ex.Message}");
+            }
+            finally
+            {
+                isProcessing = false;
+                processingStep = "";
+            }
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedVaultId))
+        {
+            await JS.InvokeVoidAsync("alert", (string)L["KnowledgeGen_SelectVaultFirst"]);
+            return;
+        }
+
+        isProcessing = true;
+        processingStep = L["KnowledgeGen_GeneratingNote"];
+        try
+        {
+            var response = await ApiService.CreateAiTaskAsync(aiQuery, saveToVault, selectedVaultId, selectedModel, autoSplitAfterGenerate, customSystemPrompt, industry);
+
+            if (response.Success)
+            {
+                if (generateCards && !string.IsNullOrWhiteSpace(response.TaskId))
+                {
+                    processingStep = L["KnowledgeGen_WaitingForTask"];
+                    StateHasChanged();
+
+                    await WaitForTaskCompletion(response.TaskId);
+                    await GenerateAnkiCards(selectedVaultId);
+                }
+                Navigation.NavigateTo("tasks");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"{L["KnowledgeGen_CreateTaskFailed"]}{response.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"{L["KnowledgeGen_CreateTaskFailed"]}{ex.Message}");
+        }
+        finally
+        {
+            isProcessing = false;
+            processingStep = "";
+        }
+    }
+
+    private async Task WaitForTaskCompletion(string taskId)
+    {
+        var maxAttempts = 60;
+        var delayMs = 2000;
+
+        for (var i = 0; i < maxAttempts; i++)
+        {
+            try
+            {
+                await Task.Delay(delayMs);
+            }
+            catch { }
+        }
+    }
+
+    private async Task GenerateAnkiCards(string vaultId)
+    {
+        if (string.IsNullOrWhiteSpace(vaultId)) return;
+
+        processingStep = L["KnowledgeGen_GeneratingCards"];
+        StateHasChanged();
+
+        try
+        {
+            var result = await ApiService.GenerateAllCardsAsync(vaultId);
+            if (result != null)
+            {
+                Logger.LogInformation(L["KnowledgeGen_CardsGenerationComplete"], result.TaskId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, L["KnowledgeGen_CardsGenerationSkipped"]);
+        }
+    }
+
+    private async Task<string?> GenerateVaultNameAsync(string query, string industry)
+    {
+        try
+        {
+            var prompt = $"根据以下{industry}问题，生成一个简短的中文知识库名称（2-6个字，不要包含标点符号，只返回名称本身）：\n\n问题：{query}";
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(aiTimeoutSeconds));
+            var response = await ApiService.ChatAsync(prompt, cts.Token);
+            if (response.Success && !string.IsNullOrWhiteSpace(response.Reply))
+            {
+                var lines = response.Reply.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Where(l => !l.TrimStart().StartsWith(">"))
+                    .ToList();
+
+                var rawName = string.Join("", lines).Trim();
+
+                var name = rawName
+                    .Replace("\"", "").Replace("'", "").Replace("「", "").Replace("」", "")
+                    .Replace("《", "").Replace("》", "")
+                    .Trim();
+
+                if (name.Length > 20)
+                    name = name.Substring(0, 20);
+
+                return name;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.LogWarning("AI 生成知识库名称超时，使用降级方案");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "AI 生成知识库名称失败，使用降级方案");
+        }
+
+        return FallbackVaultName(query);
+    }
+
+    private string? FallbackVaultName(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return null;
+        var cleaned = query.Trim()
+            .Replace("？", "").Replace("?", "").Replace("。", "").Replace("，", "").Replace(",", "")
+            .Replace("的", "").Replace("如何", "").Replace("怎么", "").Replace("什么", "");
+        if (string.IsNullOrWhiteSpace(cleaned)) cleaned = query.Trim();
+        return cleaned.Length > 6 ? cleaned.Substring(0, 6) : cleaned;
+    }
+}

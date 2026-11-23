@@ -1,0 +1,15 @@
+# bh-openvino: OpenVINO Model Server（官方镜像别名）
+# 2026-xx 起百花本地 OpenVINO 推理由 Intel OVMS（OpenVINO Model Server）承载，
+# 不再构建自研 Python 推理服务（openvino_llm_server.py / vision_server.py 已弃用）。
+#
+# 部署形态（见 k8s/22a-openvino.yaml）：
+#   - 模型仓库 = baihua-models-pvc（/models，预下载的 OpenVINO IR 模型目录）
+#   - config.json 经 ConfigMap 注入，注册 3 个 servable（mediapipe_config_list）：
+#       qwen2.5（对话）、qwen2.5-vl-7b（视觉）、bge-small-zh（嵌入）
+#   - 每个模型目录的 graph.pbtxt 由 initContainer 的 `ovms --configure` 幂等生成
+#   - 对外 OpenAI 兼容 REST：/v3/chat/completions、/v3/embeddings、/v1/models
+#
+# 官方镜像 tag：latest-gpu = CPU+GPU+NPU（Intel GPU 经 /dev/dri、WSL2 /dev/dxg 直通）；
+# 稳定版可换 2026.2-gpu。本镜像仅作本地别名（bh build openvino → bh-openvino:latest），
+# 也可在清单里直接引用官方 tag。
+FROM openvino/model_server:latest-gpu

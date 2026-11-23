@@ -1,0 +1,122 @@
+@using Markdig
+@using Microsoft.JSInterop
+@using Microsoft.Extensions.Localization
+
+@inject IJSRuntime JSRuntime
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+@* 单条聊天消息（气泡）。用于把"最后一条流式消息"从父组件的整段列表渲染中隔离出来：
+    父组件每 delta 触发 StateHasChanged 时，本组件通过 ShouldRender 只在自己参数真正变化时
+    重新渲染，历史消息因此不再被反复 Markdig 转换 / DOM diff。 *@
+
+<div class="message @(IsUser ? "user" : RoleCss)" @ref="_root">
+    <div class="message-avatar">@Avatar</div>
+    <div class="message-content">
+        @if (ToolCalls is { Count: > 0 })
+        {
+            <div class="tool-calls">
+                @foreach (var tool in ToolCalls)
+                {
+                    <span class="tool-call-badge">@tool</span>
+                }
+            </div>
+        }
+        <div class="message-text">
+            @if (IsUser)
+            {
+                @Content
+            }
+            else
+            {
+                @((MarkupString)RenderCachedMarkdown())
+            }
+        </div>
+        @if (ShowActions)
+        {
+            <div class="message-actions">
+                @if (!IsUser)
+                {
+                    <button class="msg-action-btn" @onclick="Regenerate" title="@L["Messages_Regenerate"]">@L["Messages_Regenerate"]</button>
+                }
+                <span class="message-time">@Time.ToString("HH:mm")</span>
+            </div>
+        }
+        else
+        {
+            <div class="message-time">@Time.ToString("HH:mm")</div>
+        }
+    </div>
+</div>
+
+@code {
+    // —— 参数 ——
+    /// <summary>流式文本（每次 delta 由父组件更新后传入）。</summary>
+    [Parameter] public string Content { get; set; } = "";
+    [Parameter] public bool IsUser { get; set; }
+    /// <summary>完成状态：false→true 的瞬间触发一次代码高亮（仅 HighlightOnComplete 时）。</summary>
+    [Parameter] public bool IsCompleted { get; set; }
+    [Parameter] public DateTime Time { get; set; }
+    [Parameter] public string Avatar { get; set; } = "🤖";
+    /// <summary>非用户消息的 CSS 角色类（如 "ai" / "master"）。</summary>
+    [Parameter] public string RoleCss { get; set; } = "ai";
+    /// <summary>工具调用徽章文案列表（可空）。</summary>
+    [Parameter] public IReadOnlyList<string>? ToolCalls { get; set; }
+    /// <summary>是否渲染操作行（重新生成按钮 + 时间）。</summary>
+    [Parameter] public bool ShowActions { get; set; }
+    [Parameter] public EventCallback Regenerate { get; set; }
+    /// <summary>完成瞬间对组件内代码块执行 hljs.highlightElement（替代全量 highlightAll）。</summary>
+    [Parameter] public bool HighlightOnComplete { get; set; }
+    /// <summary>是否为本组件内代码块添加复制按钮（替代父组件全页扫描）。</summary>
+    [Parameter] public bool AddCopyButtons { get; set; }
+
+    // —— 渲染缓存 ——
+    // Markdig 管线不可变且线程安全，可跨 circuit 复用；内容未变时不再重复生成 HTML。
+    private static readonly MarkdownPipeline MarkdownPipeline =
+        new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml().Build();
+    private string _lastContent = "";
+    private string _lastHtml = "";
+    private bool _wasCompleted;
+    private DateTime _lastTime;
+    private bool _lastShowActions;
+    private string _lastToolSig = "";
+    private ElementReference _root;
+
+    protected override bool ShouldRender()
+    {
+        // 字符串相等比较在引用相同时走 O(1) 快速路径：历史消息的 Content 引用与上次一致 → 直接跳过渲染。
+        if (!string.Equals(Content, _lastContent, StringComparison.Ordinal)) return true;
+        if (IsCompleted != _wasCompleted) return true;
+        if (ShowActions != _lastShowActions) return true;
+        if (Time != _lastTime) return true;
+        // ToolCalls 由父组件每次重建 List，需按内容比较（通常为空，代价可忽略）。
+        var sig = ToolCalls is null ? "" : string.Join('\u0001', ToolCalls);
+        if (!string.Equals(sig, _lastToolSig, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
+    private string RenderCachedMarkdown()
+    {
+        if (_lastContent != Content)
+        {
+            _lastContent = Content;
+            _lastHtml = string.IsNullOrWhiteSpace(Content) ? "" : Markdown.ToHtml(Content, MarkdownPipeline);
+        }
+        return _lastHtml;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (AddCopyButtons)
+        {
+            try { await JSRuntime.InvokeVoidAsync("addCopyButtonsToCodeBlocksIn", _root); } catch { }
+        }
+        if (!firstRender && HighlightOnComplete && IsCompleted && !_wasCompleted)
+        {
+            try { await JSRuntime.InvokeVoidAsync("highlightCodeBlocksIn", _root); } catch { }
+        }
+        _wasCompleted = IsCompleted;
+        _lastTime = Time;
+        _lastShowActions = ShowActions;
+        _lastToolSig = ToolCalls is null ? "" : string.Join('\u0001', ToolCalls);
+    }
+}

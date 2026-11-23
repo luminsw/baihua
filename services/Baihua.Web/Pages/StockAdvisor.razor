@@ -1,0 +1,349 @@
+@page "/stock-advisor"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Baihua.Contracts.Stock
+@using System.Text.Json
+@inject Baihua.Web.Services.IApiService ApiService
+@inject IJSRuntime JSRuntime
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["Stock_PageTitle"]</PageTitle>
+
+<h1>@L["Stock_Title"]</h1>
+<p class="text-muted">@L["Stock_Subtitle"]</p>
+
+<!-- 分析条件 -->
+<div class="card mb-4">
+    <div class="card-header">@L["Stock_AnalysisHeader"]</div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small text-muted">@L["Stock_StrategyLabel"]</label>
+                <select class="form-select" @bind="_strategy">
+                    <option value="">@L["Stock_Strategy_All"]</option>
+                    <option value="value">@L["Stock_Strategy_Value"]</option>
+                    <option value="growth">@L["Stock_Strategy_Growth"]</option>
+                    <option value="technical">@L["Stock_Strategy_Technical"]</option>
+                    <option value="dividend">@L["Stock_Strategy_Dividend"]</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted">@L["Stock_IndustryLabel"]</label>
+                <select class="form-select" @bind="_industry">
+                    <option value="">@L["Stock_IndustryAll"]</option>
+                    @foreach (var ind in _industries)
+                    {
+                        <option value="@ind">@ind</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted">@L["Stock_HorizonLabel"]</label>
+                <select class="form-select" @bind="_horizon">
+                    <option value="">@L["Stock_Horizon_All"]</option>
+                    <option value="short">@L["Stock_Horizon_Short"]</option>
+                    <option value="long">@L["Stock_Horizon_Long"]</option>
+                </select>
+            </div>
+        </div>
+        <div class="row g-3 mt-1">
+            <div class="col-md-8">
+                <label class="form-label small text-muted">@L["Stock_PromptLabel"]</label>
+                <div class="d-flex gap-2">
+                    <input class="form-control" placeholder="@L["Stock_PromptPlaceholder"]"
+                           @bind="_prompt" @bind:event="oninput" />
+                    <button class="btn btn-outline-secondary text-nowrap" title="@L["Stock_ResetPromptTitle"]" @onclick="ResetPrompt">@L["Stock_ResetPrompt"]</button>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted">@L["Stock_HistoryLabel"]</label>
+                <select class="form-select" @bind="_selectedHistory" @bind:after="OnHistorySelected">
+                    <option value="">@L["Stock_HistoryPlaceholder"]</option>
+                    @foreach (var p in _promptHistory)
+                    {
+                        <option value="@p">@(p.Length > 28 ? p[..28] + "…" : p)</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="mt-3 d-flex align-items-center">
+            <div class="btn-group me-3" role="group">
+                <button class="btn btn-sm @(_tab == "buy" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SwitchTabAsync("buy")'>@L["Stock_TabBuy"]</button>
+                <button class="btn btn-sm @(_tab == "sell" ? "btn-danger" : "btn-outline-danger")" @onclick='() => SwitchTabAsync("sell")'>@L["Stock_TabSell"]</button>
+            </div>
+            <button class="btn btn-primary" disabled="@_loading" @onclick="LoadRecommendationsAsync">
+                @(_loading ? L["Stock_Analyzing"] : L["Stock_StartAnalysis"])
+            </button>
+            <button class="btn btn-outline-secondary ms-2" disabled="@_loading" @onclick="() => RefreshRecommendationsAsync()">
+                @L["Stock_ForceRefreshSkipCache"]
+            </button>
+            <span class="small text-muted ms-2">
+                @L["Stock_CacheHint"]
+            </span>
+        </div>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="loading-spinner">@L["Stock_Loading"]</div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-warning" role="alert">
+        <b>@L["Stock_AnalysisFailed"]</b>@_error
+        <div class="mt-2">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="LoadRecommendationsAsync">@L["Stock_Retry"]</button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>
+                @(_tab == "sell" ? L["Stock_TopSell"] : L["Stock_TopBuy"])
+                <span class="badge bg-secondary ms-2">@ConditionLabel()</span>
+            </span>
+            <span class="text-muted small">@string.Format(L["Stock_ModelLabel"], _result?.Model, _result?.GeneratedAt.ToString("HH:mm:ss"))</span>
+        </div>
+        <div class="card-body">
+            @if (_result == null || _result.Recommendations.Count == 0)
+            {
+                <div class="text-muted">@L["Stock_NoResult"]</div>
+            }
+            else
+            {
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th style="width:52px">#</th>
+                            <th>@L["Stock_ColCode"]</th>
+                            <th>@L["Stock_ColName"]</th>
+                            <th style="width:220px">@L["Stock_ColScore"]</th>
+                            <th>@L["Stock_ColAction"]</th>
+                            <th>@L["Stock_ColReason"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (var i = 0; i < _result.Recommendations.Count; i++)
+                        {
+                            var r = _result.Recommendations[i];
+                            var color = r.Score >= 80 ? "bg-success" : r.Score >= 60 ? "bg-primary" : "bg-warning";
+                            <tr>
+                                <td class="text-muted">@(i + 1)</td>
+                                <td><code>@r.Code</code></td>
+                                <td><b>@r.Name</b></td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="progress flex-grow-1" style="height:10px">
+                                            <div class="progress-bar @(_tab == "sell" ? "bg-danger" : color)" style="width:@(r.Score)%"></div>
+                                        </div>
+                                        <span class="small fw-bold">@r.Score</span>
+                                    </div>
+                                </td>
+                                <td><span class="badge @(_tab == "sell" ? "bg-danger" : "bg-primary")">@r.Action</span></td>
+                                <td class="small">@r.Reason</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">@L["Stock_EvaluationHeader"]</div>
+        <div class="card-body">
+            <div class="d-flex gap-2 align-items-center">
+                <input class="form-control" style="max-width:200px" placeholder="@L["Stock_CodePlaceholder"]"
+                       @bind="_holdingCode" @bind:event="oninput" />
+                <button class="btn btn-primary" disabled="@_evaluating" @onclick="() => EvaluateAsync()">
+                    @(_evaluating ? L["Stock_Analyzing"] : L["Stock_Analyze"])
+                </button>
+                <button class="btn btn-outline-secondary" disabled="@_evaluating" @onclick="() => EvaluateAsync(refresh: true)">
+                    @L["Stock_ForceRefresh"]
+                </button>
+            </div>
+
+            @if (_evaluationError != null)
+            {
+                <div class="alert alert-warning mt-3 mb-0">⚠️ @_evaluationError</div>
+            }
+            @if (_evaluation != null)
+            {
+                var sell = _evaluation.Action == "sell";
+                <div class="alert @(sell ? "alert-danger" : "alert-success") mt-3 mb-0">
+                    <div class="d-flex align-items-center gap-3">
+                        <span style="font-size:1.6rem">@(sell ? "🔴" : "🟢")</span>
+                        <div>
+                            <b>@string.Format(L["Stock_EvalAdvice"], _evaluation.Name, _evaluation.Code, sell ? L["Stock_Sell"] : L["Stock_Hold"])</b>
+                            <span class="badge @(sell ? "bg-danger" : "bg-success") ms-2">@string.Format(L["Stock_Confidence"], _evaluation.Confidence)</span>
+                            <div class="small mt-1">@_evaluation.Reason</div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (_result?.Raw is { Length: > 0 })
+{
+    <details class="small text-muted">
+        <summary>@L["Stock_RawOutput"]</summary>
+        <pre class="mt-2 p-2 bg-light border rounded" style="white-space:pre-wrap;max-height:300px;overflow:auto">@_result.Raw</pre>
+    </details>
+}
+
+<div class="text-muted small mt-4 border-top pt-2">
+    @L["Stock_DisclaimerPart1"]<b>@L["Stock_DisclaimerBold"]</b>@L["Stock_DisclaimerPart2"]
+</div>
+
+@code {
+    private const string PromptHistoryKey = "stock.promptHistory";
+    private const int PromptHistoryMax = 10;
+
+    private StockRecommendationResponse? _result;
+    private bool _loading = true;
+    private string? _error;
+
+    private string _strategy = "";
+    private string _industry = "";
+    private string _horizon = "";
+    private string _tab = "buy";
+    private string _prompt = "";
+    private string _selectedHistory = "";
+    private List<string> _promptHistory = new();
+    private List<string> _industries = new();
+
+    private string _holdingCode = "";
+    private bool _evaluating;
+    private StockEvaluationResponse? _evaluation;
+    private string? _evaluationError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 行业下拉选项 + 最近提示词历史 + 默认条件自动分析
+        _prompt = L["Stock_DefaultPrompt"];
+        try { _industries = await ApiService.GetStockIndustriesAsync(); } catch { }
+        await LoadPromptHistoryAsync();
+        await LoadRecommendationsAsync();
+    }
+
+    private async Task LoadPromptHistoryAsync()
+    {
+        try
+        {
+            var json = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", PromptHistoryKey);
+            if (!string.IsNullOrEmpty(json))
+                _promptHistory = JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+        }
+        catch { /* localStorage 不可用时忽略 */ }
+    }
+
+    private void OnHistorySelected()
+    {
+        var selected = _selectedHistory;
+        if (!string.IsNullOrEmpty(selected))
+            _prompt = selected;
+        _selectedHistory = ""; // 选完即复位，避免下拉停在旧值
+    }
+
+    private void ResetPrompt() => _prompt = L["Stock_DefaultPrompt"];
+
+    private void SavePromptToHistory(string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt)) return;
+        var p = prompt.Trim();
+        _promptHistory.RemoveAll(x => x == p);
+        _promptHistory.Insert(0, p);
+        if (_promptHistory.Count > PromptHistoryMax)
+            _promptHistory.RemoveRange(PromptHistoryMax, _promptHistory.Count - PromptHistoryMax);
+        _ = JSRuntime.InvokeVoidAsync("localStorage.setItem", PromptHistoryKey,
+            JsonSerializer.Serialize(_promptHistory));
+    }
+
+    private string ConditionLabel()
+    {
+        var parts = new List<string>();
+        parts.Add(_strategy switch
+        {
+            "value" => L["Stock_CondStrategy_Value"],
+            "growth" => L["Stock_CondStrategy_Growth"],
+            "technical" => L["Stock_CondStrategy_Technical"],
+            "dividend" => L["Stock_CondStrategy_Dividend"],
+            _ => L["Stock_CondStrategy_All"]
+        });
+        parts.Add(string.IsNullOrEmpty(_industry) ? L["Stock_IndustryAll"] : _industry);
+        parts.Add(_horizon switch
+        {
+            "short" => L["Stock_CondHorizon_Short"],
+            "long" => L["Stock_CondHorizon_Long"],
+            _ => L["Stock_CondHorizon_All"]
+        });
+        return string.Join(" ｜ ", parts);
+    }
+
+    private async Task SwitchTabAsync(string tab)
+    {
+        if (_tab == tab) return;
+        _tab = tab;
+        await LoadRecommendationsCoreAsync(refresh: false);
+    }
+
+    private async Task LoadRecommendationsAsync()
+    {
+        await LoadRecommendationsCoreAsync(refresh: false);
+    }
+
+    private async Task RefreshRecommendationsAsync()
+    {
+        await LoadRecommendationsCoreAsync(refresh: true);
+    }
+
+    private async Task LoadRecommendationsCoreAsync(bool refresh)
+    {
+        _loading = true;
+        _error = null;
+        _result = null;
+        StateHasChanged();
+        try
+        {
+            SavePromptToHistory(_prompt);
+            _result = await ApiService.GetStockRecommendationsAsync(_strategy, _industry, _horizon, _prompt, _tab, refresh);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task EvaluateAsync(bool refresh = false)
+    {
+        var code = _holdingCode.Trim();
+        if (code.Length == 0) return;
+
+        _evaluating = true;
+        _evaluation = null;
+        _evaluationError = null;
+        StateHasChanged();
+        try
+        {
+            _evaluation = await ApiService.EvaluateStockAsync(code, refresh);
+        }
+        catch (Exception ex)
+        {
+            _evaluationError = ex.Message;
+        }
+        finally
+        {
+            _evaluating = false;
+            StateHasChanged();
+        }
+    }
+}

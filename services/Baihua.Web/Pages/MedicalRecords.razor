@@ -1,0 +1,1063 @@
+@page "/medical-records"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject IApiService ApiService
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@using Baihua.Contracts.Medical
+@using System.Text.Json
+
+<PageTitle>@L["Medical_PageTitle"]</PageTitle>
+
+<div class="medical-page">
+    @if (_view == "list")
+    {
+        @* ==================== 成员列表 ==================== *@
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h1 class="mb-0">🩺 @L["Medical_PageTitle"]</h1>
+            <button class="btn btn-primary" @onclick="OpenMemberEditorAsync">＋ @L["Medical_AddMember"]</button>
+        </div>
+        <p class="text-muted small mb-3">@L["Medical_Subtitle"]</p>
+
+        @if (_loadError != null)
+        {
+            <div class="alert alert-warning d-flex align-items-center gap-2">
+                <span>@L["Medical_LoadFailed"]</span>
+                <button class="btn btn-sm btn-outline-warning" @onclick="LoadAsync">@L["Medical_Retry"]</button>
+            </div>
+        }
+        else if (_isLoading)
+        {
+            <div class="medical-empty">@L["Medical_Loading"]</div>
+        }
+        else if (_members.Count == 0)
+        {
+            <div class="medical-empty">
+                <div class="mb-2" style="font-size:2.5rem;">🩺</div>
+                <div>@L["Medical_NoMembers"]</div>
+            </div>
+        }
+        else
+        {
+            <div class="row g-3">
+                @foreach (var member in _members)
+                {
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <div class="card medical-member-card h-100">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="medical-avatar">@AvatarOf(member)</div>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-semibold medical-member-name">@member.Name</div>
+                                        <div class="small text-muted">
+                                            @(member.Gender + (string.IsNullOrWhiteSpace(member.Gender) ? "" : " · "))@AgeText(member)
+                                            @if (!string.IsNullOrWhiteSpace(member.BloodType))
+                                            {
+                                                <text> · @L["Medical_BloodType"] @member.BloodType</text>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @if (member.Allergies.Count > 0)
+                                {
+                                    <div class="medical-tags mt-2">
+                                        <span class="medical-tag medical-tag-warn">@L["Medical_Allergies"]</span>
+                                        @foreach (var allergy in member.Allergies)
+                                        {
+                                            <span class="medical-tag medical-tag-warn">@allergy</span>
+                                        }
+                                    </div>
+                                }
+                                @if (member.ChronicDiseases.Count > 0)
+                                {
+                                    <div class="medical-tags mt-1">
+                                        <span class="medical-tag medical-tag-info">@L["Medical_ChronicDiseases"]</span>
+                                        @foreach (var disease in member.ChronicDiseases)
+                                        {
+                                            <span class="medical-tag medical-tag-info">@disease</span>
+                                        }
+                                    </div>
+                                }
+
+                                <div class="mt-3 d-flex gap-2">
+                                    <button class="btn btn-sm btn-outline-primary flex-grow-1" @onclick="() => OpenMemberAsync(member.Id)">
+                                        📖 @L["Medical_ViewDetail"]
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+    else if (_view == "detail")
+    {
+        @* ==================== 成员详情 ==================== *@
+        <div class="mb-3">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => GoToList()">← @L["Medical_Back"]</button>
+        </div>
+
+        @if (_detail == null)
+        {
+            <div class="medical-empty">@L["Medical_Loading"]</div>
+        }
+        else
+        {
+            var member = _detail.Member;
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                        <div class="medical-avatar medical-avatar-lg">@AvatarOf(member)</div>
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <h3 class="mb-0">@member.Name</h3>
+                                <span class="badge bg-secondary">@AgeText(member)</span>
+                                @if (!string.IsNullOrWhiteSpace(member.BloodType))
+                                {
+                                    <span class="badge bg-info text-dark">@L["Medical_BloodType"] @member.BloodType</span>
+                                }
+                            </div>
+                            <div class="small text-muted mt-1">
+                                @if (member.BirthDate.HasValue)
+                                {
+                                    <span>@L["Medical_BirthDate"]：@member.BirthDate.Value.ToString("yyyy-MM-dd")</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(member.Gender))
+                                {
+                                    <span class="ms-2">@L["Medical_Gender"]：@member.Gender</span>
+                                }
+                            </div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="OpenMemberEditorAsync">✏️ @L["Medical_EditMember"]</button>
+                        <button class="btn btn-sm @(_pendingDeleteMember ? "btn-danger" : "btn-outline-danger")" @onclick="OnDeleteMemberClickAsync">
+                            @(_pendingDeleteMember ? L["Medical_ConfirmDelete"] : L["Medical_Delete"])
+                        </button>
+                    </div>
+
+                    @if (member.Allergies.Count > 0 || member.ChronicDiseases.Count > 0 || !string.IsNullOrWhiteSpace(member.Notes))
+                    {
+                        <hr class="my-2" />
+                        @if (member.Allergies.Count > 0)
+                        {
+                            <div class="medical-tags mb-1">
+                                <span class="medical-tag medical-tag-warn">@L["Medical_Allergies"]</span>
+                                @foreach (var allergy in member.Allergies)
+                                {
+                                    <span class="medical-tag medical-tag-warn">@allergy</span>
+                                }
+                            </div>
+                        }
+                        @if (member.ChronicDiseases.Count > 0)
+                        {
+                            <div class="medical-tags mb-1">
+                                <span class="medical-tag medical-tag-info">@L["Medical_ChronicDiseases"]</span>
+                                @foreach (var disease in member.ChronicDiseases)
+                                {
+                                    <span class="medical-tag medical-tag-info">@disease</span>
+                                }
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(member.Notes))
+                        {
+                            <div class="small text-muted mt-1" style="white-space:pre-wrap;">📝 @member.Notes</div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* 病历记录 *@
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <h5 class="mb-0">📋 @L["Medical_Records"]（@_detail.Records.Count）</h5>
+                <button class="btn btn-sm btn-primary" @onclick="() => OpenRecordEditorAsync(null)">＋ @L["Medical_AddRecord"]</button>
+            </div>
+
+            @if (_detail.Records.Count == 0)
+            {
+                <div class="medical-empty">@L["Medical_NoRecords"]</div>
+            }
+            else
+            {
+                @foreach (var record in _detail.Records)
+                {
+                    <div class="card medical-record-card mb-2">
+                        <div class="card-body py-2">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <span class="medical-record-date">📅 @record.OccurredAt.ToString("yyyy-MM-dd")</span>
+                                <span class="fw-semibold flex-grow-1">@record.Title</span>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenRecordEditorAsync(record)">✏️ @L["Medical_Edit"]</button>
+                                <button class="btn btn-sm @(_pendingDeleteRecordId == record.Id ? "btn-danger" : "btn-outline-danger")"
+                                        @onclick="() => OnDeleteRecordClickAsync(record.Id)">
+                                    @(_pendingDeleteRecordId == record.Id ? L["Medical_ConfirmDelete"] : L["Medical_Delete"])
+                                </button>
+                            </div>
+
+                            @if (record.Symptoms.Count > 0)
+                            {
+                                <div class="medical-tags mt-1">
+                                    <span class="medical-tag medical-tag-warn">@L["Medical_Symptoms"]</span>
+                                    @foreach (var symptom in record.Symptoms)
+                                    {
+                                        <span class="medical-tag medical-tag-warn">@symptom</span>
+                                    }
+                                </div>
+                            }
+                            @if (record.Diagnoses.Count > 0)
+                            {
+                                <div class="medical-tags mt-1">
+                                    <span class="medical-tag medical-tag-info">@L["Medical_DiagnosesTitle"]</span>
+                                    @foreach (var diagnosis in record.Diagnoses)
+                                    {
+                                        <span class="medical-tag medical-tag-info">@diagnosis</span>
+                                    }
+                                </div>
+                            }
+                            @if (record.Medications.Count > 0)
+                            {
+                                <div class="medical-medications mt-1">
+                                    <span class="medical-tag medical-tag-success">💊 @L["Medical_Medications"]</span>
+                                    @foreach (var med in record.Medications)
+                                    {
+                                        <div class="medical-medication-item">
+                                            <span class="fw-semibold">@med.Name</span>
+                                            @if (!string.IsNullOrWhiteSpace(med.Dosage)) { <text>｜@med.Dosage</text> }
+                                            @if (!string.IsNullOrWhiteSpace(med.Frequency)) { <text>｜@med.Frequency</text> }
+                                            @if (!string.IsNullOrWhiteSpace(med.Note)) { <text>｜<span class="text-muted">@med.Note</span></text> }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(record.Notes))
+                            {
+                                <div class="small text-muted mt-1" style="white-space:pre-wrap;">📝 @record.Notes</div>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+
+            @* AI 诊断 *@
+            <div class="d-flex align-items-center justify-content-between mb-2 mt-4">
+                <h5 class="mb-0">🤖 @L["Medical_Diagnoses"]（@_detail.Diagnoses.Count）</h5>
+            </div>
+
+            <div class="alert alert-warning medical-disclaimer mb-2">
+                @L["Medical_Disclaimer"]
+            </div>
+
+            @* 输入区 *@
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="mb-2 small text-muted">@L["Medical_DiagnoseHint"]</div>
+                    <textarea class="form-control medical-textarea mb-2" rows="4" maxlength="2000"
+                              placeholder="@L["Medical_DiagnoseHint"]"
+                              @bind="_diagnoseInput" @bind:event="oninput"></textarea>
+                    <input class="form-control mb-2" placeholder="@L["Medical_ExtraContextHint"]" maxlength="1000"
+                           @bind="_extraContext" @bind:event="oninput" />
+                    <div class="d-flex align-items-center gap-2">
+                        <button class="btn btn-success" disabled="@(_diagnosing || string.IsNullOrWhiteSpace(_diagnoseInput))"
+                                @onclick="RunDiagnosisAsync">
+                            @L["Medical_DiagnoseButton"]
+                        </button>
+                        @if (_diagnosing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            <span class="small text-muted">@L["Medical_Diagnosing"]</span>
+                        }
+                    </div>
+                    @if (_aiError != null)
+                    {
+                        <div class="alert alert-warning py-1 px-2 small mb-0 mt-2">⚠️ @_aiError</div>
+                    }
+                </div>
+            </div>
+
+            @if (_latestDiagnosis != null)
+            {
+                var structured = TryParseStructured(_latestDiagnosis.StructuredResultJson);
+                <div class="card medical-ai-result mb-3">
+                    <div class="card-header d-flex align-items-center gap-2 py-2">
+                        <span class="fw-semibold flex-grow-1">🤖 @L["Medical_DiagnoseTitle"]</span>
+                        @if (_latestDiagnosis.ModelUsed == "biancang")
+                        {
+                            <span class="badge bg-success">扁仓</span>
+                        }
+                        <span class="small text-muted">@_latestDiagnosis.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="small text-muted mb-2">📝 @_latestDiagnosis.SymptomText</div>
+                        @if (structured != null)
+                        {
+                            <StructuredDiagnosisCard Result="@structured" />
+                        }
+                        else
+                        {
+                            <Baihua.Web.Components.MarkdownView Content="@_latestDiagnosis.AiResponse" />
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (_detail.Diagnoses.Count > 0)
+            {
+                <h6 class="text-muted mt-3 mb-2">🗂️ @L["Medical_History"]</h6>
+                @foreach (var diagnosis in _detail.Diagnoses)
+                {
+                    var structured = TryParseStructured(diagnosis.StructuredResultJson);
+                    <div class="card medical-ai-history mb-2">
+                        <div class="card-header py-2 d-flex align-items-center gap-2">
+                            <span class="small flex-grow-1 text-truncate">🤖 @diagnosis.SymptomText</span>
+                            @if (diagnosis.ModelUsed == "biancang")
+                            {
+                                <span class="badge bg-success">扁仓</span>
+                            }
+                            <span class="small text-muted">@diagnosis.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                            <button class="btn btn-sm @(_pendingDeleteDiagnosisId == diagnosis.Id ? "btn-danger" : "btn-outline-danger")"
+                                    @onclick="() => OnDeleteDiagnosisClickAsync(diagnosis.Id)">
+                                @(_pendingDeleteDiagnosisId == diagnosis.Id ? L["Medical_ConfirmDelete"] : L["Medical_Delete"])
+                            </button>
+                        </div>
+                        <div class="card-body py-2">
+                            @if (structured != null)
+                            {
+                                <StructuredDiagnosisCard Result="@structured" />
+                            }
+                            else
+                            {
+                                <Baihua.Web.Components.MarkdownView Content="@diagnosis.AiResponse" />
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        }
+    }
+</div>
+
+@* ==================== 成员编辑弹窗 ==================== *@
+@if (_memberEditorOpen)
+{
+    <div class="modal fade show d-block medical-modal" style="background:rgba(0,0,0,0.5);" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_memberFormId > 0 ? "✏️ " + L["Medical_EditMemberTitle"] : "＋ " + L["Medical_AddMemberTitle"])</h5>
+                    <button type="button" class="btn-close" @onclick="CloseMemberEditor" aria-label="@L["Common_Cancel"]"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_memberError != null)
+                    {
+                        <div class="alert alert-warning py-1 px-2 small">⚠️ @_memberError</div>
+                    }
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small mb-1">@L["Medical_MemberName"] *</label>
+                            <input class="form-control" maxlength="50" @bind="_memberForm.Name" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small mb-1">@L["Medical_Gender"]</label>
+                            <select class="form-select" @bind="_memberForm.Gender">
+                                <option value=""></option>
+                                <option value="男">男</option>
+                                <option value="女">女</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small mb-1">@L["Medical_BloodType"]</label>
+                            <select class="form-select" @bind="_memberForm.BloodType">
+                                <option value=""></option>
+                                @foreach (var bt in new[] { "A", "B", "AB", "O" })
+                                {
+                                    <option value="@bt">@bt</option>
+                                }
+                                <option value="未知">@L["Medical_Unknown"]</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small mb-1">@L["Medical_BirthDate"]</label>
+                            <input type="date" class="form-control" @bind="_memberForm.BirthDate" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small mb-1">@L["Medical_Allergies"]</label>
+                            <input class="form-control" placeholder="@L["Medical_AllergiesHint"]" @bind="_memberForm.AllergiesText" @bind:event="oninput" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small mb-1">@L["Medical_ChronicDiseases"]</label>
+                            <input class="form-control" placeholder="@L["Medical_ChronicHint"]" @bind="_memberForm.ChronicText" @bind:event="oninput" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small mb-1">@L["Medical_Notes"]</label>
+                            <textarea class="form-control" rows="2" maxlength="2000" @bind="_memberForm.Notes" @bind:event="oninput"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseMemberEditor" disabled="@_savingMember">@L["Common_Cancel"]</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveMemberAsync" disabled="@_savingMember">
+                        @(_savingMember ? L["Medical_Saving"] : L["Medical_Save"])
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ==================== 病历记录编辑弹窗 ==================== *@
+@if (_recordEditorOpen)
+{
+    <div class="modal fade show d-block medical-modal" style="background:rgba(0,0,0,0.5);" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_recordFormId > 0 ? "✏️ " + L["Medical_EditRecordTitle"] : "＋ " + L["Medical_AddRecordTitle"])</h5>
+                    <button type="button" class="btn-close" @onclick="CloseRecordEditor" aria-label="@L["Common_Cancel"]"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_recordError != null)
+                    {
+                        <div class="alert alert-warning py-1 px-2 small">⚠️ @_recordError</div>
+                    }
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">@L["Medical_OccurredAt"]</label>
+                            <input type="date" class="form-control" @bind="_recordForm.OccurredAt" />
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label small mb-1">@L["Medical_RecordTitle"] *</label>
+                            <input class="form-control" maxlength="200" placeholder="@L["Medical_RecordTitleHint"]"
+                                   @bind="_recordForm.Title" @bind:event="oninput" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small mb-1">@L["Medical_Symptoms"]</label>
+                            <textarea class="form-control" rows="3" maxlength="2000" placeholder="@L["Medical_SymptomsHint"]"
+                                      @bind="_recordForm.SymptomsText" @bind:event="oninput"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small mb-1">@L["Medical_DiagnosesTitle"]</label>
+                            <textarea class="form-control" rows="2" maxlength="1000" placeholder="@L["Medical_DiagnosesHint"]"
+                                      @bind="_recordForm.DiagnosesText" @bind:event="oninput"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small mb-1">💊 @L["Medical_Medications"]</label>
+                            @foreach (var med in _recordForm.Medications)
+                            {
+                                <div class="medical-med-row d-flex gap-1 mb-1 align-items-center">
+                                    <input class="form-control form-control-sm" placeholder="@L["Medical_MedicationName"]" maxlength="100"
+                                           @bind="med.Name" @bind:event="oninput" />
+                                    <input class="form-control form-control-sm" placeholder="@L["Medical_Dosage"]" maxlength="100"
+                                           @bind="med.Dosage" @bind:event="oninput" style="max-width:9rem;" />
+                                    <input class="form-control form-control-sm" placeholder="@L["Medical_Frequency"]" maxlength="100"
+                                           @bind="med.Frequency" @bind:event="oninput" style="max-width:9rem;" />
+                                    <input class="form-control form-control-sm" placeholder="@L["Medical_MedicationNote"]" maxlength="200"
+                                           @bind="med.Note" @bind:event="oninput" />
+                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveMedication(med)">✕</button>
+                                </div>
+                            }
+                            <button type="button" class="btn btn-sm btn-outline-success mt-1" @onclick="AddMedication">＋ @L["Medical_AddMedication"]</button>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small mb-1">@L["Medical_Notes"]</label>
+                            <textarea class="form-control" rows="2" maxlength="2000" placeholder="@L["Medical_RecordNotesHint"]"
+                                      @bind="_recordForm.Notes" @bind:event="oninput"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseRecordEditor" disabled="@_savingRecord">@L["Common_Cancel"]</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveRecordAsync" disabled="@_savingRecord">
+                        @(_savingRecord ? L["Medical_Saving"] : L["Medical_Save"])
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _view = "list";
+    private bool _isLoading;
+    private string? _loadError;
+    private readonly List<MedicalMemberDto> _members = new();
+    private MedicalMemberDetailDto? _detail;
+
+    // 成员表单
+    private bool _memberEditorOpen;
+    private int _memberFormId;
+    private bool _savingMember;
+    private string? _memberError;
+    private readonly MemberFormModel _memberForm = new();
+
+    // 病历表单
+    private bool _recordEditorOpen;
+    private int _recordFormId;
+    private bool _savingRecord;
+    private string? _recordError;
+    private readonly RecordFormModel _recordForm = new();
+
+    // AI 诊断
+    private string _diagnoseInput = "";
+    private string _extraContext = "";
+    private bool _diagnosing;
+    private string? _aiError;
+    private AiDiagnosisDto? _latestDiagnosis;
+
+    // 删除二次确认
+    private bool _pendingDeleteMember;
+    private int? _pendingDeleteRecordId;
+    private int? _pendingDeleteDiagnosisId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _loadError = null;
+        try
+        {
+            _members.Clear();
+            _members.AddRange(await ApiService.GetMedicalMembersAsync());
+        }
+        catch
+        {
+            _loadError = "load";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenMemberAsync(int id)
+    {
+        _view = "detail";
+        _detail = null;
+        _latestDiagnosis = null;
+        _aiError = null;
+        _pendingDeleteMember = false;
+        _pendingDeleteRecordId = null;
+        _pendingDeleteDiagnosisId = null;
+        _detail = await ApiService.GetMedicalMemberDetailAsync(id);
+        if (_detail == null)
+            _view = "list";
+    }
+
+    private async Task GoToList()
+    {
+        _view = "list";
+        _detail = null;
+        await LoadAsync();
+    }
+
+    // ============ 成员编辑 ============
+
+    private async Task OpenMemberEditorAsync()
+    {
+        _memberFormId = 0;
+        _memberError = null;
+        _memberForm.Reset();
+        if (_detail != null)
+        {
+            var member = _detail.Member;
+            _memberFormId = member.Id;
+            _memberForm.Name = member.Name;
+            _memberForm.Gender = member.Gender;
+            _memberForm.BloodType = member.BloodType;
+            _memberForm.BirthDate = member.BirthDate;
+            _memberForm.AllergiesText = string.Join("、", member.Allergies);
+            _memberForm.ChronicText = string.Join("、", member.ChronicDiseases);
+            _memberForm.Notes = member.Notes ?? "";
+        }
+        _memberEditorOpen = true;
+    }
+
+    private void CloseMemberEditor()
+    {
+        _memberEditorOpen = false;
+        _memberError = null;
+    }
+
+    private async Task SaveMemberAsync()
+    {
+        if (_savingMember) return;
+        var name = _memberForm.Name.Trim();
+        if (name.Length == 0)
+        {
+            _memberError = L["Medical_NameRequired"].Value;
+            return;
+        }
+
+        _savingMember = true;
+        _memberError = null;
+        try
+        {
+            var allergies = SplitList(_memberForm.AllergiesText);
+            var chronic = SplitList(_memberForm.ChronicText);
+            var birthDate = _memberForm.BirthDate;
+
+            if (_memberFormId > 0)
+            {
+                var updated = await ApiService.UpdateMedicalMemberAsync(_memberFormId, new UpdateMedicalMemberRequest
+                {
+                    Name = name,
+                    Gender = _memberForm.Gender,
+                    BirthDate = birthDate,
+                    BloodType = _memberForm.BloodType,
+                    Allergies = allergies,
+                    ChronicDiseases = chronic,
+                    Notes = _memberForm.Notes
+                });
+                if (updated == null)
+                {
+                    _memberError = L["Medical_SaveFailed"].Value;
+                    return;
+                }
+                await RefreshDetailAsync();
+            }
+            else
+            {
+                await ApiService.CreateMedicalMemberAsync(new CreateMedicalMemberRequest
+                {
+                    Name = name,
+                    Gender = _memberForm.Gender,
+                    BirthDate = birthDate,
+                    BloodType = _memberForm.BloodType,
+                    Allergies = allergies,
+                    ChronicDiseases = chronic,
+                    Notes = _memberForm.Notes
+                });
+            }
+
+            _memberEditorOpen = false;
+            if (_view == "detail")
+                await RefreshDetailAsync();
+            else
+                await LoadAsync();
+        }
+        catch
+        {
+            _memberError = L["Medical_SaveFailed"].Value;
+        }
+        finally
+        {
+            _savingMember = false;
+        }
+    }
+
+    private async Task OnDeleteMemberClickAsync()
+    {
+        if (!_pendingDeleteMember)
+        {
+            _pendingDeleteMember = true;
+            return;
+        }
+        _pendingDeleteMember = false;
+        if (_detail == null) return;
+        await ApiService.DeleteMedicalMemberAsync(_detail.Member.Id);
+        await GoToList();
+    }
+
+    // ============ 病历记录编辑 ============
+
+    private void OpenRecordEditorAsync(MedicalRecordDto? record)
+    {
+        _recordFormId = record?.Id ?? 0;
+        _recordError = null;
+        _recordForm.Reset();
+        if (record != null)
+        {
+            _recordFormId = record.Id;
+            _recordForm.OccurredAt = record.OccurredAt;
+            _recordForm.Title = record.Title;
+            _recordForm.SymptomsText = string.Join("\n", record.Symptoms);
+            _recordForm.DiagnosesText = string.Join("\n", record.Diagnoses);
+            _recordForm.Notes = record.Notes ?? "";
+            foreach (var med in record.Medications)
+            {
+                _recordForm.Medications.Add(new MedicationRow
+                {
+                    Name = med.Name,
+                    Dosage = med.Dosage ?? "",
+                    Frequency = med.Frequency ?? "",
+                    Note = med.Note ?? ""
+                });
+            }
+        }
+        else
+        {
+            _recordForm.OccurredAt = DateTime.Now;
+        }
+        _recordEditorOpen = true;
+    }
+
+    private void CloseRecordEditor()
+    {
+        _recordEditorOpen = false;
+        _recordError = null;
+    }
+
+    private void AddMedication() => _recordForm.Medications.Add(new MedicationRow());
+
+    private void RemoveMedication(MedicationRow row) => _recordForm.Medications.Remove(row);
+
+    private async Task SaveRecordAsync()
+    {
+        if (_savingRecord || _detail == null) return;
+        var title = _recordForm.Title.Trim();
+        if (title.Length == 0)
+        {
+            _recordError = L["Medical_RecordTitleRequired"].Value;
+            return;
+        }
+
+        _savingRecord = true;
+        _recordError = null;
+        try
+        {
+            var occurredAt = _recordForm.OccurredAt ?? DateTime.Now;
+            var medications = _recordForm.Medications
+                .Where(m => !string.IsNullOrWhiteSpace(m.Name))
+                .Select(m => new MedicalMedicationItemDto
+                {
+                    Name = m.Name.Trim(),
+                    Dosage = string.IsNullOrWhiteSpace(m.Dosage) ? null : m.Dosage.Trim(),
+                    Frequency = string.IsNullOrWhiteSpace(m.Frequency) ? null : m.Frequency.Trim(),
+                    Note = string.IsNullOrWhiteSpace(m.Note) ? null : m.Note.Trim()
+                })
+                .ToList();
+
+            if (_recordFormId > 0)
+            {
+                var updated = await ApiService.UpdateMedicalRecordAsync(_recordFormId, new UpdateMedicalRecordRequest
+                {
+                    OccurredAt = occurredAt,
+                    Title = title,
+                    Symptoms = SplitLines(_recordForm.SymptomsText),
+                    Diagnoses = SplitLines(_recordForm.DiagnosesText),
+                    Medications = medications,
+                    Notes = _recordForm.Notes
+                });
+                if (updated == null)
+                {
+                    _recordError = L["Medical_SaveFailed"].Value;
+                    return;
+                }
+            }
+            else
+            {
+                await ApiService.CreateMedicalRecordAsync(_detail.Member.Id, new CreateMedicalRecordRequest
+                {
+                    OccurredAt = occurredAt,
+                    Title = title,
+                    Symptoms = SplitLines(_recordForm.SymptomsText),
+                    Diagnoses = SplitLines(_recordForm.DiagnosesText),
+                    Medications = medications,
+                    Notes = _recordForm.Notes
+                });
+            }
+
+            _recordEditorOpen = false;
+            await RefreshDetailAsync();
+        }
+        catch
+        {
+            _recordError = L["Medical_SaveFailed"].Value;
+        }
+        finally
+        {
+            _savingRecord = false;
+        }
+    }
+
+    private async Task OnDeleteRecordClickAsync(int id)
+    {
+        if (_pendingDeleteRecordId != id)
+        {
+            _pendingDeleteRecordId = id;
+            return;
+        }
+        _pendingDeleteRecordId = null;
+        await ApiService.DeleteMedicalRecordAsync(id);
+        await RefreshDetailAsync();
+    }
+
+    // ============ AI 诊断 ============
+
+    private async Task RunDiagnosisAsync()
+    {
+        if (_diagnosing || _detail == null) return;
+        var symptomText = _diagnoseInput.Trim();
+        if (symptomText.Length == 0) return;
+
+        _diagnosing = true;
+        _aiError = null;
+        try
+        {
+            var result = await ApiService.RunAiDiagnosisAsync(new AiDiagnoseRequest
+            {
+                MemberId = _detail.Member.Id,
+                SymptomText = symptomText,
+                ExtraContext = string.IsNullOrWhiteSpace(_extraContext) ? null : _extraContext.Trim()
+            });
+            if (!result.Success || result.Diagnosis == null)
+            {
+                _aiError = result.Error ?? L["Medical_DiagnoseFailed"].Value;
+                return;
+            }
+
+            _latestDiagnosis = result.Diagnosis;
+            _diagnoseInput = "";
+            _extraContext = "";
+            await RefreshDetailAsync();
+        }
+        catch
+        {
+            _aiError = L["Medical_DiagnoseFailed"].Value;
+        }
+        finally
+        {
+            _diagnosing = false;
+        }
+    }
+
+    private async Task OnDeleteDiagnosisClickAsync(int id)
+    {
+        if (_pendingDeleteDiagnosisId != id)
+        {
+            _pendingDeleteDiagnosisId = id;
+            return;
+        }
+        _pendingDeleteDiagnosisId = null;
+        await ApiService.DeleteAiDiagnosisAsync(id);
+        if (_latestDiagnosis != null && _latestDiagnosis.Id == id)
+            _latestDiagnosis = null;
+        await RefreshDetailAsync();
+    }
+
+    // ============ 辅助 ============
+
+    private static readonly JsonSerializerOptions StructuredJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    private static StructuredDiagnosisResult? TryParseStructured(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+        try
+        {
+            return JsonSerializer.Deserialize<StructuredDiagnosisResult>(json, StructuredJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private async Task RefreshDetailAsync()
+    {
+        if (_detail == null) return;
+        var refreshed = await ApiService.GetMedicalMemberDetailAsync(_detail.Member.Id);
+        if (refreshed != null)
+            _detail = refreshed;
+    }
+
+    private static List<string> SplitList(string text)
+        => text.Split(new[] { '、', '，', ',', '\n', ';', '；' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => s.Length > 0)
+            .ToList();
+
+    private static List<string> SplitLines(string text)
+        => text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => s.Length > 0)
+            .ToList();
+
+    private static string AvatarOf(MedicalMemberDto member)
+    {
+        if (member.Gender == "男") return "👨";
+        if (member.Gender == "女") return "👩";
+        return "👤";
+    }
+
+    private static string AgeText(MedicalMemberDto member)
+    {
+        if (!member.BirthDate.HasValue)
+            return "—";
+        var age = ComputeAge(member.BirthDate.Value);
+        return $"{age} 岁";
+    }
+
+    private static int ComputeAge(DateTime birthDate)
+    {
+        var today = DateTime.Today;
+        var age = today.Year - birthDate.Year;
+        if (birthDate.Date > today.AddYears(-age))
+            age--;
+        return Math.Max(age, 0);
+    }
+
+    private sealed class MemberFormModel
+    {
+        public string Name { get; set; } = "";
+        public string Gender { get; set; } = "";
+        public string BloodType { get; set; } = "";
+        public DateTime? BirthDate { get; set; }
+        public string AllergiesText { get; set; } = "";
+        public string ChronicText { get; set; } = "";
+        public string Notes { get; set; } = "";
+
+        public void Reset()
+        {
+            Name = "";
+            Gender = "";
+            BloodType = "";
+            BirthDate = null;
+            AllergiesText = "";
+            ChronicText = "";
+            Notes = "";
+        }
+    }
+
+    private sealed class RecordFormModel
+    {
+        public DateTime? OccurredAt { get; set; }
+        public string Title { get; set; } = "";
+        public string SymptomsText { get; set; } = "";
+        public string DiagnosesText { get; set; } = "";
+        public string Notes { get; set; } = "";
+        public List<MedicationRow> Medications { get; set; } = new();
+
+        public void Reset()
+        {
+            OccurredAt = null;
+            Title = "";
+            SymptomsText = "";
+            DiagnosesText = "";
+            Notes = "";
+            Medications.Clear();
+        }
+    }
+
+    private sealed class MedicationRow
+    {
+        public string Name { get; set; } = "";
+        public string Dosage { get; set; } = "";
+        public string Frequency { get; set; } = "";
+        public string Note { get; set; } = "";
+    }
+}
+
+<style>
+    .medical-page {
+        max-width: 1100px;
+    }
+
+    .medical-empty {
+        padding: 2.5rem 1rem;
+        text-align: center;
+        color: rgba(180, 200, 215, 0.7);
+    }
+
+    .medical-avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: rgba(46, 139, 175, 0.18);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        flex-shrink: 0;
+    }
+
+    .medical-avatar-lg {
+        width: 56px;
+        height: 56px;
+        font-size: 1.9rem;
+    }
+
+    .medical-member-name {
+        font-size: 1.05rem;
+    }
+
+    .medical-member-card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .medical-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+    }
+
+    .medical-tag {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        line-height: 1.5;
+    }
+
+    .medical-tag-warn {
+        background: rgba(255, 193, 7, 0.15);
+        color: rgba(255, 210, 110, 0.95);
+        border: 1px solid rgba(255, 193, 7, 0.25);
+    }
+
+    .medical-tag-info {
+        background: rgba(13, 202, 240, 0.12);
+        color: rgba(160, 220, 245, 0.95);
+        border: 1px solid rgba(13, 202, 240, 0.22);
+    }
+
+    .medical-tag-success {
+        background: rgba(25, 135, 84, 0.14);
+        color: rgba(150, 230, 190, 0.95);
+        border: 1px solid rgba(25, 135, 84, 0.25);
+    }
+
+    .medical-record-card,
+    .medical-ai-result,
+    .medical-ai-history {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .medical-record-date {
+        font-size: 0.8rem;
+        color: rgba(180, 200, 215, 0.75);
+    }
+
+    .medical-medications {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .medical-medication-item {
+        font-size: 0.85rem;
+        padding-left: 1.1rem;
+        color: rgba(200, 220, 235, 0.9);
+    }
+
+    .medical-disclaimer {
+        font-size: 0.85rem;
+        border-left: 4px solid #ffc107;
+    }
+
+    .medical-textarea {
+        min-height: 100px;
+    }
+
+    .medical-modal {
+        z-index: 2100;
+    }
+
+    .medical-med-row input {
+        min-width: 0;
+    }
+</style>

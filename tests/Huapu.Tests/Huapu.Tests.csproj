@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Huapu.Tests</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.*" />
+    <PackageReference Include="xunit" Version="2.9.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.*" />
+    <PackageReference Include="Moq" Version="4.20.*" />
+    <!-- 与 Huapu 项目同版本的 Markdig，用于对 SafeMarkdown（生产代码）做渲染断言 -->
+    <PackageReference Include="Markdig" Version="0.38.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\libs\BaihuaSdk\BaihuaSdk.csproj" />
+    <ProjectReference Include="..\..\libs\MobileContract\MobileContract.csproj" />
+  </ItemGroup>
+  <!-- 链接 Huapu 的 SafeMarkdown 源码，直接对生产渲染代码做单元测试（MAUI TFM 无法被 net10.0 测试工程引用） -->
+  <ItemGroup>
+    <Compile Include="..\..\clients\Huapu\Utils\SafeMarkdown.cs" Link="Utils\SafeMarkdown.cs" />
+  </ItemGroup>
+</Project>
+
+
+

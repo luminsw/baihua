@@ -1,0 +1,807 @@
+@page "/onboarding"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.OnboardingService OnboardingService
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.AIStatusService AIStatusService
+@inject NavigationManager Navigation
+@inject Microsoft.Extensions.Logging.ILogger<Onboarding> Logger
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+@using Baihua.Contracts.Ai
+@using Microsoft.JSInterop
+
+<PageTitle>@L["Onboarding_PageTitle"]</PageTitle>
+
+<div class="onboarding-overlay">
+    <div class="onboarding-container">
+        <!-- 进度指示器 -->
+        <div class="onboarding-progress">
+            <div class="progress-steps">
+                <div class="step @(currentStep >= 1 ? "active" : "") @(currentStep > 1 ? "completed" : "")">
+                    <div class="step-number">1</div>
+                    <div class="step-label">@L["Onboarding_Step1Label"]</div>
+                </div>
+                <div class="step-line @(currentStep > 1 ? "completed" : "")"></div>
+                <div class="step @(currentStep >= 2 ? "active" : "") @(currentStep > 2 ? "completed" : "")">
+                    <div class="step-number">2</div>
+                    <div class="step-label">@L["Onboarding_Step2Label"]</div>
+                </div>
+                <div class="step-line @(currentStep > 2 ? "completed" : "")"></div>
+                <div class="step @(currentStep >= 3 ? "active" : "")">
+                    <div class="step-number">3</div>
+                    <div class="step-label">@L["Onboarding_Step3Label"]</div>
+                </div>
+            </div>
+        </div>
+
+        @if (currentStep == 1)
+        {
+            <!-- 步骤1：欢迎 -->
+            <div class="onboarding-step">
+                <div class="step-header">
+                    <div class="welcome-icon">🏠</div>
+                    <h1>@L["Onboarding_WelcomeTitle"]</h1>
+                    <p class="subtitle">@L["Onboarding_WelcomeSubtitle"]</p>
+                </div>
+
+                <div class="step-content">
+                    <div class="feature-cards">
+                        <div class="feature-card">
+                            <div class="feature-icon">📚</div>
+                            <h3>@L["Onboarding_Feature1Title"]</h3>
+                            <p>@L["Onboarding_Feature1Desc"]</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">📱</div>
+                            <h3>@L["Onboarding_Feature2Title"]</h3>
+                            <p>@L["Onboarding_Feature2Desc"]</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🤖</div>
+                            <h3>@L["Onboarding_Feature3Title"]</h3>
+                            <p>@L["Onboarding_Feature3Desc"]</p>
+                        </div>
+                    </div>
+
+                    <div class="info-box">
+                        <strong>💡 @L["Onboarding_BeforeStart"]</strong>
+                        <p>@L["Onboarding_BeforeStartDesc"]</p>
+                    </div>
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn btn-primary btn-lg" @onclick="GoToStep2">
+                        @L["Onboarding_StartConfig"]
+                    </button>
+                    <button class="btn btn-outline-secondary btn-lg ms-3" @onclick="SkipOnboarding">
+                        @L["Onboarding_SkipSetup"]
+                    </button>
+                </div>
+            </div>
+        }
+        else if (currentStep == 2)
+        {
+            <!-- 步骤2：AI配置 -->
+            <div class="onboarding-step">
+                <div class="step-header">
+                    <div class="welcome-icon">🤖</div>
+                    <h1>@L["Onboarding_AiConfigTitle"]</h1>
+                    <p class="subtitle">@L["Onboarding_AiConfigSubtitle"]</p>
+                </div>
+
+                <div class="step-content">
+                    @if (!string.IsNullOrEmpty(configError))
+                    {
+                        <div class="alert alert-error">@configError</div>
+                    }
+
+                    @if (isSaving)
+                    {
+                        <div class="saving-overlay">
+                            <div class="spinner"></div>
+                            <p>@L["Onboarding_SavingMessage"]</p>
+                        </div>
+                    }
+
+                    <div class="form-group">
+                        <label>@L["Onboarding_SelectPreset"]</label>
+                        <select class="form-control" @onchange="OnPresetSelected" value="@selectedPresetId">
+                            <option value="">@L["Onboarding_SelectPlaceholder"]</option>
+                            @foreach (var preset in providerPresets)
+                            {
+                                <option value="@preset.Id">@preset.Name</option>
+                            }
+                        </select>
+                        <small class="form-text">@L["Onboarding_PresetHint"]</small>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(selectedPresetId))
+                    {
+                        <div class="form-group">
+                            <label>@L["Onboarding_ApiKeyLabel"]</label>
+                            <input type="password" class="form-control" @bind="apiKey" @bind:event="oninput" placeholder="sk-..." />
+                            <small class="form-text">@(IsCustom ? L["Onboarding_ApiKeyOptionalHint"] : L["Onboarding_ApiKeyHint"])</small>
+                        </div>
+
+                        @if (IsCustom)
+                        {
+                            <div class="form-group">
+                                <label>@L["Onboarding_ApiUrlLabel"]</label>
+                                <input type="text" class="form-control" @bind="customBaseUrl" @bind:event="oninput" placeholder="http://192.168.1.100:11434/v1" />
+                                <small class="form-text">@L["Onboarding_CustomUrlHint"]</small>
+                            </div>
+                            <div class="form-group">
+                                <label>@L["Onboarding_ModelLabel"]</label>
+                                <input type="text" class="form-control" @bind="customModel" @bind:event="oninput" placeholder="qwen3:14b" />
+                                <small class="form-text">@L["Onboarding_CustomModelHint"]</small>
+                            </div>
+                        }
+                        else
+                        {
+                        <div class="preset-info">
+                            <div class="info-row">
+                                <span class="info-label">@L["Onboarding_ProviderLabel"]</span>
+                                <span class="info-value">@selectedPresetName</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">@L["Onboarding_ApiUrlLabel"]</span>
+                                <span class="info-value">@selectedPresetUrl</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">@L["Onboarding_RecommendedModelLabel"]</span>
+                                <span class="info-value">@selectedPresetModel</span>
+                            </div>
+                        </div>
+                        }
+
+                        <div class="help-links">
+                            <p>@L["Onboarding_GetApiKey"]</p>
+                            <div class="link-buttons">
+                                @if (selectedPresetId == "zhipu")
+                                {
+                                    <a href="https://open.bigmodel.cn/" target="_blank" class="btn btn-outline">智谱 AI</a>
+                                }
+                                else if (selectedPresetId == "aliyun")
+                                {
+                                    <a href="https://bailian.console.aliyun.com/" target="_blank" class="btn btn-outline">阿里云百炼</a>
+                                }
+                                else if (selectedPresetId == "volcano")
+                                {
+                                    <a href="https://console.volcengine.com/ark/" target="_blank" class="btn btn-outline">火山引擎</a>
+                                }
+                                else if (selectedPresetId == "deepseek")
+                                {
+                                    <a href="https://platform.deepseek.com/" target="_blank" class="btn btn-outline">DeepSeek</a>
+                                }
+                                else if (selectedPresetId == "kimi")
+                                {
+                                    <a href="https://platform.moonshot.cn/" target="_blank" class="btn btn-outline">Kimi</a>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn btn-secondary" @onclick="() => currentStep = 1">@L["Onboarding_Back"]</button>
+                    <button class="btn btn-primary" @onclick="SaveAiConfig" disabled="@(!CanSave)">
+                        @(isSaving ? L["Onboarding_Saving"] : L["Onboarding_SaveAndContinue"])
+                    </button>
+                </div>
+            </div>
+        }
+        else if (currentStep == 3)
+        {
+            <!-- 步骤3：完成 -->
+            <div class="onboarding-step">
+                <div class="step-header">
+                    <div class="welcome-icon">🎉</div>
+                    <h1>@L["Onboarding_CompleteTitle"]</h1>
+                    <p class="subtitle">@L["Onboarding_CompleteSubtitle"]</p>
+                </div>
+
+                <div class="step-content">
+                    <div class="completion-summary">
+                        <div class="summary-item success">
+                            <span class="summary-icon">✅</span>
+                            <span>@L["Onboarding_AiConfigured"]</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-icon">📱</span>
+                            <span>@L["Onboarding_NextAddMembers"]</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-icon">📚</span>
+                            <span>@L["Onboarding_NextCreateLibraries"]</span>
+                        </div>
+                    </div>
+
+                    <div class="info-box">
+                        <strong>🚀 @L["Onboarding_NextSteps"]</strong>
+                        <p>@L["Onboarding_NextStepsDesc"]</p>
+                    </div>
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn btn-primary btn-lg" @onclick="FinishOnboarding">
+                        @L["Onboarding_EnterLibrary"]
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .onboarding-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #2e8baf 0%, #257a9e 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        z-index: 9999;
+        overflow-y: auto;
+    }
+
+    .onboarding-container {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        width: 100%;
+        max-width: 640px;
+        padding: 2rem;
+        animation: slideUp 0.5s ease;
+    }
+
+    @@keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* 进度指示器 */
+    .onboarding-progress {
+        margin-bottom: 2rem;
+    }
+
+    .progress-steps {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+    }
+
+    .step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .step-number {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #e8eef2;
+        color: #5a6a72;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.9rem;
+        transition: all 0.3s ease;
+    }
+
+    .step.active .step-number {
+        background: #2e8baf;
+        color: white;
+    }
+
+    .step.completed .step-number {
+        background: #6b9e75;
+        color: white;
+    }
+
+    .step-label {
+        font-size: 0.8rem;
+        color: #5a6a72;
+        transition: all 0.3s ease;
+    }
+
+    .step.active .step-label {
+        color: #2e8baf;
+        font-weight: 600;
+    }
+
+    .step.completed .step-label {
+        color: #6b9e75;
+    }
+
+    .step-line {
+        width: 60px;
+        height: 2px;
+        background: #e8eef2;
+        margin: 0 0.5rem;
+        margin-bottom: 1.5rem;
+        transition: all 0.3s ease;
+    }
+
+    .step-line.completed {
+        background: #6b9e75;
+    }
+
+    /* 步骤内容 */
+    .onboarding-step {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .step-header {
+        text-align: center;
+    }
+
+    .welcome-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    .step-header h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.75rem;
+        color: #1e3a4c;
+    }
+
+    .subtitle {
+        color: #5a6a72;
+        margin: 0;
+        font-size: 1rem;
+    }
+
+    .step-content {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    /* 特性卡片 */
+    .feature-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 1rem;
+    }
+
+    .feature-card {
+        background: #f5f8fa;
+        border-radius: 12px;
+        padding: 1.25rem;
+        text-align: center;
+        transition: transform 0.2s ease;
+    }
+
+    .feature-card:hover {
+        transform: translateY(-2px);
+    }
+
+    .feature-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .feature-card h3 {
+        margin: 0 0 0.5rem;
+        font-size: 0.95rem;
+        color: #1e3a4c;
+    }
+
+    .feature-card p {
+        margin: 0;
+        font-size: 0.8rem;
+        color: #5a6a72;
+        line-height: 1.5;
+    }
+
+    /* 暗色模式适配：app.css 的全局暗色规则会把 .feature-card 背景压成深色(#232a3b)，
+       而本页标题/描述仍是深色文字，导致标题与背景色过于接近。
+       这里在暗色模式下恢复浅色卡片，保证标题与描述保持可读。 */
+    [data-bs-theme="dark"] .feature-card {
+        background: #f5f8fa;
+    }
+
+    [data-bs-theme="dark"] .feature-card h3 {
+        color: #1e3a4c;
+    }
+
+    [data-bs-theme="dark"] .feature-card p {
+        color: #5a6a72;
+    }
+
+    /* 信息框 */
+    .info-box {
+        background: linear-gradient(135deg, #e0ecf4 0%, #c8dde8 100%);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        border-left: 4px solid #2e8baf;
+    }
+
+    .info-box strong {
+        color: #257a9e;
+        display: block;
+        margin-bottom: 0.35rem;
+    }
+
+    .info-box p {
+        margin: 0;
+        color: #424242;
+        font-size: 0.9rem;
+        line-height: 1.5;
+    }
+
+    /* 表单 */
+    .form-group {
+        margin-bottom: 1rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-weight: 500;
+        color: #333;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid #c8d4dc;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        transition: border-color 0.2s;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #2e8baf;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+    }
+
+    .form-text {
+        display: block;
+        margin-top: 0.25rem;
+        font-size: 0.8rem;
+        color: #5a6a72;
+    }
+
+    /* 预设信息 */
+    .preset-info {
+        background: #f5f8fa;
+        border-radius: 8px;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .info-row {
+        display: flex;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .info-label {
+        color: #5a6a72;
+        min-width: 80px;
+    }
+
+    .info-value {
+        color: #1e3a4c;
+        font-weight: 500;
+    }
+
+    /* 帮助链接 */
+    .help-links {
+        text-align: center;
+        padding: 1rem 0;
+    }
+
+    .help-links p {
+        color: #5a6a72;
+        font-size: 0.85rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .link-buttons {
+        display: flex;
+        gap: 0.5rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    /* 完成摘要 */
+    .completion-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .summary-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        background: #f5f8fa;
+        border-radius: 8px;
+        font-size: 0.95rem;
+    }
+
+    .summary-item.success {
+        background: #e0f0e5;
+        color: #3d6b45;
+    }
+
+    .summary-icon {
+        font-size: 1.25rem;
+    }
+
+    /* 按钮 */
+    .step-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        padding-top: 0.5rem;
+    }
+
+    .btn {
+        padding: 0.6rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        text-decoration: none;
+    }
+
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #2e8baf 0%, #257a9e 100%);
+        color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+        background: #e8eef2;
+        color: #4a5860;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+        background: #d8e2e8;
+    }
+
+    .btn-lg {
+        padding: 0.75rem 2rem;
+        font-size: 1rem;
+    }
+
+    .btn-outline {
+        background: white;
+        color: #2e8baf;
+        border: 1px solid #2e8baf;
+    }
+
+    .btn-outline:hover {
+        background: #2e8baf;
+        color: white;
+    }
+
+    /* 提示 */
+    .alert {
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+    }
+
+    .alert-error {
+        background: #e0ecf4;
+        border: 1px solid #c8dde8;
+        color: #4a2a30;
+    }
+
+    /* 保存中遮罩 */
+    .saving-overlay {
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #e8eef2;
+        border-top-color: #2e8baf;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @@keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    /* 移动端适配 */
+    @@media (max-width: 480px) {
+        .onboarding-container {
+            padding: 1.25rem;
+            border-radius: 16px;
+        }
+
+        .feature-cards {
+            grid-template-columns: 1fr;
+        }
+
+        .step-line {
+            width: 30px;
+        }
+
+        .step-header h1 {
+            font-size: 1.4rem;
+        }
+    }
+</style>
+
+@code {
+    private int currentStep = 1;
+    private List<AiProviderPreset> providerPresets = new();
+    private string selectedPresetId = "";
+    private string apiKey = "";
+    private string configError = "";
+    private bool isSaving = false;
+
+    private string selectedPresetName => providerPresets.FirstOrDefault(p => p.Id == selectedPresetId)?.Name ?? "";
+    private string selectedPresetUrl => providerPresets.FirstOrDefault(p => p.Id == selectedPresetId)?.BaseUrl ?? "";
+    private string selectedPresetModel => providerPresets.FirstOrDefault(p => p.Id == selectedPresetId)?.Models?.FirstOrDefault(m => m.IsMain)?.Name ?? "";
+
+    private string customBaseUrl = "";
+    private string customModel = "";
+
+    private bool CanSave =>
+        !string.IsNullOrWhiteSpace(selectedPresetId) &&
+        !isSaving &&
+        (!string.IsNullOrWhiteSpace(apiKey) || IsCustom) &&
+        (!IsCustom || (!string.IsNullOrWhiteSpace(customBaseUrl) && !string.IsNullOrWhiteSpace(customModel)));
+
+    private bool IsCustom => selectedPresetId == "custom";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 预加载预设列表
+        try
+        {
+            providerPresets = await ApiService.GetAiProviderPresetsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "加载预设失败");
+        }
+
+        // 检查 AI 是否已配置，已配置则跳过第 2 步直接到完成
+        try
+        {
+            var onboardingStatus = await OnboardingService.GetStatusAsync();
+            if (onboardingStatus.HasAiConfig)
+            {
+                currentStep = 3;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "检查 AI 配置状态失败");
+        }
+    }
+
+    private void GoToStep2()
+    {
+        currentStep = 2;
+    }
+
+    private void OnPresetSelected(ChangeEventArgs e)
+    {
+        selectedPresetId = e.Value?.ToString() ?? "";
+        apiKey = "";
+        configError = "";
+    }
+
+    private async Task SaveAiConfig()
+    {
+        if (!CanSave) return;
+
+        isSaving = true;
+        configError = "";
+
+        try
+        {
+            var preset = providerPresets.FirstOrDefault(p => p.Id == selectedPresetId);
+            if (preset == null)
+            {
+                configError = L["Onboarding_InvalidProvider"];
+                return;
+            }
+
+            var request = new SaveAiProviderRequest
+            {
+                Id = preset.Id,
+                Name = preset.Name,
+                BaseUrl = IsCustom ? customBaseUrl.Trim() : preset.BaseUrl,
+                IsMain = true,
+                Models = IsCustom
+                    ? new List<AiModelRequest> { new() { Name = customModel.Trim(), IsMain = true } }
+                    : preset.Models.Select(m => new AiModelRequest
+                    {
+                        Name = m.Name,
+
+                        IsMain = m.IsMain
+                    }).ToList(),
+                ApiKey = apiKey.Trim()
+            };
+
+            var result = await ApiService.SaveAiConfigProviderAsync(request);
+            if (result.Success)
+            {
+                AIStatusService.NotifyStateChanged();
+                currentStep = 3;
+            }
+            else
+            {
+                configError = L["Onboarding_SaveFailed", result.Message];
+            }
+        }
+        catch (Exception ex)
+        {
+            configError = L["Onboarding_SaveError", ex.Message];
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task FinishOnboarding()
+    {
+        var success = await OnboardingService.CompleteOnboardingAsync();
+        if (success)
+        {
+            Navigation.NavigateTo("");
+        }
+        else
+        {
+            Navigation.NavigateTo("");
+        }
+    }
+
+    private async Task SkipOnboarding()
+    {
+        await OnboardingService.CompleteOnboardingAsync();
+        Navigation.NavigateTo("");
+    }
+}

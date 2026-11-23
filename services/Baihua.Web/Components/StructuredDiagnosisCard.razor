@@ -1,0 +1,244 @@
+@using Baihua.Contracts.Medical
+
+@* 结构化 AI 诊断卡片：从 StructuredDiagnosisResult 渲染卡片式展示 *@
+@if (Result == null)
+{
+    return;
+}
+
+<div class="structured-diagnosis">
+    @* 可能原因分析 *@
+    @if (Result.PossibleCauses.Count > 0)
+    {
+        <div class="sd-section">
+            <div class="sd-section-title">🔍 可能原因分析</div>
+            <div class="sd-causes">
+                @foreach (var cause in Result.PossibleCauses)
+                {
+                    <div class="sd-cause">
+                        <div class="sd-cause-header">
+                            <span class="sd-cause-name">@cause.Name</span>
+                            @if (!string.IsNullOrWhiteSpace(cause.Likelihood))
+                            {
+                                <span class="badge sd-likelihood @(GetLikelihoodClass(cause.Likelihood))">@cause.Likelihood</span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(cause.Reasoning))
+                        {
+                            <div class="sd-cause-reasoning">@cause.Reasoning</div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* 居家护理与观察建议 *@
+    @if (Result.HomeCare.Count > 0)
+    {
+        <div class="sd-section">
+            <div class="sd-section-title">🏠 居家护理与观察建议</div>
+            <ul class="sd-list">
+                @foreach (var item in Result.HomeCare)
+                {
+                    <li>@item</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @* 需要立即就医的警示信号 *@
+    @if (Result.WarningSigns.Count > 0)
+    {
+        <div class="sd-section sd-warning-section">
+            <div class="sd-section-title sd-warning-title">⚠️ 需要立即就医的情况</div>
+            <ul class="sd-list sd-warning-list">
+                @foreach (var sign in Result.WarningSigns)
+                {
+                    <li>@sign</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @* 就医建议 *@
+    @if (Result.SeeDoctor && !string.IsNullOrWhiteSpace(Result.SeeDoctorReason))
+    {
+        <div class="sd-section sd-doctor-section">
+            <div class="sd-section-title sd-doctor-title">🏥 就医建议</div>
+            <div class="sd-doctor-reason">@Result.SeeDoctorReason</div>
+        </div>
+    }
+
+    @* 个体注意事项 *@
+    @if (!string.IsNullOrWhiteSpace(Result.IndividualNotes))
+    {
+        <div class="sd-section sd-individual-section">
+            <div class="sd-section-title">👤 个体注意事项</div>
+            <div class="sd-individual-notes">@Result.IndividualNotes</div>
+        </div>
+    }
+
+    @* 免责声明 *@
+    @if (!string.IsNullOrWhiteSpace(Result.Disclaimer))
+    {
+        <div class="sd-disclaimer">@Result.Disclaimer</div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public StructuredDiagnosisResult? Result { get; set; }
+
+    private static string GetLikelihoodClass(string? likelihood)
+    {
+        if (string.IsNullOrWhiteSpace(likelihood))
+            return "sd-likelihood-neutral";
+        return likelihood switch
+        {
+            "较高" => "sd-likelihood-high",
+            "中等" => "sd-likelihood-medium",
+            "较低" => "sd-likelihood-low",
+            "不能确定" => "sd-likelihood-unknown",
+            _ => "sd-likelihood-neutral"
+        };
+    }
+}
+
+<style>
+    .structured-diagnosis {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .sd-section {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 0.5rem;
+        padding: 0.75rem 1rem;
+    }
+
+    .sd-section-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+        color: rgba(220, 230, 240, 0.95);
+    }
+
+    .sd-causes {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .sd-cause {
+        padding-left: 0.75rem;
+        border-left: 3px solid rgba(13, 202, 240, 0.3);
+    }
+
+    .sd-cause-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .sd-cause-name {
+        font-weight: 600;
+        font-size: 0.88rem;
+    }
+
+    .sd-cause-reasoning {
+        font-size: 0.82rem;
+        color: rgba(180, 200, 215, 0.8);
+        margin-top: 0.25rem;
+        line-height: 1.5;
+    }
+
+    .sd-likelihood {
+        font-size: 0.7rem;
+        padding: 1px 6px;
+        border-radius: 8px;
+    }
+
+    .sd-likelihood-high {
+        background: rgba(220, 53, 69, 0.18);
+        color: rgba(255, 170, 175, 0.95);
+        border: 1px solid rgba(220, 53, 69, 0.3);
+    }
+
+    .sd-likelihood-medium {
+        background: rgba(255, 193, 7, 0.15);
+        color: rgba(255, 210, 110, 0.95);
+        border: 1px solid rgba(255, 193, 7, 0.25);
+    }
+
+    .sd-likelihood-low {
+        background: rgba(25, 135, 84, 0.14);
+        color: rgba(150, 230, 190, 0.95);
+        border: 1px solid rgba(25, 135, 84, 0.25);
+    }
+
+    .sd-likelihood-unknown,
+    .sd-likelihood-neutral {
+        background: rgba(108, 117, 125, 0.15);
+        color: rgba(200, 205, 210, 0.9);
+        border: 1px solid rgba(108, 117, 125, 0.25);
+    }
+
+    .sd-list {
+        margin: 0;
+        padding-left: 1.25rem;
+        font-size: 0.85rem;
+        line-height: 1.6;
+        color: rgba(210, 220, 235, 0.9);
+    }
+
+    .sd-warning-section {
+        background: rgba(220, 53, 69, 0.08);
+        border-color: rgba(220, 53, 69, 0.25);
+    }
+
+    .sd-warning-title {
+        color: rgba(255, 170, 175, 0.95);
+    }
+
+    .sd-warning-list {
+        color: rgba(255, 190, 195, 0.9);
+    }
+
+    .sd-doctor-section {
+        background: rgba(13, 202, 240, 0.08);
+        border-color: rgba(13, 202, 240, 0.22);
+    }
+
+    .sd-doctor-title {
+        color: rgba(160, 220, 245, 0.95);
+    }
+
+    .sd-doctor-reason {
+        font-size: 0.85rem;
+        line-height: 1.6;
+        color: rgba(200, 225, 240, 0.9);
+    }
+
+    .sd-individual-section {
+        background: rgba(255, 193, 7, 0.06);
+        border-color: rgba(255, 193, 7, 0.2);
+    }
+
+    .sd-individual-notes {
+        font-size: 0.85rem;
+        line-height: 1.6;
+        color: rgba(230, 220, 190, 0.9);
+    }
+
+    .sd-disclaimer {
+        font-size: 0.78rem;
+        color: rgba(170, 180, 195, 0.7);
+        border-left: 3px solid rgba(170, 180, 195, 0.3);
+        padding: 0.4rem 0.75rem;
+        line-height: 1.5;
+    }
+</style>

@@ -1,0 +1,134 @@
+@page "/login"
+@layout Baihua.Web.Components.Layout.EmptyLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.AuthService AuthService
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["Login_PageTitle"]</PageTitle>
+
+<div class="login-page">
+    <div class="login-card">
+        <div class="login-header">
+            <img src="logo.png" alt="百花" class="logo-icon" />
+            <h1>@L["Login_Title"]</h1>
+            <p class="subtitle">@L["Login_Subtitle"]</p>
+        </div>
+
+        <div class="alert alert-info" role="alert">
+            <span class="bi bi-info-circle-fill" aria-hidden="true"></span>
+            @L["Login_OneClickAuth"]
+        </div>
+
+        <div class="login-form text-center">
+            <p class="mb-3">@L["Login_RunCommand"]</p>
+            <div class="code-block">
+                <code>bh dashboard</code>
+            </div>
+            <p class="mt-3 text-muted small">
+                @L["Login_AutoGenerateLink"]
+            </p>
+            <p class="text-muted small mb-0">💡 @L["Login_CmdHint1"] <code>bh dashboard</code> @L["Login_CmdHint2"]</p>
+        </div>
+
+        <div class="login-footer">
+            <p>@L["Login_Hint"]</p>
+            <p>@L["Login_OnlyLocalUsers"]</p>
+        </div>
+    </div>
+</div>
+
+<style>
+    .login-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #2e8baf 0%, #257a9e 100%);
+        padding: 1rem;
+    }
+
+    .login-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        padding: 2.5rem;
+        width: 100%;
+        max-width: 400px;
+        animation: slideUp 0.3s ease-out;
+    }
+
+    @@keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .login-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .logo-icon {
+        height: 3rem;
+        width: auto;
+        display: block;
+        margin: 0 auto 0.5rem;
+        filter: sepia(100%) hue-rotate(170deg) saturate(300%) brightness(35%);
+    }
+
+    .login-header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+        color: #666;
+        font-size: 1rem;
+    }
+
+    .login-form {
+        margin-bottom: 1.5rem;
+    }
+
+    .code-block {
+        background: #f5f8fa;
+        border: 1px solid #e8eef2;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+        font-family: 'SF Mono', Monaco, Inconsolata, 'Fira Code', monospace;
+        font-size: 0.95rem;
+        color: #1e3a4c;
+        word-break: break-all;
+    }
+
+    .login-footer {
+        text-align: center;
+        padding-top: 1.5rem;
+        border-top: 1px solid #eee;
+    }
+
+    .login-footer p {
+        color: #888;
+        font-size: 0.85rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .alert {
+        margin-bottom: 1rem;
+        border-radius: 8px;
+    }
+</style>
+
+@code {
+    protected override void OnInitialized()
+    {
+        // 无需密码状态检查，始终显示授权提示
+    }
+}

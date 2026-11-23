@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Baihua.AI.Provider.OpenVino</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.Extensions.Logging" />
+    <Using Include="System.Net.Http.Json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 基础设施 -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.6" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Baihua.AI.Provider\Baihua.AI.Provider.csproj" />
+    <ProjectReference Include="..\Baihua.Contracts\Baihua.Contracts.csproj" />
+    <ProjectReference Include="..\Baihua.Core\Baihua.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 本地回退推理脚本（openvino_llm_server.py：OpenVinoRuntimeManager 本地进程兜底）。
+         宿主机托管（openvino_host.py / openvino_host_service.py）与 vision_server.py 已废弃：
+         百花 OpenVINO 推理由 OVMS 常驻服务（/v3）接管，不再随发布拷贝。 -->
+    <None Include="LocalVision\openvino_llm_server.py" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

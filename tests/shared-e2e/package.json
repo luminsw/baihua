@@ -1,0 +1,9 @@
+{
+  "name": "shared-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "共享 Playwright e2e 测试基建（global-setup / 共享 helpers），被 tests/e2e 引用",
+  "dependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}

@@ -1,0 +1,56 @@
+# Baihua.Server — 百花服务器（单一后端进程：家庭 / AI / 知识库 三模块合一，8788）
+#
+# 直接基于官方 .NET 镜像做多阶段构建，不依赖 bh/sdk-offline、bh/base-build、bh/base-runtime
+# 这些需要预先构建的基础镜像 —— 因此 Windows 上 `bh wslc build` 可以直接构建（无需 Docker Desktop）。
+# （k8s 的镜像配方在 k8s/images/，走离线 SDK 缓存，与本文件互不影响。）
+#
+# 构建：
+#   docker build -f docker/Dockerfile.server -t bh-server:latest .
+#   （构建上下文 = 仓库根；.dockerignore 已排除 bin/obj/out/data 等）
+
+# ==================== Build 阶段 ====================
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# 先复制项目文件以利用 Docker 缓存层
+COPY services/Baihua.Contracts/Baihua.Contracts.csproj services/Baihua.Contracts/
+COPY services/Baihua.Data/Baihua.Data.csproj services/Baihua.Data/
+COPY services/Baihua.Core/Baihua.Core.csproj services/Baihua.Core/
+COPY services/Baihua.AI.Provider/Baihua.AI.Provider.csproj services/Baihua.AI.Provider/
+COPY services/Baihua.AI.Provider.OpenVino/Baihua.AI.Provider.OpenVino.csproj services/Baihua.AI.Provider.OpenVino/
+COPY services/Baihua.Modules.Family/Baihua.Modules.Family.csproj services/Baihua.Modules.Family/
+COPY services/Baihua.Modules.Ai/Baihua.Modules.Ai.csproj services/Baihua.Modules.Ai/
+COPY services/Baihua.Modules.Vault/Baihua.Modules.Vault.csproj services/Baihua.Modules.Vault/
+COPY services/Baihua.Server/Baihua.Server.csproj services/Baihua.Server/
+COPY libs/MobileContract/MobileContract.csproj libs/MobileContract/
+RUN dotnet restore services/Baihua.Server/Baihua.Server.csproj -r linux-x64
+
+# 复制全部源码并发布
+COPY services/ services/
+COPY libs/ libs/
+RUN dotnet publish services/Baihua.Server/Baihua.Server.csproj \
+    -c Release -r linux-x64 --self-contained false -o /app/publish --no-restore
+
+# ==================== Runtime 阶段 ====================
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+# 健康检查用 curl，aspnet 基础镜像不带（Docker Desktop 构建需要外网；离线环境请在构建机放行或改用 wget）
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+
+COPY --from=build /app/publish .
+
+ARG GIT_COMMIT=unknown
+ARG GIT_BRANCH=unknown
+LABEL git.commit=$GIT_COMMIT
+LABEL git.branch=$GIT_BRANCH
+
+EXPOSE 8788
+
+ENV ASPNETCORE_URLS=http://0.0.0.0:8788
+ENV BAIHUA_HOME=/app/data
+ENV BAIHUA_SKIP_MUTEX=true
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8788/health || exit 1
+
+ENTRYPOINT ["dotnet", "bh-server.dll"]

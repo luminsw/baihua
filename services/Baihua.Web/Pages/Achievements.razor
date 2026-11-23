@@ -1,0 +1,413 @@
+@page "/achievements"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["Achievements_PageTitle"]</PageTitle>
+
+<div class="achievements-page">
+    <h1>🏆 @L["Achievements_Title"]</h1>
+
+    @if (!string.IsNullOrEmpty(celebrationText))
+    {
+        <div class="reward-celebration">@celebrationText</div>
+    }
+
+    <!-- 学习者选择 -->
+    <div class="learner-bar">
+        @foreach (var learner in learners)
+        {
+            <button class="learner-chip @(selectedLearnerId == learner.Id ? "active" : "")"
+                    style="--learner-color:@learner.Color"
+                    @onclick="() => SelectLearner(learner.Id)">
+                <span class="learner-avatar">@learner.AvatarEmoji</span>
+                <span>@learner.Name</span>
+                @if (learner.IsDefault)
+                {
+                    <span class="default-badge">@L["Achievements_DefaultBadge"]</span>
+                }
+            </button>
+        }
+        <button class="learner-chip add-learner" @onclick="ShowAddLearner">
+            <span>+ @L["Achievements_AddLearner"]</span>
+        </button>
+    </div>
+
+    @if (showAddForm)
+    {
+        <div class="add-learner-form">
+            <input type="text" class="form-control" @bind="newLearnerName" placeholder="@L["Achievements_NamePlaceholder"]" />
+            <input type="text" class="form-control" style="width:80px;" @bind="newLearnerEmoji" placeholder="👤" />
+            <input type="color" class="form-control" style="width:60px;padding:0;" @bind="newLearnerColor" />
+            <button class="btn btn-primary btn-sm" @onclick="AddLearner" disabled="@isAdding">@L["Achievements_AddBtn"]</button>
+            <button class="btn btn-secondary btn-sm" @onclick="() => showAddForm = false">@L["Common_Cancel"]</button>
+        </div>
+    }
+
+    <!-- FAM-31 家庭奖励进度（孩子视角进度条） -->
+    <section class="reward-section">
+        <h2>🎁 @L["Achievements_RewardTitle"]</h2>
+        @if (rewardProgress.Count == 0)
+        {
+            <div class="reward-empty">@L["Achievements_RewardEmpty"]</div>
+        }
+        else
+        {
+            @foreach (var reward in rewardProgress)
+            {
+                <div class="reward-item">
+                    <span class="reward-icon">@reward.RewardIcon</span>
+                    <div class="reward-body">
+                        <div class="reward-name">@reward.RewardName</div>
+                        @if (reward.IsAchieved)
+                        {
+                            <div class="reward-achieved">@L["Achievements_RewardAchieved"]</div>
+                        }
+                        else
+                        {
+                            <div class="reward-progress-text">
+                                @string.Format(L["Achievements_RewardProgress"], reward.CurrentValue, reward.TargetValue, reward.Remaining, reward.RewardIcon, reward.RewardName)
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar" style="width: @(reward.TargetValue > 0 ? (reward.CurrentValue * 100 / reward.TargetValue) : 0)%"></div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+        <!-- 家长添加奖励 -->
+        <div class="reward-add">
+            <input type="text" class="form-control form-control-sm" @bind="newRewardName" placeholder="@L["Achievements_RewardNamePlaceholder"]" />
+            <select class="form-select form-select-sm" @bind="newRewardType">
+                <option value="streak_days">@L["Achievements_RewardTypeStreak"]</option>
+                <option value="achievement_count">@L["Achievements_RewardTypeAchievements"]</option>
+                <option value="card_count">@L["Achievements_RewardTypeCards"]</option>
+            </select>
+            <input type="number" class="form-control form-control-sm" @bind="newRewardTarget" placeholder="@L["Achievements_RewardTargetPlaceholder"]" min="1" />
+            <button class="btn btn-primary btn-sm" @onclick="AddRewardAsync">@L["Achievements_AddReward"]</button>
+        </div>
+        @if (!string.IsNullOrEmpty(rewardFormError))
+        {
+            <div class="text-danger small mt-1">@rewardFormError</div>
+        }
+    </section>
+
+    <!-- 统计概览 -->
+    @if (achievements.Count > 0)
+    {
+        var unlocked = achievements.Count(a => a.IsUnlocked);
+        <div class="stats-overview">
+            <div class="stat-card">
+                <div class="stat-value">@unlocked / @achievements.Count</div>
+                <div class="stat-label">@L["Achievements_Unlocked"]</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">@achievements.Count(a => a.IsUnlocked && a.Tier == "gold")</div>
+                <div class="stat-label">@L["Achievements_Gold"]</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">@achievements.Count(a => a.IsUnlocked && a.Tier == "diamond")</div>
+                <div class="stat-label">@L["Achievements_Diamond"]</div>
+            </div>
+        </div>
+    }
+
+    <!-- 成就列表 -->
+    @if (isLoading)
+    {
+        <div class="loading">@L["Common_Loading"]</div>
+    }
+    else
+    {
+        <div class="achievement-grid">
+            @foreach (var ach in achievements)
+            {
+                <div class="achievement-card @(ach.IsUnlocked ? "unlocked tier-" + ach.Tier : "locked")">
+                    <div class="achievement-icon">@(ach.IsUnlocked ? ach.Icon : "🔒")</div>
+                    <div class="achievement-title">@ach.Title</div>
+                    <div class="achievement-desc">@ach.Description</div>
+                    @if (ach.IsUnlocked && ach.UnlockedAt.HasValue)
+                    {
+                        <div class="achievement-date">@ach.UnlockedAt.Value.ToString("yyyy-MM-dd")</div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .achievements-page { max-width: 900px; margin: 0 auto; padding: 1rem; }
+    .achievements-page h1 { margin-bottom: 1rem; }
+
+    .learner-bar {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+
+    .learner-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.75rem;
+        border-radius: 20px;
+        border: 2px solid transparent;
+        background: #e8eef2;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s;
+    }
+
+    .learner-chip.active {
+        border-color: var(--learner-color, #2e8baf);
+        background: color-mix(in srgb, var(--learner-color, #2e8baf) 15%, white);
+    }
+
+    .learner-avatar { font-size: 1.1rem; }
+
+    .default-badge {
+        font-size: 0.65rem;
+        background: var(--learner-color, #2e8baf);
+        color: white;
+        padding: 0.05rem 0.35rem;
+        border-radius: 8px;
+    }
+
+    .add-learner { color: #666; }
+
+    .add-learner-form {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding: 0.75rem;
+        background: #f5f8fa;
+        border-radius: 8px;
+    }
+
+    .add-learner-form .form-control {
+        padding: 0.4rem;
+        border: 1px solid #c8d4dc;
+        border-radius: 4px;
+        font-size: 0.9rem;
+    }
+
+    .stats-overview {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .stat-card {
+        text-align: center;
+        padding: 1rem;
+        background: white;
+        border: 1px solid #e8eef2;
+        border-radius: 8px;
+    }
+
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: #333; }
+    .stat-label { font-size: 0.8rem; color: #888; margin-top: 0.25rem; }
+
+    .achievement-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .achievement-card {
+        text-align: center;
+        padding: 1rem;
+        border-radius: 10px;
+        border: 1px solid #e8eef2;
+        background: white;
+        transition: transform 0.2s;
+    }
+
+    .achievement-card.locked {
+        opacity: 0.5;
+        filter: grayscale(0.8);
+    }
+
+    .achievement-card.unlocked {
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+
+    .achievement-card.tier-bronze { border-color: #cd7f32; }
+    .achievement-card.tier-silver { border-color: #a0a0a0; }
+    .achievement-card.tier-gold { border-color: #e0c860; background: #fffbea; }
+    .achievement-card.tier-diamond { border-color: #b9f2ff; background: #f0fdff; }
+
+    .achievement-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .achievement-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.25rem; }
+    .achievement-desc { font-size: 0.8rem; color: #666; }
+    .achievement-date { font-size: 0.75rem; color: #aaa; margin-top: 0.35rem; }
+    .loading { text-align: center; padding: 2rem; color: #888; }
+
+    /* FAM-31 奖励区 */
+    .reward-section { background: #fff; border: 1px solid #e8eef2; border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+    .reward-section h2 { font-size: 1.05rem; margin-bottom: 0.75rem; color: #333; }
+    .reward-empty { color: #888; font-size: 0.9rem; padding: 0.5rem 0; }
+    .reward-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px dashed #eef2f5; }
+    .reward-icon { font-size: 1.6rem; }
+    .reward-body { flex: 1; }
+    .reward-name { font-weight: 600; color: #333; }
+    .reward-achieved { color: #e67e22; font-weight: 600; font-size: 0.9rem; }
+    .reward-progress-text { color: #666; font-size: 0.85rem; margin: 0.2rem 0; }
+    .reward-item .progress { height: 8px; }
+    .reward-add { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; flex-wrap: wrap; }
+    .reward-add .form-control, .reward-add .form-select { width: auto; min-width: 120px; }
+
+    /* FAM-31 达成庆祝动画 */
+    .reward-celebration {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        background: linear-gradient(135deg, #ffd54f, #ffb300);
+        color: #5d4037; border-radius: 16px; padding: 1.5rem 2rem;
+        font-size: 1.2rem; font-weight: 700; text-align: center;
+        box-shadow: 0 8px 30px rgba(255, 179, 0, 0.4); z-index: 1200;
+        animation: celebration-pop 0.5s ease;
+    }
+    @@keyframes celebration-pop {
+        0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+        70% { transform: translate(-50%, -50%) scale(1.1); }
+        100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
+
+    /* FAM-32 响应式：手机 ≤768px（贴纸网格紧凑、Learner 栏可换行） */
+    @@media (max-width: 768px) {
+        .learner-bar { flex-wrap: wrap; gap: 0.35rem; }
+        .achievement-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.5rem; }
+        .achievement-icon { font-size: 1.6rem; }
+        .achievement-title { font-size: 0.85rem; }
+        .achievement-desc { font-size: 0.75rem; }
+        .add-learner-form { flex-wrap: wrap; }
+    }
+</style>
+
+@code {
+    private List<LearnerDto> learners = new();
+    private int selectedLearnerId;
+    private List<AchievementDto> achievements = new();
+    private bool isLoading = true;
+    private bool showAddForm = false;
+    private string newLearnerName = "";
+    private string newLearnerEmoji = "👤";
+    private string newLearnerColor = "#2e8baf";
+    private bool isAdding = false;
+
+    // FAM-31 家庭奖励
+    private List<RewardProgressDto> rewardProgress = new();
+    private string newRewardName = "";
+    private string newRewardType = "streak_days";
+    private int newRewardTarget = 7;
+    private string? celebrationText;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await LoadLearnersAsync();
+    }
+
+    private async Task LoadLearnersAsync()
+    {
+        learners = await ApiService.GetLearnersAsync();
+        var defaultLearner = learners.FirstOrDefault(l => l.IsDefault) ?? learners.FirstOrDefault();
+        if (defaultLearner != null)
+        {
+            selectedLearnerId = defaultLearner.Id;
+            await LoadAchievementsAsync();
+        }
+        else
+        {
+            isLoading = false;
+        }
+        await LoadRewardsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SelectLearner(int id)
+    {
+        selectedLearnerId = id;
+        isLoading = true;
+        await LoadAchievementsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAchievementsAsync()
+    {
+        isLoading = true;
+        achievements = await ApiService.GetAchievementsAsync(selectedLearnerId);
+        isLoading = false;
+    }
+
+    private void ShowAddLearner()
+    {
+        showAddForm = true;
+        newLearnerName = "";
+        newLearnerEmoji = "👤";
+        newLearnerColor = "#2e8baf";
+    }
+
+    private async Task AddLearner()
+    {
+        if (string.IsNullOrWhiteSpace(newLearnerName)) return;
+        isAdding = true;
+        await ApiService.CreateLearnerAsync(new CreateLearnerRequest
+        {
+            Name = newLearnerName.Trim(),
+            AvatarEmoji = newLearnerEmoji,
+            Color = newLearnerColor
+        });
+        showAddForm = false;
+        await LoadLearnersAsync();
+        isAdding = false;
+    }
+
+    // ===== FAM-31 家庭奖励 =====
+
+    private async Task LoadRewardsAsync()
+    {
+        rewardProgress = await ApiService.GetRewardProgressAsync();
+        // AC4：进入时检查并触发达成（每条件一次），新达成弹庆祝
+        var claims = await ApiService.TriggerRewardsAsync();
+        if (claims.Count > 0)
+        {
+            var first = claims[0];
+            celebrationText = $"🎉 达成奖励：{first.RewardIcon} {first.RewardName}！";
+            rewardProgress = await ApiService.GetRewardProgressAsync();
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(3000);
+            celebrationText = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task AddRewardAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newRewardName) || newRewardTarget <= 0)
+        {
+            // 空表单提交要给反馈（之前静默无反应）
+            rewardFormError = string.IsNullOrWhiteSpace(newRewardName)
+                ? L["Achievements_RewardNameRequired"].Value
+                : L["Achievements_RewardTargetInvalid"].Value;
+            return;
+        }
+        rewardFormError = "";
+        await ApiService.CreateRewardAsync(new CreateRewardRequest
+        {
+            ConditionType = newRewardType,
+            TargetValue = newRewardTarget,
+            RewardName = newRewardName.Trim(),
+            RewardIcon = "🎁"
+        });
+        newRewardName = "";
+        await LoadRewardsAsync();
+    }
+
+    private string rewardFormError = "";
+}

@@ -1,0 +1,28 @@
+@page "/knowledge"
+@inject NavigationManager Nav
+
+<PageTitle>获取知识</PageTitle>
+
+<div class="knowledge-tabs">
+    <button class="knowledge-tab @(_subTab == 0 ? "active" : "")" @onclick="() => SwitchTab(0)">花圃</button>
+    <button class="knowledge-tab @(_subTab == 1 ? "active" : "")" @onclick="() => SwitchTab(1)">配对</button>
+</div>
+
+@if (_subTab == 0)
+{
+    <SyncContent />
+}
+else
+{
+    <PairingContent />
+}
+
+@code {
+    private int _subTab;
+
+    private void SwitchTab(int tab)
+    {
+        _subTab = tab;
+        StateHasChanged();
+    }
+}

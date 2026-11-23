@@ -1,0 +1,332 @@
+@page "/server-messages"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Baihua.Contracts.ServerMessaging
+@using Baihua.Web.Services
+@using Microsoft.AspNetCore.SignalR.Client
+@inject ServerMessagingService MsgService
+@inject NavigationManager Navigation
+@inject Microsoft.Extensions.Logging.ILogger<ServerMessages> Logger
+@implements IDisposable
+
+<PageTitle>百花服务器互联</PageTitle>
+
+<div class="server-msg-page">
+<div class="server-msg-header">
+    <h1 class="h4 mb-0">🛰️ 百花服务器互联</h1>
+    <span class="text-secondary small">与其他百花服务器互发消息</span>
+</div>
+
+<div class="server-msg-layout">
+    <!-- 左：对端列表 -->
+    <div class="server-msg-sidebar">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-bold small">其它百花服务器（@_peers.Count）</span>
+            <button class="btn btn-sm btn-primary" @onclick="() => _showAddForm = !_showAddForm">＋ 添加</button>
+        </div>
+
+        @if (_showAddForm)
+        {
+            <div class="server-msg-addform">
+                <input class="form-control form-control-sm mb-1" placeholder="名称（如 家庭百花）" @bind="_newName" />
+                <input class="form-control form-control-sm mb-1" placeholder="地址（如 http://192.168.3.14/ 或 http://192.168.3.14:30080）" @bind="_newUrl" />
+                <input class="form-control form-control-sm mb-1" type="password" placeholder="共享口令（可选，留空用本机配置）" @bind="_newToken" />
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-primary" @onclick="AddPeerAsync" disabled="@_busy">保存</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showAddForm = false">取消</button>
+                </div>
+                @if (!string.IsNullOrEmpty(_peerError)) { <div class="text-danger small mt-1">@_peerError</div> }
+            </div>
+        }
+
+        <div class="server-msg-peerlist">
+            @if (_peers.Count == 0)
+            {
+                <div class="text-secondary small p-3 text-center">尚未登记其它百花服务器。<br />点击「添加」手动登记，<br />或等待局域网自动发现。</div>
+            }
+            @foreach (var peer in _peers)
+            {
+                <div class="server-msg-peer @(_selectedPeerId == peer.Id ? "active" : "")" @onclick="() => SelectPeerAsync(peer.Id)">
+                    <div class="d-flex justify-content-between align-items-center gap-2">
+                        <span class="fw-medium text-truncate">@peer.Name</span>
+                        <span class="d-flex align-items-center flex-shrink-0 gap-2">
+                            <span class="small text-secondary">@peer.Source</span>
+                            <button class="btn btn-sm btn-outline-danger server-msg-del" @onclick="() => DeletePeerAsync(peer.Id)" @onclick:stopPropagation="true" title="删除">🗑</button>
+                        </span>
+                    </div>
+                    <div class="small text-secondary text-truncate">@peer.BaseUrl</div>
+                    <div class="small text-secondary">
+                        @if (peer.LastSeenUtc.HasValue && peer.LastSeenUtc.Value > DateTime.UtcNow.AddMinutes(-5))
+                        { <span class="text-success">● 在线</span> }
+                        else
+                        { <span class="text-muted">○ 最近：@(peer.LastSeenUtc?.ToLocalTime().ToString("MM-dd HH:mm") ?? "从未")</span> }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="mt-2 text-muted small">
+            💡 两台服务器需都部署本功能；发消息会推送到对方的
+            <code>/mg/server-msg/inbox</code>（共享口令鉴权）。
+        </div>
+    </div>
+
+    <!-- 右：对话 -->
+    <div class="server-msg-chat">
+        @if (_selectedPeer == null)
+        {
+            <div class="text-center text-secondary py-5">选择左侧服务器开始聊天</div>
+        }
+        else
+        {
+            <div class="server-msg-chat-head">
+                <span class="fw-bold">@_selectedPeer.Name</span>
+                <span class="text-secondary small ms-2">@_selectedPeer.BaseUrl</span>
+            </div>
+
+            <div class="server-msg-thread" id="msg-thread">
+                @if (_messages.Count == 0)
+                {
+                    <div class="text-center text-secondary small py-4">暂无消息，发一条试试吧</div>
+                }
+                @foreach (var m in _messages)
+                {
+                    <div class="server-msg-bubble @(m.Direction == "out" ? "out" : "in")">
+                        <div class="server-msg-bubble-text">@m.Content</div>
+                        <div class="server-msg-bubble-time">
+                            @m.SentAtUtc.ToLocalTime().ToString("MM-dd HH:mm") @(m.Direction == "out" ? "· 我" : "")
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="server-msg-inputbar">
+                <textarea class="form-control server-msg-input" rows="3" placeholder="输入消息，Ctrl+Enter 发送，Enter 换行" @bind="_draft" @bind:event="oninput" @onkeydown="OnKeyDownAsync"></textarea>
+                <button class="btn btn-primary ms-2 server-msg-sendbtn" @onclick="SendAsync" disabled="@_busy">发送</button>
+            </div>
+            @if (!string.IsNullOrEmpty(_sendError)) { <div class="text-danger small px-3 pb-1">@_sendError</div> }
+        }
+    </div>
+</div>
+</div>
+
+<style>
+    /* === 主题变量：亮色 / 暗色（随全局 data-bs-theme 切换） === */
+    .server-msg-page {
+        --msg-border: #dee2e6;
+        --msg-surface-alt: #f5f7fa;
+        --msg-hover: rgba(46, 139, 175, 0.08);
+        --msg-active: rgba(46, 139, 175, 0.15);
+        --msg-in-bubble: #eef2f6;
+        --msg-text: #333333;
+        --msg-out-bubble: #2e8baf;
+        --msg-out-text: #ffffff;
+        --msg-muted: #888888;
+    }
+    [data-bs-theme="dark"] .server-msg-page {
+        --msg-border: rgba(255, 255, 255, 0.12);
+        --msg-surface-alt: rgba(255, 255, 255, 0.06);
+        --msg-hover: rgba(255, 255, 255, 0.05);
+        --msg-active: rgba(46, 139, 175, 0.28);
+        --msg-in-bubble: rgba(255, 255, 255, 0.09);
+        --msg-text: #ffffff;
+        --msg-out-bubble: #2e8baf;
+        --msg-out-text: #ffffff;
+        --msg-muted: rgba(255, 255, 255, 0.5);
+    }
+
+    .server-msg-header { padding: 0.75rem 1rem; border-bottom: 1px solid var(--msg-border); display: flex; align-items: baseline; gap: 0.75rem; }
+    .server-msg-layout { display: flex; height: calc(100vh - 130px); min-height: 420px; }
+    .server-msg-sidebar { width: 300px; min-width: 260px; border-right: 1px solid var(--msg-border); padding: 0.75rem; display: flex; flex-direction: column; overflow-y: auto; }
+    .server-msg-addform { background: var(--msg-surface-alt); padding: 0.6rem; border-radius: 8px; margin-bottom: 0.6rem; }
+    .server-msg-peerlist { flex: 1; overflow-y: auto; }
+    .server-msg-peer { padding: 0.55rem 0.65rem; border-radius: 8px; margin-bottom: 0.35rem; cursor: pointer; border: 1px solid transparent; }
+    .server-msg-peer:hover { background: var(--msg-hover); }
+    .server-msg-peer.active { background: var(--msg-active); border-color: rgba(46, 139, 175, 0.4); }
+    .server-msg-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .server-msg-chat-head { padding: 0.6rem 1rem; border-bottom: 1px solid var(--msg-border); }
+    .server-msg-thread { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .server-msg-bubble { max-width: 70%; }
+    .server-msg-bubble.in { align-self: flex-start; }
+    .server-msg-bubble.out { align-self: flex-end; }
+    .server-msg-bubble-text { padding: 0.5rem 0.8rem; border-radius: 12px; word-break: break-word; white-space: pre-wrap; }
+    .server-msg-bubble.in .server-msg-bubble-text { background: var(--msg-in-bubble); color: var(--msg-text); border-top-left-radius: 2px; }
+    .server-msg-bubble.out .server-msg-bubble-text { background: var(--msg-out-bubble); color: var(--msg-out-text); border-top-right-radius: 2px; }
+    .server-msg-bubble-time { font-size: 0.7rem; color: var(--msg-muted); margin-top: 2px; }
+    .server-msg-bubble.out .server-msg-bubble-time { text-align: right; }
+    .server-msg-inputbar { display: flex; align-items: flex-end; padding: 0.6rem 1rem; border-top: 1px solid var(--msg-border); }
+    .server-msg-input { resize: vertical; }
+    .server-msg-sendbtn { flex-shrink: 0; }
+</style>
+
+@code {
+    private List<ServerPeerDto> _peers = new();
+    private ServerPeerDto? _selectedPeer;
+    private Guid _selectedPeerId;
+    private List<ServerMessageDto> _messages = new();
+    private string _draft = "";
+    private string _newName = "";
+    private string _newUrl = "";
+    private string _newToken = "";
+    private string _peerError = "";
+    private string _sendError = "";
+    private bool _busy;
+    private bool _showAddForm;
+    private Timer? _timer;
+    private Microsoft.AspNetCore.SignalR.Client.HubConnection? _hub;
+    private readonly System.Threading.CancellationTokenSource _disposeCts = new();
+    private System.Threading.CancellationTokenSource? _refreshDebounceCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPeersAsync();
+        // 实时推送：对端消息经 SignalR 到达立即刷新（WebSocket 连不上时轮询兜底）
+        _ = StartHubAsync();
+        _timer = new Timer(async _ => await PollAsync(), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task StartHubAsync()
+    {
+        try
+        {
+            // 浏览器侧连接，走页面同源（traefik 把 /hubs/ 转发到 family）
+            var hubUrl = $"{Navigation.BaseUri.TrimEnd('/')}/hubs/server-messages";
+            _hub = new HubConnectionBuilder()
+                .WithUrl(hubUrl, o => { o.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets; o.SkipNegotiation = true; })
+                .WithAutomaticReconnect()
+                .Build();
+            _hub.On<object>("NewMessage", _ =>
+            {
+                var cts = new System.Threading.CancellationTokenSource();
+                var old = System.Threading.Interlocked.Exchange(ref _refreshDebounceCts, cts);
+                old?.Cancel();
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(300, cts.Token);
+                        await InvokeAsync(async () =>
+                        {
+                            await LoadPeersAsync();
+                            if (_selectedPeer != null)
+                                await LoadMessagesAsync(_selectedPeer.Id);
+                            StateHasChanged();
+                        });
+                    }
+                    catch (TaskCanceledException) { }
+                });
+            });
+            await _hub.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "服务器互联 Hub 连接失败（轮询兜底）");
+        }
+    }
+
+    private async Task PollAsync()
+    {
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadPeersAsync();
+                if (_selectedPeer != null)
+                    await LoadMessagesAsync(_selectedPeer.Id);
+                // Timer 回调不像事件处理器那样自动重渲染，必须显式刷新 UI，
+                // 否则对端新消息只在手动刷新页面后才显示
+                StateHasChanged();
+            });
+        }
+        catch { }
+    }
+
+    private async Task LoadPeersAsync()
+    {
+        _peers = await MsgService.GetPeersAsync();
+        if (_selectedPeerId != Guid.Empty && !_peers.Any(p => p.Id == _selectedPeerId))
+        {
+            _selectedPeer = null;
+            _selectedPeerId = Guid.Empty;
+            _messages = new List<ServerMessageDto>();
+        }
+    }
+
+    private async Task SelectPeerAsync(Guid peerId)
+    {
+        _selectedPeerId = peerId;
+        _selectedPeer = _peers.FirstOrDefault(p => p.Id == peerId);
+        await LoadMessagesAsync(peerId);
+    }
+
+    private async Task LoadMessagesAsync(Guid peerId)
+    {
+        _messages = await MsgService.GetMessagesAsync(peerId);
+    }
+
+    private async Task AddPeerAsync()
+    {
+        _busy = true;
+        _peerError = "";
+        try
+        {
+            var (ok, error, _) = await MsgService.AddPeerAsync(_newName, _newUrl, _newToken);
+            if (ok)
+            {
+                _showAddForm = false;
+                _newName = _newUrl = _newToken = "";
+                await LoadPeersAsync();
+            }
+            else
+            {
+                _peerError = error ?? "添加失败";
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeletePeerAsync(Guid peerId)
+    {
+        if (_selectedPeerId == peerId) { _selectedPeer = null; _selectedPeerId = Guid.Empty; }
+        await MsgService.DeletePeerAsync(peerId);
+        await LoadPeersAsync();
+    }
+
+    private async Task SendAsync()
+    {
+        var content = _draft.Trim();
+        if (string.IsNullOrEmpty(content) || _selectedPeerId == Guid.Empty) return;
+        _busy = true;
+        _sendError = "";
+        try
+        {
+            var (ok, error) = await MsgService.SendMessageAsync(_selectedPeerId, content);
+            if (ok)
+            {
+                _draft = "";
+                await LoadMessagesAsync(_selectedPeerId);
+            }
+            else
+            {
+                _sendError = error ?? "发送失败";
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OnKeyDownAsync(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        // 多行输入：Enter 换行；Ctrl+Enter（或 Mac 的 Cmd+Enter）发送
+        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey))
+        {
+            await SendAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+        _disposeCts.Cancel();
+        _refreshDebounceCts?.Cancel();
+        _hub?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+}

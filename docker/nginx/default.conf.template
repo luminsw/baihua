@@ -1,0 +1,119 @@
+# 百花 Docker 部署 Nginx 模板化配置
+# 此模板由 nginx 官方 entrypoint 用 envsubst 渲染为 /etc/nginx/conf.d/default.conf
+# 容器启动时通过环境变量替换 ${BAIHUA_*} 占位符
+#
+# 设计目标：
+#   - 默认监听 80 端口（浏览器输入 http://<ip> 直达 WebUI）
+#   - 所有移动端流量必须经单一后端 Baihua.Server :8788 鉴权（HMAC + 已配对设备），无旁路
+#   - 通过 .env 可调监听端口、WebUI 前缀、客户端最大上传体积
+#   - 静态资源缓存、WebSocket/SSE 长超时
+
+server {
+    listen ${BAIHUA_NGINX_PORT};
+    server_name _;
+    client_max_body_size ${BAIHUA_NGINX_CLIENT_MAX_BODY_SIZE};
+
+    # ==============================================================
+    # 安全头部（家庭版不强制 HTTPS，但防点击劫持/MIME 嗅探）
+    # ==============================================================
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # ==============================================================
+    # 1. Blazor 静态资源（带 hash 的文件名 → 1 年强缓存）
+    #    优先级最高，提前命中可减轻 Kestrel 压力
+    # ==============================================================
+    location ^~ ${BAIHUA_WEBUI_PREFIX}/_framework/ {
+        proxy_pass http://127.0.0.1:5177${BAIHUA_WEBUI_PREFIX}/_framework/;
+        include /etc/nginx/server-proxy-headers.conf;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    location ^~ ${BAIHUA_WEBUI_PREFIX}/css/ {
+        proxy_pass http://127.0.0.1:5177${BAIHUA_WEBUI_PREFIX}/css/;
+        include /etc/nginx/server-proxy-headers.conf;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # ==============================================================
+    # 2. Blazor SignalR Hub（WebSocket Upgrade + 长超时）
+    #    最长前缀匹配优先于下方的 /hubs/
+    # ==============================================================
+    location ${BAIHUA_WEBUI_PREFIX}/hubs/status {
+        proxy_pass http://127.0.0.1:5177${BAIHUA_WEBUI_PREFIX}/hubs/status;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        include /etc/nginx/server-proxy-headers.conf;
+        proxy_read_timeout 86400;
+        proxy_buffering off;
+    }
+
+    # ==============================================================
+    # 3. 移动端 API（Baihua.Server 统一鉴权入口）
+    #    关键：/mg/* /ws/devices /api/ai/chat 等必须先到后端（8788），
+    #    合并后后端只有一个进程，鉴权与业务在同一进程内完成
+    # ==============================================================
+    location /mg/ {
+        proxy_pass http://127.0.0.1:8788/mg/;
+        include /etc/nginx/server-proxy-headers.conf;
+        proxy_read_timeout 600;   # 大文件同步 10 分钟
+    }
+
+    # 配对码/配对页（PairController 同时注册 /pair /vault/pair /mg/pair）
+    location = /pair {
+        proxy_pass http://127.0.0.1:8788/pair;
+        include /etc/nginx/server-proxy-headers.conf;
+    }
+    location = /pair/code {
+        proxy_pass http://127.0.0.1:8788/pair/code;
+        include /etc/nginx/server-proxy-headers.conf;
+    }
+    location = /vault/pair {
+        proxy_pass http://127.0.0.1:8788/vault/pair;
+        include /etc/nginx/server-proxy-headers.conf;
+    }
+
+    # 移动端设备推送 WebSocket（SDK 实际路径，不是 /ws/push）
+    location /ws/devices {
+        proxy_pass http://127.0.0.1:8788/ws/devices;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        include /etc/nginx/server-proxy-headers.conf;
+        proxy_read_timeout 86400;
+        proxy_buffering off;
+    }
+
+    # 管理侧 API + /api/ai/chat（AI 对话 SSE 必须关缓冲）
+    location /api/ {
+        proxy_pass http://127.0.0.1:8788/api/;
+        include /etc/nginx/server-proxy-headers.conf;
+        proxy_read_timeout 3600;  # AI 长对话/SSE
+        proxy_buffering off;      # SSE 流式响应必须关缓冲
+    }
+
+    # SignalR hubs（task-progress/devices/server-messages）
+    location /hubs/ {
+        proxy_pass http://127.0.0.1:8788/hubs/;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        include /etc/nginx/server-proxy-headers.conf;
+        proxy_read_timeout 86400;
+        proxy_buffering off;
+    }
+
+    # ==============================================================
+    # 4. WebUI 根路径（放最后，最短匹配优先级最低）
+    #    注意：proxy_pass 尾部 / 会自动剥掉 BAIHUA_WEBUI_PREFIX
+    # ==============================================================
+    location ${BAIHUA_WEBUI_PREFIX}/ {
+        proxy_pass http://127.0.0.1:5177/;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $http_connection;   # Blazor 推荐写法
+        include /etc/nginx/server-proxy-headers.conf;
+        proxy_read_timeout 86400;
+        proxy_buffering off;
+        proxy_cache_bypass $http_upgrade;
+    }
+}

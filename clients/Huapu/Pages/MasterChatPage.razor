@@ -1,0 +1,550 @@
+@page "/master-chat/{MasterId}"
+@inject IMasterService MasterService
+@inject NavigationManager Nav
+@inject IJSRuntime JSRuntime
+
+<PageTitle>@_profile?.MasterId - 拜师聊天</PageTitle>
+
+<div class="chat-page">
+    @if (_showDisclaimer)
+    {
+        <div class="disclaimer-overlay">
+            <div class="disclaimer-dialog">
+                <div class="disclaimer-icon">⚠️</div>
+                <div class="disclaimer-title">学习辅助声明</div>
+                <div class="disclaimer-text">
+                    <p>本应用提供的 AI 师父仅用于学习辅助，<strong>不能</strong>提供：</p>
+                    <ul>
+                        <li>真实的医疗诊断或处方</li>
+                        <li>真实的法律建议或代理</li>
+                        <li>其他需要专业资质的服务</li>
+                    </ul>
+                    <p>如有真实需求，请咨询持证专业人士。</p>
+                    @if (_isMedicalOrLegal)
+                    {
+                        <p class="disclaimer-warning">⚠️ 您选择的行业涉及医疗/法律，请确认您已年满 18 周岁。</p>
+                        <label class="disclaimer-checkbox">
+                            <input type="checkbox" @bind="_confirmedAge" />
+                            我已年满 18 周岁
+                        </label>
+                    }
+                    <label class="disclaimer-checkbox">
+                        <input type="checkbox" @bind="_confirmedDisclaimer" />
+                        我已阅读并同意以上声明
+                    </label>
+                </div>
+                <div class="disclaimer-actions">
+                    <button class="btn btn-primary" @onclick="@AcceptDisclaimerAsync" disabled="@(!CanAcceptDisclaimer)">我已了解，继续使用</button>
+                </div>
+            </div>
+        </div>
+    }
+    else if (_isLoading && _profile == null)
+    {
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <div class="loading-text">正在加载...</div>
+        </div>
+    }
+    else if (_loadError)
+    {
+        <div class="error-state">
+            <div class="error-icon">⚠️</div>
+            <div class="error-msg">加载失败</div>
+            <div class="error-detail">@_errorMessage</div>
+            <div class="error-actions">
+                <button class="btn btn-primary" @onclick="@ReloadProfileAsync">重试</button>
+                <button class="btn" @onclick="@GoBack">返回</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="chat-header">
+            <button class="btn-icon" @onclick="@GoBack" title="返回">&larr;</button>
+            <div class="header-info" @onclick="@GoToProfile" title="查看画像">
+                <span class="master-name">@_profile?.MasterId</span>
+                <span class="master-stage">@_profile?.CurrentStage · @_profile?.Goal</span>
+            </div>
+            <div class="header-actions">
+                <button class="btn-icon" @onclick="@GoToProfile" title="学徒画像">👤</button>
+                <button class="btn-icon" @onclick="@GoToStage" title="阶段进度">📊</button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_stageTip))
+        {
+            <div class="chat-tip">
+                <span class="tip-icon">💡</span>
+                <span>@_stageTip</span>
+            </div>
+        }
+
+        @if (_aiCheckDone && !_aiConfigured)
+        {
+            <div class="ai-warning-banner">
+                <div class="ai-warning-icon">⚠️</div>
+                <div class="ai-warning-content">
+                    <strong>AI 服务未配置</strong>
+                    <span>请在管理面板中配置 AI 模型和 API Key</span>
+                </div>
+            </div>
+        }
+
+        <div class="chat-messages" @ref="_chatContainer">
+            @if (_messages.Count == 0 && !_isSending)
+            {
+                <div class="empty-chat">
+                    <div class="empty-icon">@GetAvatar()</div>
+                    <div class="empty-greeting">你好，我是 @_profile?.MasterId</div>
+                    <div class="empty-hint">很高兴能指导你学习 @_profile?.Goal</div>
+                    <div class="empty-suggestions">
+                        <button class="suggestion-btn" @onclick="@AskHowToStart">我该如何开始学习？</button>
+                        <button class="suggestion-btn" @onclick="@AskEvaluateLevel">请评估一下我的水平</button>
+                        <button class="suggestion-btn" @onclick="@AskMakePlan">制定一个学习计划</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                @foreach (var msg in _messages)
+                {
+                    <div class="message @(msg.IsUser ? "user" : "master")">
+                        <div class="message-avatar">
+                            @(msg.IsUser ? "我" : GetAvatar())
+                        </div>
+                        <div class="message-content">
+                            @if (msg.IsUser)
+                            {
+                                <div class="message-text">@msg.Content</div>
+                            }
+                            else
+                            {
+                                <div class="message-text">
+                                    <MarkdownView Content="@msg.Content" />
+                                </div>
+                            }
+                            <div class="message-time">@msg.Time.ToString("HH:mm")</div>
+                        </div>
+                    </div>
+                }
+                @if (_isSending && string.IsNullOrEmpty(_streamingText))
+                {
+                    <div class="message master">
+                        <div class="message-avatar">@GetAvatar()</div>
+                        <div class="message-content">
+                            <div class="typing-indicator">
+                                <span></span><span></span><span></span>
+                            </div>
+                        </div>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_streamingText))
+                {
+                    <div class="message master">
+                        <div class="message-avatar">@GetAvatar()</div>
+                        <div class="message-content">
+                            <div class="message-text streaming">@_streamingText</div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(_sendError))
+        {
+            <div class="error-banner">
+                <span>⚠️ @_sendError</span>
+                <button class="btn-icon" @onclick="@ClearSendError">&times;</button>
+            </div>
+        }
+
+        <div class="chat-input-area">
+            <div class="chat-input">
+                <textarea @bind="_inputMessage"
+                          placeholder="向师父提问..."
+                          @onkeydown="@HandleKeyDown"
+                          class="form-control"
+                          rows="1"
+                          disabled="@_isSending"></textarea>
+                @if (_isSending)
+                {
+                    <button class="btn btn-danger" @onclick="@StopChat">停止</button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="@SendMessage" disabled="@(!CanSend)">发送</button>
+                }
+            </div>
+            <div class="input-hint">@(_isSending ? "师父正在思考中..." : "Enter 发送，Shift+Enter 换行")</div>
+        </div>
+    }
+</div>
+
+<style>
+    .chat-page { display: flex; flex-direction: column; height: 100vh; }
+    .loading-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--primary-color); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .loading-text { margin-top: 1rem; color: var(--text-secondary); }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .error-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; }
+    .error-icon { font-size: 48px; margin-bottom: 0.5rem; }
+    .error-msg { font-size: 1.1rem; font-weight: 500; margin-bottom: 0.25rem; }
+    .error-detail { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem; text-align: center; }
+    .error-actions { display: flex; gap: 0.75rem; }
+    .chat-header { display: flex; align-items: center; padding: 0.75rem 1rem; background: var(--card-bg); border-bottom: 1px solid var(--border); }
+    .btn-icon { background: none; border: none; font-size: 1.1rem; cursor: pointer; padding: 0.5rem; color: var(--text-primary); }
+    .header-info { flex: 1; cursor: pointer; }
+    .header-info:active { opacity: 0.7; }
+    .master-name { font-weight: 600; font-size: 1rem; display: block; }
+    .master-stage { font-size: 0.8rem; color: var(--text-tertiary); }
+    .header-actions { display: flex; gap: 0.25rem; }
+    .chat-tip { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: rgba(46,139,175,0.1); font-size: 0.85rem; color: var(--text-secondary); }
+    .tip-icon { font-size: 1rem; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+    .empty-chat { text-align: center; padding: 3rem 1rem; }
+    .empty-chat .empty-icon { font-size: 48px; margin: 0 auto 0.75rem; width: 64px; height: 64px; background: var(--surface-alt); border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+    .empty-greeting { font-size: 1.1rem; font-weight: 500; margin-bottom: 0.25rem; }
+    .empty-hint { color: var(--text-secondary); margin-bottom: 1.5rem; }
+    .empty-suggestions { display: flex; flex-direction: column; gap: 0.5rem; max-width: 280px; margin: 0 auto; }
+    .suggestion-btn { padding: 0.6rem 1rem; background: var(--card-bg); border: 1px solid var(--border); border-radius: 20px; color: var(--text-primary); font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
+    .suggestion-btn:active { transform: scale(0.98); background: var(--surface-alt); }
+    .message { display: flex; gap: 0.5rem; max-width: 85%; }
+    .message.user { align-self: flex-end; flex-direction: row-reverse; }
+    .message.master { align-self: flex-start; }
+    .message-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; flex-shrink: 0; font-weight: 500; }
+    .message.user .message-avatar { background: var(--primary-color); color: white; }
+    .message.master .message-avatar { background: var(--surface-alt); }
+    .message-content { max-width: 100%; }
+    .message-text { padding: 0.6rem 0.85rem; border-radius: 12px; line-height: 1.5; font-size: 0.95rem; white-space: pre-wrap; word-break: break-word; }
+    .message.user .message-text { background: var(--primary-color); color: white; border-bottom-right-radius: 4px; }
+    .message.master .message-text { background: var(--surface-alt); color: var(--text-primary); border-bottom-left-radius: 4px; }
+    .message-text.streaming::after { content: '▊'; animation: blink 1s infinite; }
+    .message-time { font-size: 0.7rem; color: var(--text-tertiary); margin-top: 0.25rem; }
+    .typing-indicator { display: flex; gap: 4px; padding: 0.6rem 0.85rem; background: var(--surface-alt); border-radius: 12px; }
+    .typing-indicator span { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); animation: typing 1.4s infinite; }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    .error-banner { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; background: rgba(244,67,54,0.1); color: #f44336; font-size: 0.85rem; }
+    .chat-input-area { background: var(--card-bg); border-top: 1px solid var(--border); }
+    .chat-input { display: flex; gap: 0.5rem; padding: 0.75rem 1rem 0.25rem; }
+    .chat-input .form-control { flex: 1; resize: none; min-height: 36px; max-height: 120px; overflow-y: auto; padding: 0.5rem 0.85rem; border-radius: 20px; }
+    .input-hint { padding: 0 1rem 0.5rem; font-size: 0.75rem; color: var(--text-tertiary); text-align: center; }
+    @@keyframes blink { 50% { opacity: 0; } }
+    @@keyframes typing { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-6px); opacity: 1; } }
+    .disclaimer-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+    .disclaimer-dialog { background: var(--card-bg); border-radius: 16px; padding: 1.5rem; max-width: 340px; width: 100%; border: 1px solid var(--border); }
+    .disclaimer-icon { font-size: 48px; text-align: center; margin-bottom: 0.75rem; }
+    .disclaimer-title { font-size: 1.2rem; font-weight: 600; text-align: center; margin-bottom: 1rem; }
+    .disclaimer-text { font-size: 0.9rem; line-height: 1.6; color: var(--text-secondary); }
+    .disclaimer-text ul { padding-left: 1.2rem; margin: 0.5rem 0; }
+    .disclaimer-text li { margin-bottom: 0.25rem; }
+    .disclaimer-warning { color: #ff9800; font-weight: 500; margin-top: 0.75rem; padding: 0.5rem; background: rgba(255,152,0,0.1); border-radius: 8px; }
+    .disclaimer-checkbox { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; }
+    .disclaimer-checkbox input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary-color); }
+    .disclaimer-actions { margin-top: 1.25rem; }
+    .disclaimer-actions .btn { width: 100%; }
+    .ai-warning-banner { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: rgba(255,152,0,0.15); border-bottom: 1px solid rgba(255,152,0,0.3); }
+    .ai-warning-icon { font-size: 1.5rem; }
+    .ai-warning-content strong { display: block; color: #ff9800; font-size: 0.9rem; margin-bottom: 0.15rem; }
+    .ai-warning-content span { font-size: 0.8rem; color: var(--text-secondary); }
+</style>
+
+@code {
+    [Parameter] public string MasterId { get; set; } = "";
+
+    private ApprenticeProfileResponse? _profile;
+    private List<ChatMessage> _messages = new();
+    private string _inputMessage = "";
+    private string _streamingText = "";
+    private string _sendError = "";
+    private bool _isSending;
+    private bool _isLoading = true;
+    private bool _loadError;
+    private string _errorMessage = "";
+    private CancellationTokenSource? _cts;
+    private ElementReference _chatContainer;
+
+    private bool _showDisclaimer;
+    private bool _isMedicalOrLegal;
+    private bool _confirmedAge;
+    private bool _confirmedDisclaimer;
+    private bool _aiConfigured = true;
+    private bool _aiCheckDone;
+
+    private bool CanAcceptDisclaimer => _confirmedDisclaimer && (!_isMedicalOrLegal || _confirmedAge);
+    private bool CanSend => !_isSending && !string.IsNullOrWhiteSpace(_inputMessage) && _aiConfigured;
+
+    private static readonly string[] UnsafeKeywords = ["真实诊断", "开处方", "开药方", "真实法律建议", "代理诉讼", "医疗诊断", "处方药", "手术方案", "法律代理"];
+    private const string SafetyWarning = "\n\n⚠️ 以上内容仅供参考，不构成专业医疗/法律意见，请以权威资源为准。";
+
+    private static string SanitizeInput(string input, int maxLength = 2000) =>
+        string.Concat(input.Take(maxLength)).Replace("\n", " ").Replace("\r", " ").Replace("【", " ").Replace("】", " ").Trim();
+
+    private static string ApplySafetyFilter(string text)
+    {
+        foreach (var kw in UnsafeKeywords)
+            if (text.Contains(kw, StringComparison.OrdinalIgnoreCase))
+                return text + SafetyWarning;
+        return text;
+    }
+    private string GetAvatar() => !string.IsNullOrEmpty(_profile?.MasterId) ? _profile.MasterId[..1].ToString() : "师";
+    private string _stageTip = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(MasterId))
+        {
+            await ReloadProfileAsync();
+            if (_profile != null)
+            {
+                _isMedicalOrLegal = IsMedicalOrLegalIndustry(_profile.Industry);
+                var accepted = await MasterService.GetDisclaimerAcceptedAsync(MasterId);
+                if (!accepted)
+                {
+                    _showDisclaimer = true;
+                    StateHasChanged();
+                }
+
+                try
+                {
+                    _aiConfigured = await MasterService.CheckAiConfiguredAsync();
+                }
+                catch
+                {
+                    _aiConfigured = true;
+                }
+                _aiCheckDone = true;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task AcceptDisclaimerAsync()
+    {
+        _showDisclaimer = false;
+        if (!string.IsNullOrEmpty(MasterId))
+        {
+            await MasterService.SetDisclaimerAcceptedAsync(MasterId);
+        }
+        StateHasChanged();
+    }
+
+    private static bool IsMedicalOrLegalIndustry(string? industry)
+    {
+        if (string.IsNullOrEmpty(industry)) return false;
+        var lower = industry.ToLowerInvariant();
+        return lower.Contains("医") || lower.Contains("药") || lower.Contains("法") || lower.Contains("律");
+    }
+
+    private void GoBack()
+    {
+        Nav.NavigateTo("/master-list");
+    }
+
+    private void GoToStage()
+    {
+        if (_profile != null)
+            Nav.NavigateTo($"/master-stage/{_profile.MasterId}");
+    }
+
+    private void GoToProfile()
+    {
+        if (_profile != null)
+            Nav.NavigateTo($"/master-profile/{_profile.MasterId}");
+    }
+
+    private async Task ReloadProfileAsync()
+    {
+        _isLoading = true;
+        _loadError = false;
+        _errorMessage = "";
+        try
+        {
+            _profile = await MasterService.GetProfileAsync(MasterId, useCache: false);
+            _stageTip = GetStageTip(_profile.CurrentStage);
+
+            List<ChatHistoryItem> history = new();
+            try
+            {
+                history = await MasterService.GetConversationsFromServerAsync(MasterId, limit: 50);
+            }
+            catch
+            {
+                history = await MasterService.GetConversationHistoryAsync(MasterId, limit: 50);
+            }
+
+            if (_messages.Count == 0 && history.Count > 0)
+            {
+                foreach (var h in history)
+                {
+                    _messages.Add(new ChatMessage
+                    {
+                        Id = $"{h.Role}_{DateTime.Now:HH:mm:ss}",
+                        IsUser = h.Role == "user",
+                        Content = h.Content,
+                        Time = h.CreatedAt
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadError = true;
+            _errorMessage = ex.Message;
+            System.Diagnostics.Debug.WriteLine($"Load profile failed: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void AskHowToStart()
+    {
+        QuickAsk("我该如何开始学习？");
+    }
+
+    private void AskEvaluateLevel()
+    {
+        QuickAsk("请评估一下我的水平");
+    }
+
+    private void AskMakePlan()
+    {
+        QuickAsk("制定一个学习计划");
+    }
+
+    private void QuickAsk(string question)
+    {
+        _inputMessage = question;
+        _ = SendMessage();
+    }
+
+    private void ClearSendError()
+    {
+        _sendError = "";
+        StateHasChanged();
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_inputMessage) || _profile == null)
+            return;
+
+        if (!_aiConfigured)
+        {
+            _sendError = "AI 服务未配置，请先在管理面板中配置 AI 模型和 API Key";
+            StateHasChanged();
+            return;
+        }
+
+        _sendError = "";
+        var userText = SanitizeInput(_inputMessage.Trim());
+        _inputMessage = "";
+        _isSending = true;
+        _streamingText = "";
+
+        _messages.Add(new ChatMessage
+        {
+            Id = $"user_{DateTime.Now:HH:mm:ss}",
+            IsUser = true,
+            Content = userText,
+            Time = DateTime.Now
+        });
+        StateHasChanged();
+        await ScrollToBottomAsync();
+
+        _cts = new CancellationTokenSource();
+        try
+        {
+            await foreach (var chunk in MasterService.StreamChatAsync(
+                MasterId, userText, _profile.CurrentStage, null, _cts.Token))
+            {
+                _streamingText += chunk;
+                StateHasChanged();
+                await ScrollToBottomAsync();
+            }
+
+            if (!string.IsNullOrEmpty(_streamingText))
+            {
+                _messages.Add(new ChatMessage
+                {
+                    Id = $"master_{DateTime.Now:HH:mm:ss}",
+                    IsUser = false,
+                    Content = ApplySafetyFilter(_streamingText),
+                    Time = DateTime.Now
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (!string.IsNullOrEmpty(_streamingText))
+                _streamingText += "\n\n（已停止）";
+            else
+                _streamingText = "（已停止）";
+        }
+        catch (HttpRequestException ex)
+        {
+            _sendError = $"网络请求失败：{ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _sendError = $"发送失败：{ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"Send message failed: {ex.Message}");
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(_streamingText) && _messages.LastOrDefault()?.IsUser == true)
+            {
+                _messages.Add(new ChatMessage
+                {
+                    Id = $"master_{DateTime.Now:HH:mm:ss}",
+                    IsUser = false,
+                    Content = _streamingText,
+                    Time = DateTime.Now
+                });
+            }
+            _streamingText = "";
+            _isSending = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+            await ScrollToBottomAsync();
+        }
+    }
+
+    private void StopChat()
+    {
+        try { _cts?.Cancel(); } catch { }
+    }
+
+    private async Task ScrollToBottomAsync()
+    {
+        await Task.Delay(100);
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "setTimeout(() => { var el = document.querySelector('.chat-messages'); if (el) el.scrollTop = el.scrollHeight; }, 0);");
+        }
+        catch { }
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            _ = SendMessage();
+        }
+    }
+
+    private static string GetStageTip(string stage) => stage switch
+    {
+        "入道" => "第一阶段：师父将了解你的背景和学习目标，制定学习方案。",
+        "筑基" => "第二阶段：师父将聚焦基础知识，安排日常练习和作业。",
+        "精进" => "第三阶段：师父会严格要求，纠正每一个错误，确保学习质量。",
+        "磨砺" => "第四阶段：师父将模拟真实考试环境，进行实战演练。",
+        "出师" => "第五阶段：师父将分享考试技巧和实战经验，助你顺利出师。",
+        _ => ""
+    };
+}

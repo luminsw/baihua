@@ -1,0 +1,310 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+@if (showPopup)
+{
+    <div class="health-check-overlay" @onclick="Dismiss">
+        <div class="health-check-popup" @onclick:stopPropagation="true">
+            <div class="health-check-header">
+                <span class="health-icon">🌿</span>
+                <h3>@L["DailyHealth_Title"]</h3>
+                <p class="health-subtitle">@L["DailyHealth_Subtitle"]</p>
+            </div>
+
+            <div class="health-symptoms">
+                @foreach (var symptom in quickSymptoms)
+                {
+                    <button class="symptom-chip @(selectedSymptom == symptom ? "selected" : "")"
+                            @onclick="() => SelectSymptom(symptom)">
+                        @symptom
+                    </button>
+                }
+            </div>
+
+            <div class="health-custom">
+                <input type="text" class="form-control"
+                       placeholder="@L["DailyHealth_SymptomPlaceholder"]"
+                       @bind="customSymptom"
+                       @bind:event="oninput"
+                       @onkeypress="OnKeyPress" />
+            </div>
+
+            <div class="health-actions">
+                <button class="btn-health-learn" @onclick="LearnMore" disabled="@string.IsNullOrWhiteSpace(SearchQuery)">
+                    @L["DailyHealth_LearnMore"]
+                </button>
+                <div class="health-actions-secondary">
+                    <button class="btn-health-dismiss" @onclick="DismissForToday">
+                        @L["DailyHealth_DismissToday"]
+                    </button>
+                    <button class="btn-health-forever" @onclick="DismissForever" title="@L["DailyHealth_DismissForeverTitle"]">
+                        @L["DailyHealth_DismissForever"]
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .health-check-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        animation: fadeIn 0.3s ease;
+    }
+
+    .health-check-popup {
+        background: linear-gradient(160deg, #f0f8f2 0%, #ffffff 55%);
+        border: 1px solid #b8dcc0;
+        border-radius: 16px;
+        padding: 1.75rem;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 12px 40px rgba(34, 197, 94, 0.18);
+        animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .health-check-header {
+        text-align: center;
+        margin-bottom: 1.25rem;
+    }
+
+    .health-icon {
+        font-size: 2.5rem;
+        display: block;
+        margin-bottom: 0.5rem;
+    }
+
+    .health-check-header h3 {
+        margin: 0;
+        font-size: 1.25rem;
+        color: #3d6b45;
+    }
+
+    .health-subtitle {
+        margin: 0.25rem 0 0;
+        font-size: 0.9rem;
+        color: #4a7c59;
+    }
+
+    .health-symptoms {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        justify-content: center;
+    }
+
+    .symptom-chip {
+        padding: 0.4rem 0.9rem;
+        border: 1px solid #d0e8d5;
+        border-radius: 20px;
+        background: #f0f8f2;
+        color: #3d6b45;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .symptom-chip:hover {
+        background: #e0f0e5;
+        border-color: #b8dcc0;
+    }
+
+    .symptom-chip.selected {
+        background: #6b9e75;
+        color: #fff;
+        border-color: #6b9e75;
+    }
+
+    .health-custom {
+        margin-bottom: 1.25rem;
+    }
+
+    .health-custom input {
+        width: 100%;
+        padding: 0.6rem 0.9rem;
+        border: 1px solid #d0e8d5;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        background: #fff;
+    }
+
+    .health-custom input:focus {
+        outline: none;
+        border-color: #6b9e75;
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+    }
+
+    .health-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .btn-health-learn {
+        width: 100%;
+        padding: 0.7rem;
+        border: none;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #6b9e75, #16a34a);
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .btn-health-learn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(34, 197, 94, 0.35);
+    }
+
+    .btn-health-learn:disabled {
+        background: #f0e0e8;
+        color: #a0aeb6;
+        cursor: not-allowed;
+    }
+
+    .health-actions-secondary {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .btn-health-dismiss,
+    .btn-health-forever {
+        flex: 1;
+        padding: 0.5rem;
+        border: 1px solid #f0e0e8;
+        border-radius: 8px;
+        background: #fff;
+        color: #666;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-health-dismiss:hover {
+        background: #e8eef2;
+        border-color: #c8d4dc;
+    }
+
+    .btn-health-forever:hover {
+        background: #fdf0f0;
+        border-color: #c8dde8;
+        color: #c94c4c;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @@keyframes slideUp {
+        from { opacity: 0; transform: translateY(30px) scale(0.95); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+</style>
+
+@code {
+    private bool showPopup = false;
+    private string selectedSymptom = "";
+    private string customSymptom = "";
+
+    private List<string> quickSymptoms = new();
+
+    protected override void OnInitialized()
+    {
+        quickSymptoms = new()
+        {
+            L["DailyHealth_Symptom_Headache"],
+            L["DailyHealth_Symptom_Cough"],
+            L["DailyHealth_Symptom_Stomachache"],
+            L["DailyHealth_Symptom_Insomnia"],
+            L["DailyHealth_Symptom_Fatigue"],
+            L["DailyHealth_Symptom_FireHeat"]
+        };
+    }
+
+    private string SearchQuery => !string.IsNullOrWhiteSpace(selectedSymptom)
+        ? selectedSymptom
+        : customSymptom?.Trim() ?? "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            var forever = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "dailyHealthDismissedForever");
+            if (forever == "true") return;
+
+            var today = DateTime.Now.ToString("yyyy-MM-dd");
+            var dismissedDate = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "dailyHealthDismissedDate");
+            if (dismissedDate == today) return;
+
+            // 延迟 1.5 秒弹出，避免页面刚打开就打断用户
+            await Task.Delay(1500);
+            showPopup = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* localStorage 可能不可用 */ }
+    }
+
+    private void SelectSymptom(string symptom)
+    {
+        selectedSymptom = selectedSymptom == symptom ? "" : symptom;
+        if (!string.IsNullOrEmpty(selectedSymptom))
+            customSymptom = "";
+    }
+
+    private void OnKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            _ = LearnMore();
+        }
+    }
+
+    private async Task LearnMore()
+    {
+        var query = SearchQuery;
+        if (string.IsNullOrWhiteSpace(query)) return;
+
+        await DismissForToday();
+        Navigation.NavigateTo($"/search?q={Uri.EscapeDataString(query)}");
+    }
+
+    private async Task DismissForToday()
+    {
+        showPopup = false;
+        try
+        {
+            var today = DateTime.Now.ToString("yyyy-MM-dd");
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "dailyHealthDismissedDate", today);
+        }
+        catch { }
+    }
+
+    private async Task DismissForever()
+    {
+        showPopup = false;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "dailyHealthDismissedForever", "true");
+        }
+        catch { }
+    }
+
+    private void Dismiss()
+    {
+        // 点击遮罩不关闭，必须明确选择
+    }
+}

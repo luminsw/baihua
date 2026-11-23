@@ -1,0 +1,194 @@
+@page "/dashboard"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject Microsoft.Extensions.Logging.ILogger<Dashboard> Logger
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@using Baihua.Contracts.Achievements
+@using Baihua.Web.Components
+
+<PageTitle>@L["Dashboard_PageTitle"]</PageTitle>
+
+<div class="dashboard-page">
+    <h1>@L["Dashboard_Title"]</h1>
+
+    @if (isLoading)
+    {
+        <div class="skeleton-container" aria-busy="true">
+            <div class="skeleton skeleton-header"></div>
+            <div class="skeleton skeleton-line"></div>
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-line"></div>
+            <div class="skeleton skeleton-card"></div>
+        </div>
+    }
+    else if (loadError)
+    {
+        <div class="dashboard-error">
+            <p class="error-text">@L["Dashboard_LoadFailed"]</p>
+            <button class="retry-btn" @onclick="LoadDashboardAsync">@L["Dashboard_Retry"]</button>
+        </div>
+    }
+    else
+    {
+        <!-- 成员选择器（默认全部成员） -->
+        <MemberSelector Learners="learners" SelectedLearnerId="selectedLearnerId" OnSelected="OnMemberSelected" />
+
+        @if (learners.Count == 0)
+        {
+            <!-- 空态 CTA：无任何学习者 -->
+            <div class="empty-state">
+                <div class="empty-icon">🌱</div>
+                <p class="empty-text">@L["Dashboard_EmptyLearners"]</p>
+                <a class="cta-btn" href="/achievements">@L["Dashboard_AddLearner"]</a>
+            </div>
+        }
+        else
+        {
+            <!-- 第一屏：今日三件事 + 连续打卡 + 最新成就 -->
+            <DashboardFirstScreen Data="data" />
+
+            <!-- 第二屏：成长时间线 -->
+            <GrowthTimeline Events="data.GrowthTimeline" />
+        }
+    }
+</div>
+
+<style>
+    .dashboard-page { max-width: 900px; margin: 0 auto; padding: 1rem; }
+    .dashboard-page h1 { margin-bottom: 1.5rem; }
+
+    .section { margin-bottom: 2rem; background: #fff; border: 1px solid #e8eef2; border-radius: 10px; padding: 1rem 1.25rem; }
+    .section h2 { font-size: 1.05rem; margin-bottom: 0.75rem; color: #333; }
+
+    /* 骨架屏 */
+    .skeleton-container { display: flex; flex-direction: column; gap: 0.75rem; }
+    .skeleton { background: linear-gradient(90deg, #f0f3f5 25%, #e2e8ec 37%, #f0f3f5 63%); background-size: 400% 100%; animation: skeleton-shimmer 1.4s ease infinite; border-radius: 6px; }
+    .skeleton-header { height: 2rem; width: 40%; }
+    .skeleton-line { height: 1rem; width: 100%; }
+    .skeleton-card { height: 6rem; width: 100%; }
+    @@keyframes skeleton-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+    /* 错误重试 */
+    .dashboard-error { text-align: center; padding: 3rem 1rem; background: #fff7f7; border: 1px solid #f5c6c6; border-radius: 10px; }
+    .error-text { color: #c0392b; margin-bottom: 1rem; }
+    .retry-btn { background: #c0392b; color: #fff; border: none; border-radius: 6px; padding: 0.5rem 1.5rem; cursor: pointer; font-size: 1rem; }
+
+    /* 空态 CTA */
+    .empty-state { text-align: center; padding: 3rem 1rem; background: #f8fafc; border-radius: 10px; }
+    .empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .empty-text { color: #666; margin-bottom: 1rem; }
+    .cta-btn { display: inline-block; background: #20c997; color: #fff; border-radius: 8px; padding: 0.6rem 1.5rem; text-decoration: none; font-weight: 600; }
+
+    /* 成员选择器 */
+    .member-selector { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
+    .selector-label { color: #888; font-size: 0.9rem; }
+    .member-chip { border: 1px solid #dde5ea; background: #fff; border-radius: 20px; padding: 0.35rem 0.9rem; cursor: pointer; font-size: 0.9rem; }
+    .member-chip.active { background: #20c997; color: #fff; border-color: #20c997; }
+
+    /* 今日三件事 */
+    .today-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px dashed #eef2f5; }
+    .ti-avatar { font-size: 1.4rem; }
+    .ti-body { flex: 1; }
+    .ti-learner { font-weight: 600; color: #333; }
+    .ti-desc { color: #666; font-size: 0.9rem; }
+    .today-summary { display: flex; align-items: center; gap: 0.75rem; padding-top: 0.75rem; }
+    .ts-count { font-weight: 700; color: #333; }
+    .trend-arrow { font-weight: 700; }
+    .trend-up { color: #27ae60; }
+    .trend-down { color: #e74c3c; }
+    .trend-flat { color: #95a5a6; }
+    .ts-vs { color: #aaa; font-size: 0.85rem; }
+
+    /* 连续打卡 + 火焰 */
+    .streak-section { text-align: center; }
+    .streak-value { display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
+    .flame { font-size: 1.6rem; }
+    .streak-num { font-size: 2.4rem; font-weight: 800; color: #e67e22; }
+    .streak-unit { color: #888; }
+    .streak-sub { color: #aaa; font-size: 0.85rem; margin-top: 0.3rem; }
+
+    /* 最新成就 */
+    .ach-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px dashed #eef2f5; }
+    .ach-icon { font-size: 1.4rem; }
+    .ach-body { flex: 1; }
+    .ach-title { font-weight: 600; color: #333; }
+    .ach-time { color: #aaa; font-size: 0.8rem; }
+
+    /* 成长时间线 */
+    .timeline-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .timeline-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.6rem; background: #f8fafc; border-radius: 6px; }
+    .tl-date { color: #888; font-size: 0.85rem; min-width: 3.2rem; }
+    .tl-learner { font-weight: 600; color: #333; min-width: 5rem; }
+    .tl-desc { color: #555; font-size: 0.9rem; flex: 1; }
+    .timeline-paging { color: #aaa; font-size: 0.8rem; text-align: center; padding-top: 0.75rem; }
+
+    .empty-hint { color: #888; text-align: center; padding: 1rem 0; }
+    .empty-hint .cta-btn { margin-top: 0.5rem; }
+
+    /* FAM-32 响应式：平板适中 */
+    @@media (max-width: 1024px) {
+        .dashboard-page { max-width: 100%; }
+    }
+
+    /* FAM-32 响应式：手机 ≤768px 单列堆叠 */
+    @@media (max-width: 768px) {
+        .dashboard-page { padding: 0.5rem; }
+        .dashboard-first-screen { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+        .dashboard-first-screen .section { padding: 0.75rem; }
+        .today-summary { flex-wrap: wrap; }
+        .timeline-item { flex-wrap: wrap; gap: 0.25rem; }
+        .tl-learner { min-width: 0; }
+        .member-selector { gap: 0.35rem; }
+        .member-chip { padding: 0.3rem 0.6rem; font-size: 0.85rem; }
+    }
+
+    /* FAM-32 响应式：桌面 ≥1025px（锚，保持现有布局） */
+    @@media (min-width: 1025px) {
+        .dashboard-first-screen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+    }
+</style>
+
+@code {
+    private DashboardDataDto data = new();
+    private List<LearnerDto> learners = new();
+    private int? selectedLearnerId;
+    private bool isLoading = true;
+    private bool loadError = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await LoadDashboardAsync();
+    }
+
+    private async Task OnMemberSelected(int? learnerId)
+    {
+        selectedLearnerId = learnerId;
+        await LoadDashboardAsync();
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        isLoading = true;
+        loadError = false;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var vaults = await VaultsService.GetVaultsAsync();
+            var vaultId = vaults.Vaults.FirstOrDefault()?.Id;
+            learners = await ApiService.GetLearnersAsync();
+            data = await ApiService.GetDashboardAsync(vaultId, selectedLearnerId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "加载看板失败");
+            loadError = true;
+        }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

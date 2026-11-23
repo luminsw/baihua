@@ -1,0 +1,329 @@
+@page "/prompt-templates"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@inject Baihua.Web.Services.IApiService ApiService
+@inject IJSRuntime JSRuntime
+@inject Microsoft.Extensions.Logging.ILogger<PromptTemplates> Logger
+
+<PageTitle>@L["PromptTemplates_PageTitle"]</PageTitle>
+
+<h2 class="mb-4">@L["PromptTemplates_Title"]</h2>
+
+@if (isLoading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <div class="mb-3">
+        <p class="text-muted">@L["PromptTemplates_Description"]</p>
+    </div>
+
+    <div class="row g-3">
+        @foreach (var tmpl in templates)
+        {
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">@L["PromptTemplates_CardTitleFormat", tmpl.DisplayName]</h6>
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => EditTemplate(tmpl)">@L["PromptTemplates_EditBtn"]</button>
+                            @if (tmpl.DisplayName != "通用")
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTemplate(tmpl.DisplayName)">@L["PromptTemplates_DeleteBtn"]</button>
+                            }
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <small class="text-muted fw-bold">@L["PromptTemplates_CardChatSystemPromptLabel"]</small>
+                            <div class="border rounded p-2 mt-1" style="max-height:120px;overflow-y:auto;font-size:0.85em;white-space:pre-wrap;">@tmpl.ChatSystemPrompt</div>
+                        </div>
+                        <div class="mb-2">
+                            <small class="text-muted fw-bold">@L["PromptTemplates_CardSplitSystemPromptLabel"]</small>
+                            <div class="border rounded p-2 mt-1" style="max-height:80px;overflow-y:auto;font-size:0.85em;white-space:pre-wrap;">@tmpl.SplitSystemPrompt</div>
+                        </div>
+                        @if (tmpl.DefaultCategories?.Any() == true)
+                        {
+                            <div>
+                                <small class="text-muted">@L["PromptTemplates_DefaultCategoriesLabel"]</small>
+                                @foreach (var cat in tmpl.DefaultCategories)
+                                {
+                                    <span class="badge bg-secondary me-1" style="font-size:0.7em;">@cat</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="mt-3">
+        <button class="btn btn-outline-success" @onclick="CreateNewTemplate">@L["PromptTemplates_CreateNewBtn"]</button>
+    </div>
+}
+
+@if (showEditModal)
+{
+    <div class="modal fade show" style="display:block;background:rgba(0,0,0,0.5);" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(isNewTemplate ? L["PromptTemplates_NewTemplateTitle"] : L["PromptTemplates_EditTemplateTitle", editingTemplate.DisplayName])</h5>
+                    <button type="button" class="btn-close" @onclick="CloseEditModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">@L["PromptTemplates_IndustryNameLabel"]</label>
+                        <input type="text" class="form-control" @bind="editingTemplate.DisplayName" disabled="@(!isNewTemplate)" placeholder="@L["PromptTemplates_IndustryNamePlaceholder"]" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">@L["PromptTemplates_ModalChatSystemPromptLabel"]</label>
+                        <textarea class="form-control" rows="6" @bind="editingTemplate.ChatSystemPrompt" placeholder="@L["PromptTemplates_ChatSystemPromptPlaceholder"]"></textarea>
+                        <small class="text-muted">@L["PromptTemplates_ChatSystemPromptHint"]</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">@L["PromptTemplates_ModalSplitSystemPromptLabel"]</label>
+                        <textarea class="form-control" rows="4" @bind="editingTemplate.SplitSystemPrompt" placeholder="@L["PromptTemplates_SplitSystemPromptPlaceholder"]"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">@L["PromptTemplates_ModalSplitUserPromptLabel"]</label>
+                        <textarea class="form-control" rows="4" @bind="editingTemplate.SplitUserPrompt" placeholder="@L["PromptTemplates_SplitUserPromptPlaceholder"]"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">@L["PromptTemplates_ModalSupplementPromptLabel"]</label>
+                        <textarea class="form-control" rows="3" @bind="editingTemplate.SupplementUserPrompt" placeholder="@L["PromptTemplates_SupplementPromptPlaceholder"]"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">@L["PromptTemplates_ModalDefaultCategoriesLabel"]</label>
+                        <input type="text" class="form-control" @bind="categoriesText" placeholder="@L["PromptTemplates_DefaultCategoriesPlaceholder"]" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">@L["PromptTemplates_ModalConfigurationAdviceLabel"]</label>
+                        <input type="text" class="form-control" @bind="editingTemplate.ConfigurationAdvice" placeholder="@L["PromptTemplates_ConfigurationAdvicePlaceholder"]" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseEditModal">@L["Common_Cancel"]</button>
+                    <button class="btn btn-primary" @onclick="SaveTemplate" disabled="@isSaving">
+                        @(isSaving ? L["PromptTemplates_Saving"] : L["PromptTemplates_SaveBtn"])
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .card-header h6 { font-size: 1rem; }
+    .confirm-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+    .confirm-modal-box {
+        background: white;
+        padding: 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        max-width: 400px;
+        width: 90%;
+        text-align: center;
+    }
+    .confirm-modal-box h3 {
+        margin-top: 0;
+        margin-bottom: 12px;
+        color: #c94c4c;
+    }
+    .confirm-modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        margin-top: 8px;
+    }
+    .confirm-modal-actions .btn-secondary {
+        background-color: #5a6a72;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .confirm-modal-actions .btn-danger {
+        background-color: #c94c4c;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+</style>
+
+@if (templateToDelete != null)
+{
+    <div class="confirm-modal-overlay" @onclick="CancelDeleteTemplate">
+        <div class="confirm-modal-box" @onclick:stopPropagation="true">
+            <h3>⚠️ @L["PromptTemplates_DeleteTitle"]</h3>
+            <p>@L["PromptTemplates_DeleteMessage", templateToDelete]</p>
+            <div class="confirm-modal-actions">
+                <button class="btn-secondary" @onclick="CancelDeleteTemplate">@L["Common_Cancel"]</button>
+                <button class="btn-danger" @onclick="ConfirmDeleteTemplate">@L["Common_ConfirmDelete"]</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<PromptTemplateDto> templates = new();
+    private bool isLoading = false;
+    private bool showEditModal = false;
+    private bool isNewTemplate = false;
+    private bool isSaving = false;
+    private PromptTemplateDto editingTemplate = new();
+    private string categoriesText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+        await LoadTemplates();
+        isLoading = false;
+    }
+
+    private async Task LoadTemplates()
+    {
+        try
+        {
+            var client = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://127.0.0.1:8788") };
+            var resp = await client.GetFromJsonAsync<List<PromptTemplateDto>>("api/assistant/prompt-templates");
+            templates = resp ?? new();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, L["PromptTemplates_LoadFailed"]);
+        }
+    }
+
+    private void EditTemplate(PromptTemplateDto tmpl)
+    {
+        editingTemplate = new PromptTemplateDto
+        {
+            DisplayName = tmpl.DisplayName,
+            ChatSystemPrompt = tmpl.ChatSystemPrompt,
+            SplitSystemPrompt = tmpl.SplitSystemPrompt,
+            SplitUserPrompt = tmpl.SplitUserPrompt,
+            SupplementUserPrompt = tmpl.SupplementUserPrompt,
+            DefaultCategories = tmpl.DefaultCategories,
+            ConfigurationAdvice = tmpl.ConfigurationAdvice,
+            KnowledgeBuildPlaceholder = tmpl.KnowledgeBuildPlaceholder,
+            KnowledgeBuildDescription = tmpl.KnowledgeBuildDescription
+        };
+        categoriesText = string.Join(", ", tmpl.DefaultCategories ?? new());
+        isNewTemplate = false;
+        showEditModal = true;
+    }
+
+    private void CreateNewTemplate()
+    {
+        editingTemplate = new PromptTemplateDto();
+        categoriesText = "";
+        isNewTemplate = true;
+        showEditModal = true;
+    }
+
+    private void CloseEditModal()
+    {
+        showEditModal = false;
+    }
+
+    private async Task SaveTemplate()
+    {
+        isSaving = true;
+        try
+        {
+            editingTemplate.DefaultCategories = categoriesText
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(c => c.Trim())
+                .Where(c => !string.IsNullOrEmpty(c))
+                .ToList();
+
+            var client = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://127.0.0.1:8788") };
+            var json = System.Text.Json.JsonSerializer.Serialize(editingTemplate);
+            var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+            HttpResponseMessage resp;
+            if (isNewTemplate)
+                resp = await client.PostAsync("api/assistant/prompt-templates", content);
+            else
+                resp = await client.PutAsync($"api/assistant/prompt-templates/{Uri.EscapeDataString(editingTemplate.DisplayName)}", content);
+
+            if (resp.IsSuccessStatusCode)
+            {
+                showEditModal = false;
+                await LoadTemplates();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", (string)L["PromptTemplates_SaveFailed"]);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, L["PromptTemplates_LoadFailed"]);
+            await JSRuntime.InvokeVoidAsync("alert", (string)L["PromptTemplates_SaveFailedFormat", ex.Message]);
+        }
+        isSaving = false;
+    }
+
+    private async Task DeleteTemplate(string displayName)
+    {
+        // 原生 confirm 改为站内确认弹窗（与全站自定义 modal 一致）
+        templateToDelete = displayName;
+    }
+
+    private string? templateToDelete;
+
+    private void CancelDeleteTemplate() => templateToDelete = null;
+
+    private async Task ConfirmDeleteTemplate()
+    {
+        if (string.IsNullOrEmpty(templateToDelete)) return;
+        var displayName = templateToDelete;
+        templateToDelete = null;
+
+        try
+        {
+            var client = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://127.0.0.1:8788") };
+            var resp = await client.DeleteAsync($"api/assistant/prompt-templates/{Uri.EscapeDataString(displayName)}");
+            if (resp.IsSuccessStatusCode)
+            {
+                await LoadTemplates();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, L["PromptTemplates_LoadFailed"]);
+        }
+    }
+
+    public class PromptTemplateDto
+    {
+        public string DisplayName { get; set; } = "";
+        public string ChatSystemPrompt { get; set; } = "";
+        public string SplitSystemPrompt { get; set; } = "";
+        public string SplitUserPrompt { get; set; } = "";
+        public string SupplementUserPrompt { get; set; } = "";
+        public List<string> DefaultCategories { get; set; } = new();
+        public string ConfigurationAdvice { get; set; } = "";
+        public string KnowledgeBuildPlaceholder { get; set; } = "";
+        public string KnowledgeBuildDescription { get; set; } = "";
+    }
+}

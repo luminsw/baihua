@@ -1,0 +1,11 @@
+@page "/qr-tool"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Baihua.Web.Components
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["QRTool_PageTitle"]</PageTitle>
+
+<h1>📱 @L["QRTool_Title"]</h1>
+<p class="text-muted">@L["QRTool_Description"]</p>
+
+<QRToolPanel />

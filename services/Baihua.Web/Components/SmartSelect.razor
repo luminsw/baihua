@@ -1,0 +1,249 @@
+@namespace WebUI.Components
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<div class="smart-select @(IsOpen ? "open" : "") @(Disabled ? "disabled" : "")" @ref="_containerRef"
+     @onclick:stopPropagation="true">
+    <div class="smart-select-trigger" @onclick="Toggle">
+        <span class="smart-select-value">@(SelectedLabel ?? Placeholder)</span>
+        <span class="smart-select-arrow">▼</span>
+    </div>
+    @if (IsOpen)
+    {
+        <div class="smart-select-dropdown">
+            @if (Options.Count > 6 || AllowSearch)
+            {
+                <input type="text"
+                       class="smart-select-search"
+                       @bind="_searchText"
+                       @bind:event="oninput"
+                       placeholder="@SearchPlaceholder"
+                       @ref="_searchInputRef"
+                       @onclick:stopPropagation="true" />
+            }
+            <div class="smart-select-options">
+                @foreach (var option in FilteredOptions)
+                {
+                    var isSelected = option.Value == Value;
+                    <div class="smart-select-option @(isSelected ? "selected" : "")"
+                         @onclick="() => SelectOption(option.Value)"
+                         @onclick:stopPropagation="true">
+                        @option.Label
+                    </div>
+                }
+                @if (!FilteredOptions.Any())
+                {
+                    <div class="smart-select-empty">无匹配选项</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public List<SmartSelectOption> Options { get; set; } = new();
+    [Parameter] public string Placeholder { get; set; } = "请选择...";
+    [Parameter] public string SearchPlaceholder { get; set; } = "搜索...";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool AllowSearch { get; set; } = true;
+
+    private bool IsOpen { get; set; }
+    private string _searchText = "";
+    private ElementReference _containerRef;
+    private ElementReference _searchInputRef;
+    private DotNetObjectReference<SmartSelect>? _dotNetRef;
+
+    private string? SelectedLabel => Options.FirstOrDefault(o => o.Value == Value)?.Label;
+
+    private List<SmartSelectOption> FilteredOptions =>
+        string.IsNullOrWhiteSpace(_searchText)
+            ? Options
+            : Options.Where(o => o.Label.Contains(_searchText, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("smartSelectInit", _containerRef, _dotNetRef);
+        }
+    }
+
+    private void Toggle()
+    {
+        if (Disabled) return;
+        IsOpen = !IsOpen;
+        if (IsOpen)
+        {
+            _searchText = "";
+            _ = FocusSearchAsync();
+        }
+    }
+
+    private async Task FocusSearchAsync()
+    {
+        if (AllowSearch && Options.Count > 6)
+        {
+            await Task.Delay(50);
+            await JS.InvokeVoidAsync("smartSelectFocus", _searchInputRef);
+        }
+    }
+
+    private async Task SelectOption(string value)
+    {
+        if (value != Value)
+        {
+            Value = value;
+            await ValueChanged.InvokeAsync(value);
+        }
+        IsOpen = false;
+        _searchText = "";
+    }
+
+    [JSInvokable]
+    public void Close()
+    {
+        if (IsOpen)
+        {
+            IsOpen = false;
+            _searchText = "";
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        _dotNetRef?.Dispose();
+    }
+
+    public class SmartSelectOption
+    {
+        public string Value { get; set; } = "";
+        public string Label { get; set; } = "";
+    }
+}
+
+<style>
+    .smart-select {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+        max-width: 400px;
+    }
+
+    .smart-select-trigger {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.75rem;
+        background: white;
+        border: 1px solid #c8d4dc;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        min-height: 38px;
+    }
+
+    .smart-select-trigger:hover {
+        border-color: #a0aeb6;
+    }
+
+    .smart-select.open .smart-select-trigger {
+        border-color: #2e8baf;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+    }
+
+    .smart-select.disabled .smart-select-trigger {
+        background: #e8eef2;
+        cursor: not-allowed;
+        opacity: 0.65;
+    }
+
+    .smart-select-value {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #1e3a4c;
+    }
+
+    .smart-select-value:empty::before,
+    .smart-select-value:not(:has(*)):where(:not(:empty)) ~ .smart-select-arrow { }
+
+    .smart-select-arrow {
+        font-size: 0.7rem;
+        color: #5a6a72;
+        margin-left: 0.5rem;
+        transition: transform 0.2s ease;
+        flex-shrink: 0;
+    }
+
+    .smart-select.open .smart-select-arrow {
+        transform: rotate(180deg);
+    }
+
+    .smart-select-dropdown {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #d8e2e8;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        z-index: 1050;
+        max-height: 320px;
+        display: flex;
+        flex-direction: column;
+        animation: dropdownSlide 0.15s ease;
+    }
+
+    @@keyframes dropdownSlide {
+        from { opacity: 0; transform: translateY(-4px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .smart-select-search {
+        padding: 0.5rem 0.75rem;
+        border: none;
+        border-bottom: 1px solid #e8eef2;
+        outline: none;
+        font-size: 0.9rem;
+        background: transparent;
+    }
+
+    .smart-select-search:focus {
+        box-shadow: none;
+    }
+
+    .smart-select-options {
+        overflow-y: auto;
+        max-height: 240px;
+        padding: 0.25rem 0;
+    }
+
+    .smart-select-option {
+        padding: 0.5rem 0.75rem;
+        cursor: pointer;
+        transition: background 0.1s ease;
+        font-size: 0.9rem;
+        color: #4a5860;
+    }
+
+    .smart-select-option:hover {
+        background: #e0ecf4;
+    }
+
+    .smart-select-option.selected {
+        background: #2e8baf;
+        color: white;
+    }
+
+    .smart-select-empty {
+        padding: 1rem;
+        text-align: center;
+        color: #a0aeb6;
+        font-size: 0.85rem;
+    }
+</style>

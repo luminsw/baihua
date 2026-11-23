@@ -1,0 +1,178 @@
+# bh-openvino: OpenVINO Model Server（Intel OVMS）
+# 提供 OpenAI 兼容推理 API：/v1/chat/completions（LLM+视觉）、/v1/models（状态）
+# 模型仓库 = baihua-models-pvc（/models，预下载的 OpenVINO IR 模型目录）：
+#   qwen2.5-vl-7b    /models/Qwen2.5-VL-7B-Instruct-int4-ov   （视觉，CPU/GPU）
+#   （qwen2.5 文本 / bge 嵌入：模型目录缺失，下载后加入下方 args）
+# 说明：
+#   - 这是唯一需要 Intel GPU 的服务 —— /dev/dri（真机）/ /dev/dxg（WSL2）由 intel-gpu-plugin 注入
+#   - 用 OVMS 单模型模式（--model_path + --model_name + --task）启动：OVMS 在内存中
+#     自动创建 graph（GenAI servable），不需要 initContainer 预生成 graph.pbtxt
+#     （旧 config.json base_path 方式对 LLM/VLM 无效；--configure 对 VL 模型报错）
+#   - 多模型：OVMS 暂不支持多个 --model_path；后续加模型需分别部署或改用 --source_model
+#   - AI/Family 通过 K8s Service DNS http://bh-openvino:8000 调用（OpenVinoOms__BaseUrl / OPENVINO_LLM_URL）
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bh-openvino
+  namespace: baihua
+  labels:
+    app: bh-openvino
+    app.kubernetes.io/part-of: baihua
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bh-openvino
+  template:
+    metadata:
+      labels:
+        app: bh-openvino
+    spec:
+      # 限制调度到有 Intel GPU 的节点
+      # nodeSelector:
+      #   intel-gpu: "true"
+      containers:
+        - name: bh-openvino
+          image: bh-openvino:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: rest
+            - containerPort: 9000
+              name: grpc
+          args:
+            # 按配置文件启动：模型清单来自 ConfigMap baihua-ovms-config（见文件末尾），
+            # 不再把模型名硬编码进清单 —— 硬编码曾指向本机不存在的 Qwen2.5-VL-7B，导致 OVMS 反复
+            # CrashLoopBackOff（"Graph path is not a directory"）。换机器/换模型只改那个 ConfigMap。
+            #
+            # config.json 里的 base_path 必须是容器内路径（如 /models/Qwen3-4B-int4-ov）；
+            # 单模型 GenAI 模式（--model_path + --model_name + --task）仍可用，但只能一个模型。
+            - --config_path=/ovms-config/config.json
+            - --rest_port=8000
+            - --port=9000
+            - --log_level=INFO
+            - --cache_dir=/cache
+          env:
+            # 备用：若改用 OVMS --pull 下载模型，走国内 HF 镜像
+            - name: HF_ENDPOINT
+              value: "https://hf-mirror.com"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: cache
+              mountPath: /cache
+            # OVMS 模型清单（model_config_list）：容器内路径，换模型只改这个 ConfigMap
+            - name: ovms-config
+              mountPath: /ovms-config
+              readOnly: true
+            # Intel GPU 设备节点（由 intel-gpu-plugin 自动注入）
+            - name: dri
+              mountPath: /dev/dri
+            # WSL2 GPU 半虚拟化设备（NEO 驱动走此设备）
+            - name: dxg
+              mountPath: /dev/dxg
+            # 微软 GPU-PV 用户态库 + Intel WSL compute helper（NEO 驱动访问 /dev/dxg 必需）
+            - name: wsl-lib
+              mountPath: /usr/lib/wsl
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: 8000
+            # 冷启动首次加载 7B 模型编译较慢，放宽等待窗口
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /v1/models
+              port: 8000
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            # 注意：limits.memory 必须 ≤ 节点可分配内存，否则 Pod 永远 Pending
+            # （本机节点 15.4Gi，原先写 16Gi → 调度不进去；模型跑在 GPU 上，宿主内存只需留给加载缓冲）
+            limits:
+              memory: 12Gi
+            requests:
+              cpu: 1000m
+              memory: 2Gi
+          securityContext:
+            # WSL2 下访问 /dev/dxg（GPU-PV 设备）需要特权；真机 /dev/dri 不需要但无妨
+            privileged: true
+            allowPrivilegeEscalation: true
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: baihua-models-pvc
+        - name: cache
+          emptyDir: {}
+        # OVMS 模型清单（model_config_list）：条目里的 base_path 必须是容器内路径（/models/...）
+        - name: ovms-config
+          configMap:
+            name: baihua-ovms-config
+        # 【本机 WSL 专用，按需启用】模型目录里有指向 modelscope 缓存的软链时，必须把缓存也挂进来，
+        # 否则容器内软链悬空、OVMS 找不到模型。启用方式：取消下面注释 + 在 volumeMounts 里同样加上
+        #   - name: modelscope-cache
+        #     mountPath: /mnt/c/Users/lumin/.cache/modelscope
+        #     readOnly: true
+        # - name: modelscope-cache
+        #   hostPath:
+        #     path: /mnt/c/Users/lumin/.cache/modelscope
+        #     type: Directory
+        # /dev/dri 由 Intel GPU Device Plugin 自动注入（真机场景）
+        - name: dri
+          hostPath:
+            path: /dev/dri
+            type: DirectoryOrCreate
+        # /dev/dxg = WSL2 GPU 半虚拟化设备（WSL2 场景，Intel NEO 驱动走此设备）
+        - name: dxg
+          hostPath:
+            path: /dev/dxg
+        # 微软 GPU-PV 用户态库 + Intel WSL compute helper（WSL2 场景，NEO 驱动依赖）
+        - name: wsl-lib
+          hostPath:
+            path: /usr/lib/wsl
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bh-openvino
+  namespace: baihua
+  labels:
+    app: bh-openvino
+    app.kubernetes.io/part-of: baihua
+spec:
+  selector:
+    app: bh-openvino
+  ports:
+    - name: rest
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+    - name: grpc
+      port: 9000
+      targetPort: 9000
+      protocol: TCP
+---
+# OVMS 模型清单（config.json）：容器内路径。
+# 换机器/换模型只改这里；base_path 必须指向 models PVC（/models）里真实存在的模型目录。
+# 本机可用（Intel Arc，WSL2 GPU-PV）：Qwen3-4B-int4-ov、Qwen3-Embedding-0.6B-int8-ov
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: baihua-ovms-config
+  namespace: baihua
+  labels:
+    app.kubernetes.io/part-of: baihua
+data:
+  config.json: |
+    {
+      "model_config_list": [
+        { "config": { "name": "qwen3-4b",             "base_path": "/models/Qwen3-4B-int4-ov",             "target_device": "GPU" } },
+        { "config": { "name": "qwen3-embedding-0.6b", "base_path": "/models/Qwen3-Embedding-0.6B-int8-ov", "target_device": "GPU" } }
+      ]
+    }

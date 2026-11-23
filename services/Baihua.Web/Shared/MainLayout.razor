@@ -1,0 +1,605 @@
+@inherits LayoutComponentBase
+@using Baihua.Web.Services
+@using Microsoft.JSInterop
+@using Baihua.Contracts.Core
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject OnboardingService OnboardingService
+@inject GlobalStateService GlobalStateService
+@inject IConfiguration Configuration
+@inject IHttpClientFactory HttpClientFactory
+@inject ILogger<MainLayout> Logger
+@implements IDisposable
+
+<div class="page">
+    <!-- 移动端菜单按钮（纯 JS 交互，不依赖 Blazor circuit） -->
+    <button class="mobile-menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">
+        ☰
+    </button>
+    
+    <nav class="sidebar">
+        <div class="sidebar-quick-links">
+            <NavLink href="/" class="quick-link">
+                <span class="quick-icon bi bi-phone"></span>
+                <span>花记设备</span>
+            </NavLink>
+            <NavLink href="generate" class="quick-link">
+                <span class="quick-icon bi bi-robot"></span>
+                <span>AI 生成知识库</span>
+            </NavLink>
+            <NavLink href="server-messages" class="quick-link">
+                <span class="quick-icon bi bi-hdd-network"></span>
+                <span>服务器互联</span>
+            </NavLink>
+            <NavLink href="compute" class="quick-link">
+                <span class="quick-icon bi bi-lightning-charge"></span>
+                <span>算力池</span>
+            </NavLink>
+        </div>
+        
+        <NavMenu />
+    </nav>
+
+    <main>
+        @if (_apiConnectionError)
+        {
+            <div class="api-error-banner">
+                <span class="bi bi-exclamation-triangle-fill"></span>
+                <span>@_apiErrorMessage</span>
+                <button class="btn btn-sm btn-outline-light ms-auto" @onclick="RetryConnectionAsync">重试</button>
+                <button class="btn btn-sm btn-outline-light ms-1" @onclick="DismissError">&times;</button>
+            </div>
+        }
+        <div class="top-row px-4">
+            <HeaderStatusBadge />
+
+            <div class="ms-auto d-flex align-items-center">
+                <img src="logo.png" alt="百花" class="top-logo" />
+                <span class="top-row-subtitle">百花@(_serverDisplayName != null ? $"（{_serverDisplayName}）" : "") - 家庭知识港湾</span>
+
+                <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="toggleTheme()" title="切换亮色/暗色模式">
+                    <i class="bi bi-moon-fill" id="theme-icon"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="logoutAndRedirect()" title="登出">
+                    <i class="bi bi-box-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <article class="content">
+            @Body
+        </article>
+    </main>
+
+    <div class="fab-container" id="fab-container">
+        <button class="fab-btn" id="fab-btn" title="系统工具" onclick="toggleFabMenu(event)">
+            <i class="bi bi-gear-fill"></i>
+        </button>
+        <div class="fab-menu" id="fab-menu" style="display:none">
+            <a href="health" class="fab-menu-item" onclick="closeFabMenu()">
+                <i class="bi bi-heart-pulse"></i> 健康检查
+            </a>
+            <a href="log-settings" class="fab-menu-item" onclick="closeFabMenu()">
+                    <i class="bi bi-journal-code"></i> 日志配置
+                </a>
+                <a href="log-errors" class="fab-menu-item" onclick="closeFabMenu()">
+                    <i class="bi bi-bug"></i> 错误日志
+                </a>
+            </div>
+        </div>
+</div>
+
+<style>
+    /* 核心布局 */
+    .page {
+        display: flex;
+        min-height: 100vh;
+    }
+
+    .sidebar {
+        width: 250px;
+        background: var(--layout-sidebar-gradient);
+        color: rgba(220, 235, 245, 0.9);
+        padding: 20px 0;
+        transition: transform 0.3s ease;
+        flex-shrink: 0;
+    }
+
+    .sidebar-header {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    .sidebar-logo {
+        width: 200px;
+        height: auto;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .sidebar-quick-links {
+        display: flex;
+        gap: 4px;
+        padding: 0 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .quick-link {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        color: rgba(220, 235, 245, 0.9);
+        text-decoration: none;
+        font-size: 0.8rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        background: rgba(255, 255, 255, 0.06);
+    }
+
+    .quick-link:hover {
+        background: rgba(46, 139, 175, 0.3);
+        color: #fff;
+    }
+
+    .quick-icon {
+        font-size: 1rem;
+    }
+
+    .top-logo {
+        height: 70px;
+        width: auto;
+        border-radius: 6px;
+        margin-right: 8px;
+
+    }
+
+    .api-error-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        background: linear-gradient(135deg, #c94c4c 0%, #a03030 100%);
+        color: #fff;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .fab-container {
+        position: fixed;
+        left: 16px;
+        bottom: 24px;
+        z-index: 9998;
+    }
+
+    .fab-btn {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: none;
+        background: var(--layout-fab-bg);
+        color: #fff;
+        font-size: 1.2rem;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .fab-btn:hover {
+        background: #2e8baf;
+        transform: scale(1.05);
+    }
+
+    .fab-btn.active {
+        background: #2e8baf;
+        transform: rotate(90deg);
+    }
+
+    .fab-menu {
+        position: absolute;
+        bottom: 56px;
+        left: 0;
+        background: var(--layout-fab-menu-bg);
+        border: 1px solid var(--layout-fab-menu-border);
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        min-width: 160px;
+        overflow: hidden;
+        animation: fabSlideUp 0.15s ease;
+    }
+
+    @@keyframes fabSlideUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .fab-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        color: var(--layout-fab-item-color);
+        text-decoration: none;
+        font-size: 0.85rem;
+        transition: background 0.15s;
+    }
+
+    .fab-menu-item:hover {
+        background: var(--layout-fab-item-hover-bg);
+        color: var(--layout-fab-item-hover-color);
+    }
+
+    .fab-menu-item i {
+        width: 18px;
+        text-align: center;
+        color: var(--layout-fab-item-icon-color);
+    }
+
+    main {
+        flex: 1;
+        background: var(--layout-main-bg);
+        min-width: 0;
+    }
+
+    .top-row {
+        background: var(--layout-toprow-bg);
+        border-bottom: 1px solid var(--layout-toprow-border);
+        padding: 15px 20px;
+        display: flex;
+        justify-content: flex-end;        align-items: center;
+        min-height: 56px;
+        overflow: visible;
+        position: relative;
+        z-index: 100;
+    }
+
+    .top-row-subtitle {
+        white-space: nowrap;
+        margin-right: 16px;
+    }
+
+    .content {
+        padding: 20px;
+    }
+
+    /* 移动端菜单按钮 */
+    .mobile-menu-toggle {
+        position: fixed;
+        top: 15px;
+        left: 15px;
+        z-index: 1001;
+        background: var(--layout-mobile-menu-bg);
+        color: white;
+        border: none;
+        border-radius: 5px;
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+        cursor: pointer;
+        display: none;
+        justify-content: center;
+        align-items: center;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    /* AI 状态显示样式 */
+    .ai-status-container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        text-decoration: none;
+    }
+
+    .ai-status-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+    }
+
+    .ai-status-badge:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .ai-configured {
+        background: var(--layout-ai-status-bg);
+        border-color: var(--layout-ai-status-border);
+    }
+
+    .ai-not-configured {
+        background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+        border-color: #c94c4c;
+    }
+
+    .ai-icon {
+        font-size: 1.1rem;
+    }
+
+    .ai-info {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.2;
+    }
+
+    .ai-provider {
+        font-weight: 600;
+        color: var(--layout-ai-provider-color);
+    }
+
+    .ai-model {
+        font-size: 0.75rem;
+        color: var(--layout-ai-model-color);
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ai-indicator {
+        font-size: 0.6rem;
+        margin-left: 0.25rem;
+    }
+
+    .ai-indicator.online {
+        color: #6b9e75;
+    }
+
+    .ai-indicator.offline {
+        color: #c94c4c;
+    }
+
+    /* 桌面端：隐藏移动端菜单按钮 */
+    @@media (min-width: 769px) {
+        .mobile-menu-toggle {
+            display: none !important;
+        }
+
+        .top-row {
+            padding-left: 20px !important;
+        }
+    }
+
+    /* 移动端样式 */
+    @@media (max-width: 768px) {
+        .page {
+            flex-direction: column;
+        }
+
+        .sidebar {
+            width: 100%;
+            height: auto;
+            position: relative;
+            display: none;
+        }
+
+        .sidebar.open {
+            display: block;
+        }
+
+        .mobile-menu-toggle {
+            display: flex;
+        }
+
+        .top-row {
+            padding-left: 60px !important;
+        }
+
+        main {
+            width: 100%;
+        }
+    }
+
+    /* 导航后自动关闭移动端侧边栏 */
+    @@media (max-width: 768px) {
+        .sidebar.nav-closed {
+            display: none;
+        }
+    }
+</style>
+
+<script>
+    // 主题切换 — 纯 JS 实现，不依赖 Blazor circuit
+    (function() {
+        // 初始化：从 localStorage 加载主题
+        const savedTheme = localStorage.getItem('webui-theme') || 'light';
+        document.documentElement.setAttribute('data-bs-theme', savedTheme);
+        updateThemeIcon(savedTheme);
+
+        // 全局函数，给 onclick 使用
+        window.toggleTheme = function() {
+            const current = document.documentElement.getAttribute('data-bs-theme') || 'light';
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-bs-theme', next);
+            localStorage.setItem('webui-theme', next);
+            updateThemeIcon(next);
+        };
+
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('theme-icon');
+            if (icon) {
+                icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+            }
+        }
+    })();
+</script>
+
+@code {
+    private bool _onboardingChecked = false;
+    private bool _apiConnectionError = false;
+    private string _apiErrorMessage = "";
+    private bool _showSystemMenu = false;
+    private string? _serverDisplayName = null;
+
+    private void ToggleSystemMenu() => _showSystemMenu = !_showSystemMenu;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        GlobalStateService.StateChanged += OnGlobalStateChanged;
+
+        // 异步检测 AI 配置状态（不阻塞渲染，避免后端未启动时白屏）
+        _ = LoadAiStatusAsync();
+
+        // 异步检查 onboarding 状态
+        _ = CheckOnboardingAsync();
+
+        // 异步获取服务器显示名
+        _ = LoadServerDisplayNameAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // 只在交互式渲染后初始化 SignalR，避免 circuit 失败。
+            // StatusHub 由 WebUI 自己提供、且本客户端跑在服务端进程内，
+            // 必须用自身监听地址（NavigationManager.BaseUri 是浏览器看到的外部地址，
+            // k8s 入口下 Pod 内指向 :80 无监听 → Connection refused）。
+            GlobalStateService.Initialize($"{WebUiSelfUrl.Resolve(Configuration)}/hubs/status");
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnUserTypeChanged(object? sender, EventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAiStatusAsync()
+    {
+        // 不再根据 AI 配置隐藏菜单，仅记录日志
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var client = HttpClientFactory.CreateClient("AiApi");
+            var response = await client.GetAsync("api/ai/config/providers", cts.Token);
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync(cts.Token);
+                var providers = System.Text.Json.JsonSerializer.Deserialize<List<AiProviderCheck>>(json, System.Text.Json.JsonSerializerOptions.Web);
+                Logger.LogInformation("[MainLayout] AI providers: {Count}", providers?.Count ?? 0);
+            }
+        }
+        catch { }
+    }
+
+    private async Task LoadServerDisplayNameAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var client = HttpClientFactory.CreateClient("FamilyApi");
+            var response = await client.GetAsync("api/server-address", cts.Token);
+            if (response.IsSuccessStatusCode)
+            {
+                var settings = await response.Content.ReadFromJsonAsync<ServerAddressResponse>(cts.Token);
+                if (!string.IsNullOrWhiteSpace(settings?.DisplayName))
+                {
+                    _serverDisplayName = settings.DisplayName;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "[MainLayout] Failed to load server display name: {Message}", ex.Message);
+        }
+    }
+
+    private class AiProviderCheck
+    {
+        public string Id { get; set; } = "";
+        public bool IsMain { get; set; }
+    }
+
+    private void OnGlobalStateChanged(object? sender, EventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CheckOnboardingAsync()
+    {
+        if (_onboardingChecked) return;
+        _onboardingChecked = true;
+
+        try
+        {
+            await Task.Delay(500);
+
+            var status = await OnboardingService.GetStatusAsync();
+            _apiConnectionError = false;
+            if (status.NeedsOnboarding && !Navigation.Uri.Contains("/onboarding") && !Navigation.Uri.Contains("/login"))
+            {
+                await InvokeAsync(() => Navigation.NavigateTo("onboarding"));
+            }
+        }
+        catch (Microsoft.AspNetCore.Components.NavigationException)
+        {
+        }
+        catch (HttpRequestException ex)
+        {
+            _apiConnectionError = true;
+            _apiErrorMessage = $"无法连接后端服务，请确认服务已启动 ({ex.Message})";
+            Logger.LogWarning(ex, "Onboarding 检查失败：后端服务不可达");
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _apiConnectionError = true;
+            _apiErrorMessage = $"服务连接异常 ({ex.Message})";
+            Logger.LogWarning(ex, "Onboarding 检查失败");
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RetryConnectionAsync()
+    {
+        _onboardingChecked = false;
+        await CheckOnboardingAsync();
+    }
+
+    private void DismissError()
+    {
+        _apiConnectionError = false;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        _showSystemMenu = false;
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        GlobalStateService.StateChanged -= OnGlobalStateChanged;
+    }
+
+    private async Task LogoutAsync()
+    {
+        try
+        {
+            var token = await JSRuntime.InvokeAsync<string?>("eval", "document.cookie.match(/webui_auth=([^;]+)/)?.[1]");
+            if (!string.IsNullOrEmpty(token))
+            {
+                AuthService.RevokeToken(token);
+            }
+        }
+        catch { }
+
+        await JSRuntime.InvokeVoidAsync("eval", "document.cookie = 'webui_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'");
+        Navigation.NavigateTo("login", forceLoad: true);
+    }
+}

@@ -1,0 +1,794 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IAsyncDisposable
+@inject NavigationManager Navigation
+@inject Baihua.Web.Services.IRecentNotesService RecentNotesService
+@inject Baihua.Web.Services.ISearchHistoryService SearchHistoryService
+@inject Baihua.Web.Services.AIStatusService AIStatusService
+@inject Baihua.Web.Services.VaultStatusService VaultStatusService
+@inject Baihua.Web.Services.DevicesService DevicesService
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.SettingsService SettingsService
+@inject Microsoft.Extensions.Logging.ILogger<FamilyHome> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+@using Baihua.Web.Services
+@using Baihua.Web.Components
+@using System.Net
+@using System.Linq
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Http.Connections
+
+<PageTitle>@L["FamilyHome_PageTitle"]</PageTitle>
+
+<div class="home-container">
+    <!-- 核心价值宣传语 -->
+    <div class="core-value-banner">
+        <span class="core-value-text">@L["FamilyHome_CoreValue"]</span>
+    </div>
+
+    <InitializationTasks @ref="_initTasks" OnTasksChanged="OnTasksChanged" />
+
+    <!-- 配置提醒区域 -->
+    <div class="config-alerts">
+        @if (!isInitialLoading && aiStatus == null)
+        {
+            <div class="config-alert status-alert">
+                <div class="alert-header">
+                    <span class="alert-icon">ℹ️</span>
+                    <span class="alert-title">@L["FamilyHome_StatusFetchFailed"]</span>
+                </div>
+            </div>
+        }
+        else if (!isInitialLoading && !aiStatus!.IsConfigured && !AIStatusService.IsServerProxyMode)
+        {
+            <div class="config-alert api-alert">
+                <div class="alert-header">
+                    <span class="alert-icon">⚠️</span>
+                    <span class="alert-title">@L["FamilyHome_ApiKeyNotConfigured"]</span>
+                </div>
+                <div class="alert-content">
+                    <p>@L["FamilyHome_ApiKeyNotConfiguredDesc"]</p>
+                    <div class="alert-advice">
+                        @((MarkupString)GetConfigurationAdviceHtml())
+                    </div>
+                    <button class="alert-button" @onclick="NavigateToSettings">
+                        @L["FamilyHome_ConfigureNow"]
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (!isInitialLoading && (!vaultStatus?.IsConfigured ?? true))
+        {
+            <div class="config-alert vault-alert">
+                <div class="alert-header">
+                    <span class="alert-icon">📁</span>
+                    <span class="alert-title">@L["FamilyHome_VaultNotConfigured"]</span>
+                </div>
+                <div class="alert-content">
+                    <p>@L["FamilyHome_VaultNotConfiguredDesc"]</p>
+                    <div class="alert-advice">
+                        @((MarkupString)GetVaultConfigurationAdviceHtml())
+                    </div>
+                    <button class="alert-button" @onclick="NavigateToVaults">
+                        @L["FamilyHome_ConfigureNow"]
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- 花记设备集成 -->
+    <div class="section">
+        <h2 class="section-title">@L["Devices_Title"]</h2>
+
+        <div class="device-stack">
+            <!-- 扫码配对 -->
+            <div class="card qr-card">
+                <div class="card-header">
+                    <h3>@L["Devices_ScanPair"]</h3>
+                </div>
+                <div class="card-body">
+                    <QRToolPanel />
+                </div>
+            </div>
+
+            <!-- 待授权设备 -->
+            <div class="card pending-card">
+                <div class="card-header">
+                    <h3>@L["Devices_PendingDevices"]</h3>
+                    @if (pendingDevices.Count > 0)
+                    {
+                        <span class="badge bg-warning text-dark">@pendingDevices.Count</span>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (isLoadingDevices)
+                    {
+                        <div class="text-muted small">@L["Devices_Loading"]</div>
+                    }
+                    else if (!pendingDevices.Any())
+                    {
+                        <p class="text-muted mb-0">@L["Devices_NoPendingDevices"]</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>@L["Devices_ColDisplayName"]</th>
+                                        <th>@L["Devices_ColDeviceName"]</th>
+                                        <th>@L["Devices_ColIpAddress"]</th>
+                                        <th>@L["Devices_ColRequestTime"]</th>
+                                        <th>@L["Devices_ColActions"]</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var device in pendingDevices)
+                                    {
+                                        <tr>
+                                            <td><strong>@device.DeviceName</strong></td>
+                                            <td class="text-muted small">
+                                                @(string.IsNullOrEmpty(device.SystemDeviceName) ? "-" : device.SystemDeviceName)
+                                            </td>
+                                            <td class="text-muted small">@device.IpAddress</td>
+                                            <td class="small">@device.RequestTime.ToLocalTime().ToString("MM-dd HH:mm:ss")</td>
+                                            <td>
+                                                <div class="d-flex gap-1">
+                                                    <button class="btn btn-sm btn-success" @onclick="() => AuthorizeDeviceAsync(device.RequestId)" disabled="@isProcessingDevice">@L["Devices_Authorize"]</button>
+                                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => RejectDeviceAsync(device.RequestId)" disabled="@isProcessingDevice">@L["Devices_Reject"]</button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- 已授权设备 -->
+            <div class="card device-card">
+                <div class="card-header">
+                    <h3>@L["Devices_AuthorizedDevicesTitle"]</h3>
+                    <span class="badge bg-success">@authorizedDevices.Count</span>
+                </div>
+                <div class="card-body">
+                    @if (isLoadingDevices)
+                    {
+                        <div class="text-muted small">@L["Devices_Loading"]</div>
+                    }
+                    else if (!authorizedDevices.Any())
+                    {
+                        <p class="text-muted mb-0">@L["Devices_NoAuthorizedDevices"]</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>@L["Devices_ColDisplayName"]</th>
+                                        <th>@L["Devices_ColDeviceName"]</th>
+                                        <th>@L["Devices_ColIpAddress"]</th>
+                                        <th>@L["Devices_ColAuthorizedTime"]</th>
+                                        <th>@L["Devices_ColActions"]</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var device in authorizedDevices)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <strong>@device.DeviceName</strong>
+                                                <div class="text-muted small">@device.DeviceId</div>
+                                            </td>
+                                            <td class="text-muted small">
+                                                @(string.IsNullOrEmpty(device.SystemDeviceName) ? "-" : device.SystemDeviceName)
+                                            </td>
+                                            <td class="text-muted small">@device.IpAddress</td>
+                                            <td class="small">
+                                                @(device.AuthorizedTime.HasValue ? device.AuthorizedTime.Value.ToLocalTime().ToString("MM-dd HH:mm") : "-")
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RevokeDeviceAsync(device.DeviceId)" disabled="@isProcessingDevice">@L["Devices_Revoke"]</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .home-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 1rem;
+    }
+
+    .core-value-banner {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        margin-bottom: 1.5rem;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(17, 153, 142, 0.25);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .core-value-banner::before {
+        content: '"';
+        position: absolute;
+        left: 10px;
+        top: -10px;
+        font-size: 4rem;
+        color: rgba(255, 255, 255, 0.15);
+        font-family: Georgia, serif;
+    }
+
+    .core-value-banner::after {
+        content: '"';
+        position: absolute;
+        right: 10px;
+        bottom: -30px;
+        font-size: 4rem;
+        color: rgba(255, 255, 255, 0.15);
+        font-family: Georgia, serif;
+    }
+
+    .core-value-text {
+        color: white;
+        font-size: 1.3rem;
+        font-weight: 600;
+        letter-spacing: 2px;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        position: relative;
+        z-index: 1;
+    }
+
+    .config-alerts {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .config-alert {
+        border-radius: 16px;
+        padding: 1.5rem;
+        color: white;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .api-alert {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        box-shadow: 0 4px 12px rgba(238, 90, 111, 0.3);
+    }
+
+    .status-alert {
+        background: linear-gradient(135deg, #8e9eab 0%, #6b7f8f 100%);
+        box-shadow: 0 4px 12px rgba(107, 127, 143, 0.3);
+    }
+
+    .vault-alert {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+    }
+
+    .alert-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .alert-icon {
+        font-size: 1.5rem;
+    }
+
+    .alert-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+    }
+
+    .alert-content p {
+        margin: 0 0 1rem;
+        opacity: 0.95;
+    }
+
+    .alert-advice {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+        line-height: 1.6;
+    }
+
+    .alert-button {
+        background: white;
+        color: #ee5a6f;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .alert-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .section {
+        margin-bottom: 2rem;
+    }
+
+    .section-title {
+        margin: 0 0 0.75rem;
+        padding: 0.5rem 0.75rem;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #1e3a4c;
+    }
+
+    .device-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        overflow: hidden;
+    }
+
+    .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.25rem 0;
+    }
+
+    .card-header h3 {
+        margin: 0;
+        font-size: 1rem;
+        color: #1e3a4c;
+    }
+
+    .card-body {
+        padding: 0.75rem 1.25rem 1rem;
+    }
+
+    .device-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .device-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0.75rem;
+        background: #f5f8fa;
+        border-radius: 8px;
+        font-size: 0.9rem;
+    }
+
+    .device-name {
+        font-weight: 500;
+        color: #1e3a4c;
+    }
+
+    .device-meta {
+        font-size: 0.75rem;
+        color: #5a6a72;
+    }
+
+    .device-more {
+        text-align: center;
+        padding-top: 0.25rem;
+    }
+
+    .qr-card .card-body {
+        padding: 0.75rem;
+        min-height: 200px;
+    }
+
+    .badge {
+        font-size: 0.75rem;
+        padding: 0.25em 0.6em;
+    }
+
+    .section-loading {
+        padding: 1rem 0;
+    }
+
+    .section-empty {
+        padding: 2rem;
+        text-align: center;
+        color: #5a6a72;
+        background: #f5f8fa;
+        border-radius: 8px;
+    }
+
+    .section-empty p {
+        margin: 0;
+    }
+
+    /* 暗色模式 */
+    [data-bs-theme="dark"] {
+        .alert-button {
+            background: rgba(255, 255, 255, 0.1);
+            color: #ff7a8c;
+        }
+        .alert-button:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        .section-title {
+            color: #d4d8dd;
+        }
+
+        .section-empty {
+            background: rgba(255, 255, 255, 0.04);
+            color: #91a0b0;
+        }
+
+        .card {
+            background: #232a3b;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        .card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .card-header h3 {
+            color: #d4d8dd;
+        }
+
+        .device-item {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .device-name {
+            color: #d4d8dd;
+        }
+
+        .device-meta {
+            color: #708090;
+        }
+
+    }
+</style>
+
+@code {
+    private class AuthorizedDeviceInfo
+    {
+        public string DeviceId { get; set; } = "";
+        public string DeviceName { get; set; } = "";
+        public string? SystemDeviceName { get; set; }
+        public DateTime? AuthorizedTime { get; set; }
+        public string IpAddress { get; set; } = "";
+    }
+
+    private class PendingDeviceInfo
+    {
+        public string RequestId { get; set; } = "";
+        public string DeviceName { get; set; } = "";
+        public string? SystemDeviceName { get; set; }
+        public DateTime RequestTime { get; set; }
+        public string IpAddress { get; set; } = "";
+    }
+
+    // DeviceHub 推送的 DeviceStatusChanged 事件负载（对应 DeviceService.NotifyDeviceStatusChangedAsync）
+    private class DeviceStatusPayload
+    {
+        public string? Action { get; set; }
+        public string? Type { get; set; }
+        public string? DeviceName { get; set; }
+        public string? RequestId { get; set; }
+        public string? DeviceId { get; set; }
+        public string? VaultId { get; set; }
+        public string? VaultName { get; set; }
+    }
+
+    private List<AuthorizedDeviceInfo> authorizedDevices = new();
+    private List<PendingDeviceInfo> pendingDevices = new();
+    private bool isLoadingDevices = true;
+    private bool isProcessingDevice;
+    private InitializationTasks? _initTasks;
+    private AIStatusSummary? aiStatus;
+    private VaultStatusSummary? vaultStatus;
+    private bool isInitialLoading = true;
+    // SignalR 设备状态 Hub 连接（替代轮询，扫码后实时推送）
+    private HubConnection? _deviceHub;
+    private CancellationTokenSource _disposeCts = new();
+    // 防抖：短时间内收到多次 DeviceStatusChanged 只刷新一次
+    private CancellationTokenSource? _refreshDebounceCts;
+
+    protected override void OnInitialized()
+    {
+        isInitialLoading = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var statusTask = AIStatusService.GetStatusSummaryAsync();
+                var vaultTask = VaultStatusService.GetStatusSummaryAsync();
+                var devicesTask = LoadDevicesAsync();
+                await Task.WhenAll(statusTask, vaultTask, devicesTask);
+
+                await InvokeAsync(() =>
+                {
+                    aiStatus = statusTask.Result;
+                    vaultStatus = vaultTask.Result;
+                    isInitialLoading = false;
+                    StateHasChanged();
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "后台加载失败");
+                await InvokeAsync(() =>
+                {
+                    isInitialLoading = false;
+                    StateHasChanged();
+                });
+            }
+        });
+
+        // 连接 DeviceHub，监听设备状态变化（扫码注册/授权/拒绝等实时推送）
+        _ = StartDeviceHubAsync();
+    }
+
+    private static bool IsLoopbackUrl(string baseUrl)
+    {
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)) return true;
+        return uri.Host is "127.0.0.1" or "localhost" or "::1";
+    }
+
+    private async Task StartDeviceHubAsync()
+    {
+        try
+        {
+            var backend = BaihuaEndpointHelper.NormalizeOutboundBaseUrl(SettingsService.BackendUrl);
+            var pageBase = Navigation.BaseUri.TrimEnd('/');
+            // k8s/代理场景：BackendUrl 是回环但页面不是 → 用页面同源让代理转发
+            if (IsLoopbackUrl(backend) && !IsLoopbackUrl(pageBase))
+            {
+                backend = pageBase;
+            }
+            var hubUrl = $"{backend}/hubs/devices";
+
+            _deviceHub = new HubConnectionBuilder()
+                .WithUrl(hubUrl, o =>
+                {
+                    o.Transports = HttpTransportType.WebSockets;
+                    o.SkipNegotiation = true;
+                    o.HttpMessageHandlerFactory = _ => new SocketsHttpHandler
+                    {
+                        UseProxy = false,
+                    };
+                })
+                .WithServerTimeout(TimeSpan.FromSeconds(60))
+                .WithKeepAliveInterval(TimeSpan.FromSeconds(10))
+                .WithAutomaticReconnect()
+                .Build();
+
+            // 仅响应授权状态变化（pair_request/authorized/revoked/rejected）；
+            // 忽略 sync_updated（花记每次同步都会触发，会导致列表频繁刷新）
+            _deviceHub.On<DeviceStatusPayload>("DeviceStatusChanged", async payload =>
+            {
+                if (payload?.Type == "SyncRequest" || payload?.Action == "sync_updated")
+                {
+                    return;
+                }
+                // 防抖 500ms，合并短时间内多次推送
+                var cts = new CancellationTokenSource();
+                var oldCts = System.Threading.Interlocked.Exchange(ref _refreshDebounceCts, cts);
+                oldCts?.Cancel();
+                try
+                {
+                    await Task.Delay(500, cts.Token);
+                    if (_disposeCts.IsCancellationRequested) return;
+                    await InvokeAsync(async () =>
+                    {
+                        await LoadDevicesAsync();
+                        StateHasChanged();
+                    });
+                }
+                catch (TaskCanceledException) { }
+            });
+
+            _deviceHub.Reconnecting += _ex => InvokeAsync(StateHasChanged);
+            // 重连后不强制刷新列表：服务端 Clients.All 广播的事件会自动恢复接收，
+            // 强制刷新反而在本次超时重连问题下表现为"每 15 秒自动刷新"
+            _deviceHub.Reconnected += _connId => InvokeAsync(StateHasChanged);
+            _deviceHub.Closed += _ex => InvokeAsync(StateHasChanged);
+
+            using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            await _deviceHub.StartAsync(budget.Token);
+            Logger.LogInformation("[FamilyHome] DeviceHub 已连接 {HubUrl}", hubUrl);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "[FamilyHome] DeviceHub 连接失败");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposeCts.Cancel();
+        _refreshDebounceCts?.Cancel();
+        _refreshDebounceCts?.Dispose();
+        _disposeCts.Dispose();
+        if (_deviceHub != null)
+        {
+            try { await _deviceHub.DisposeAsync(); } catch { }
+        }
+    }
+
+    private async Task LoadDevicesAsync()
+    {
+        try
+        {
+            isLoadingDevices = true;
+            var pendingTask = DevicesService.GetPendingDevicesAsync();
+            var authorizedTask = DevicesService.GetAuthorizedDevicesAsync();
+            await Task.WhenAll(pendingTask, authorizedTask);
+
+            var pendingResult = pendingTask.Result ?? new();
+            var authorizedResult = authorizedTask.Result ?? new();
+
+            pendingDevices = pendingResult.Select(d => new PendingDeviceInfo
+            {
+                RequestId = d.RequestId ?? "",
+                DeviceName = d.DeviceName ?? L["Devices_UnknownDevice"],
+                SystemDeviceName = d.SystemDeviceName,
+                RequestTime = d.RequestTime != default ? d.RequestTime : DateTime.Now,
+                IpAddress = d.IpAddress ?? ""
+            }).ToList();
+
+            authorizedDevices = authorizedResult.Select(d => new AuthorizedDeviceInfo
+            {
+                DeviceId = d.DeviceId ?? "",
+                DeviceName = d.DeviceName ?? L["Devices_UnknownDevice"],
+                SystemDeviceName = d.SystemDeviceName,
+                AuthorizedTime = d.AuthorizedTime,
+                IpAddress = d.IpAddress ?? ""
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "加载设备列表失败");
+        }
+        finally
+        {
+            isLoadingDevices = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void NavigateToSettings()
+    {
+        Navigation.NavigateTo("settings");
+    }
+
+    private void NavigateToVaults()
+    {
+        Navigation.NavigateTo("vaults");
+    }
+
+    private async Task OnTasksChanged()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AuthorizeDeviceAsync(string requestId)
+    {
+        try
+        {
+            isProcessingDevice = true;
+            var (success, msg) = await DevicesService.AuthorizeDeviceAsync(requestId);
+            if (success)
+            {
+                await LoadDevicesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "授权设备失败");
+        }
+        finally
+        {
+            isProcessingDevice = false;
+        }
+    }
+
+    private async Task RejectDeviceAsync(string requestId)
+    {
+        try
+        {
+            isProcessingDevice = true;
+            var (success, msg) = await DevicesService.RejectDeviceAsync(requestId);
+            if (success)
+            {
+                await LoadDevicesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "拒绝设备失败");
+        }
+        finally
+        {
+            isProcessingDevice = false;
+        }
+    }
+
+    private async Task RevokeDeviceAsync(string deviceId)
+    {
+        try
+        {
+            isProcessingDevice = true;
+            var (success, msg) = await DevicesService.RevokeDeviceAsync(deviceId);
+            if (success)
+            {
+                await LoadDevicesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "撤销设备失败");
+        }
+        finally
+        {
+            isProcessingDevice = false;
+        }
+    }
+
+    private string GetConfigurationAdviceHtml()
+    {
+        var advice = AIStatusService.GetConfigurationAdvice();
+        if (string.IsNullOrEmpty(advice))
+            advice = "";
+        return advice
+            .Replace("\n", "<br />")
+            .Replace("• ", "&nbsp;&nbsp;• ");
+    }
+
+    private string GetVaultConfigurationAdviceHtml()
+    {
+        return VaultStatusService.GetConfigurationAdvice()
+            .Replace("\n", "<br />")
+            .Replace("• ", "&nbsp;&nbsp;• ");
+    }
+}

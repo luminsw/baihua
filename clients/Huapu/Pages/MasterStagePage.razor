@@ -1,0 +1,498 @@
+@page "/master-stage/{MasterId}"
+@inject IMasterService MasterService
+@inject NavigationManager Nav
+
+<PageTitle>阶段进度</PageTitle>
+
+<div class="stage-page">
+    @if (_isLoading || _profile == null)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <div class="loading-text">加载中...</div>
+        </div>
+    }
+    else if (_profile == null || !_profile.Success)
+    {
+        <div class="error-state">
+            <div class="error-icon">⚠️</div>
+            <div class="error-msg">加载失败</div>
+            <div class="error-detail">@_errorMessage</div>
+            <div class="error-actions">
+                <button class="btn btn-primary" @onclick="@LoadProfileAsync">重试</button>
+                <button class="btn" @onclick="@GoBack">返回</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="stage-header">
+            <button class="btn-icon" @onclick="@GoToChat" title="返回聊天">&larr;</button>
+            <div class="header-info">
+                <span class="title">@_profile.MasterId · 修炼进度</span>
+                <span class="subtitle">@_profile.Goal</span>
+            </div>
+        </div>
+
+        <div class="profile-card">
+            <div class="profile-item"><span class="label">🎯 学习目标</span><span class="value">@_profile.Goal</span></div>
+            <div class="profile-item"><span class="label">📚 所属行业</span><span class="value">@_profile.Industry</span></div>
+            <div class="profile-item"><span class="label">📍 当前阶段</span><span class="value current">@_profile.CurrentStage</span></div>
+            @if (!string.IsNullOrEmpty(_profile.EstimatedTime))
+            {
+                <div class="profile-item"><span class="label">⏱️ 预计时长</span><span class="value">@_profile.EstimatedTime</span></div>
+            }
+        </div>
+
+        <div class="stage-timeline">
+            @for (int i = 0; i < _profile.StageHistory.Count; i++)
+            {
+                var stage = _profile.StageHistory[i];
+                var isCurrent = stage.IsCurrent;
+                var isGraduated = stage.IsGraduated;
+                var isUpcoming = !isCurrent && !isGraduated;
+
+                <div class="stage-node @(isCurrent ? "current" : isGraduated ? "graduated" : "upcoming")">
+                    <div class="stage-indicator">
+                        @if (isGraduated) { <span class="indicator-icon">✓</span> }
+                        else if (isCurrent) { <span class="indicator-icon">›</span> }
+                        else { <span class="indicator-icon upcoming">○</span> }
+                    </div>
+                    <div class="stage-content">
+                        <div class="stage-name">
+                            @stage.DisplayName
+                            @if (!string.IsNullOrEmpty(stage.RoleName))
+                            {
+                                <span class="stage-role">—— @stage.RoleName</span>
+                            }
+                        </div>
+                        <div class="stage-desc">@stage.Description</div>
+
+                        @if (isCurrent)
+                        {
+                            <div class="stage-progress-bar">
+                                <div class="progress-fill" style="width: @stage.ProgressPct%"></div>
+                            </div>
+                            <div class="progress-label">学习进度：@stage.ProgressPct%</div>
+                        }
+
+                        @if (isGraduated && !string.IsNullOrEmpty(stage.Summary))
+                        {
+                            <div class="stage-summary-card">
+                                <div class="summary-header">
+                                    <span class="summary-icon">📝</span>
+                                    <span class="summary-title">阶段小结</span>
+                                </div>
+                                <div class="summary-text">
+                                    <MarkdownView Content="@stage.Summary" />
+                                </div>
+                            </div>
+                        }
+
+                        @if (isCurrent)
+                        {
+                            <button class="btn btn-sm btn-complete" @onclick="@(() => CompleteStageAsync(stage.Name))" disabled="@_isCompleting">
+                                @(_isCompleting ? "请稍候..." : "完成本阶段")
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="vault-focus-section">
+            <div class="section-header">
+                <span class="section-title">📚 关联知识库</span>
+                <button class="btn btn-sm" @onclick="@OpenVaultPicker">+ 添加</button>
+            </div>
+
+            @if (_focusedVaults.Count == 0)
+            {
+                <div class="vault-empty">
+                    <span>暂无关联的知识库</span>
+                    <span class="vault-hint">关联后，AI 师父会在对话中参考知识库内容</span>
+                </div>
+            }
+            else
+            {
+                <div class="vault-list">
+                    @foreach (var vault in _focusedVaults)
+                    {
+                        <div class="vault-item">
+                            <div class="vault-info">
+                                <span class="vault-icon">📖</span>
+                                <div class="vault-details">
+                                    <span class="vault-name">@vault.VaultName</span>
+                                    @if (!string.IsNullOrEmpty(vault.StageName))
+                                    {
+                                        <span class="vault-stage">阶段：@vault.StageName</span>
+                                    }
+                                </div>
+                            </div>
+                            <button class="btn-remove" @onclick="@(() => RemoveFocusAsync(vault.VaultId))" title="移除">✕</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (_showVaultPicker)
+        {
+            <div class="modal-overlay" @onclick="@CloseVaultPicker">
+                <div class="modal-content vault-picker" @onclick:stopPropagation>
+                    <h4>选择知识库</h4>
+                    @if (_isLoadingVaults)
+                    {
+                        <div class="loading-text">加载知识库列表...</div>
+                    }
+                    else if (_availableVaults.Count == 0)
+                    {
+                        <div class="vault-empty">
+                            <span>暂无可用知识库</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="vault-picker-list">
+                            @foreach (var vault in _availableVaults)
+                            {
+                                <div class="vault-picker-item @(_focusedVaults.Any(f => f.VaultId == vault.Id) ? "selected" : "")"
+                                     @onclick="@(() => ToggleFocusAsync(vault))">
+                                    <span class="vault-icon">📁</span>
+                                    <div class="vault-details">
+                                        <span class="vault-name">@vault.Name</span>
+                                        @if (!string.IsNullOrEmpty(vault.Industry))
+                                        {
+                                            <span class="vault-stage">@vault.Industry</span>
+                                        }
+                                    </div>
+                                    @if (_focusedVaults.Any(f => f.VaultId == vault.Id))
+                                    {
+                                        <span class="check-icon">✓</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    <div class="modal-actions">
+                        <button class="btn btn-primary" @onclick="@CloseVaultPicker">完成</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (_showStageCompleteModal)
+        {
+            <div class="modal-overlay" @onclick="@CloseModal">
+                <div class="modal-content stage-complete-modal" @onclick:stopPropagation>
+                    <div class="modal-icon">🎉</div>
+                    <h4>恭喜！阶段完成</h4>
+                    @if (!string.IsNullOrEmpty(_completedStageName))
+                    {
+                        <p class="completed-stage-name">「@_completedStageName」</p>
+                    }
+                    @if (!string.IsNullOrEmpty(_stageCompleteBlessing))
+                    {
+                        <div class="complete-blessing">
+                            <div class="blessing-text">@_stageCompleteBlessing</div>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_stageCompleteSummary))
+                    {
+                        <div class="complete-summary">
+                            <div class="complete-summary-title">📖 阶段小结</div>
+                            <div class="complete-summary-content">
+                                <MarkdownView Content="@_stageCompleteSummary" />
+                            </div>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_stageCompleteCorrections) && _stageCompleteCorrections != "无")
+                    {
+                        <div class="complete-corrections">
+                            <div class="corrections-title">⚠️ 关键纠正</div>
+                            <div class="corrections-content">
+                                <MarkdownView Content="@_stageCompleteCorrections" />
+                            </div>
+                        </div>
+                    }
+                    <div class="modal-actions">
+                        <button class="btn btn-primary" @onclick="@CloseModal">好的，继续努力</button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .stage-page { min-height: 100vh; }
+    .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem; color: var(--text-secondary); }
+    .loading .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--primary-color); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
+    .loading-text { font-size: 0.95rem; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .error-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem; color: var(--text-secondary); }
+    .error-icon { font-size: 48px; margin-bottom: 0.5rem; }
+    .error-msg { font-size: 1.1rem; font-weight: 500; margin-bottom: 0.25rem; color: var(--primary-text); }
+    .error-detail { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1.5rem; text-align: center; }
+    .error-actions { display: flex; gap: 0.75rem; }
+    .stage-header { display: flex; align-items: center; padding: 0.75rem 1rem; background: var(--card-bg); border-bottom: 1px solid var(--border); }
+    .btn-icon { background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 0.5rem; margin-right: 0.5rem; color: var(--text-primary); }
+    .header-info .title { font-weight: 600; font-size: 1rem; display: block; }
+    .header-info .subtitle { font-size: 0.8rem; color: var(--text-tertiary); }
+    .profile-card { margin: 1rem; padding: 1rem; background: var(--card-bg); border-radius: 12px; display: grid; gap: 0.75rem; }
+    .profile-item { display: flex; justify-content: space-between; align-items: center; }
+    .profile-item .label { color: var(--text-tertiary); font-size: 0.85rem; }
+    .profile-item .value { font-weight: 500; text-align: right; max-width: 60%; }
+    .profile-item .value.current { color: var(--primary-color); font-weight: 600; }
+    .stage-timeline { padding: 1rem; display: flex; flex-direction: column; gap: 0; }
+    .stage-node { display: flex; gap: 0.75rem; position: relative; padding-bottom: 1.5rem; }
+    .stage-node:not(:last-child)::after {
+        content: ''; position: absolute; left: 18px; top: 36px; bottom: 0;
+        width: 2px; background: var(--border);
+    }
+    .stage-node.graduated:not(:last-child)::after { background: var(--success-color, #4caf50); }
+    .stage-indicator { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; z-index: 1; }
+    .stage-node.current .stage-indicator { background: var(--primary-color); }
+    .stage-node.graduated .stage-indicator { background: var(--success-color, #4caf50); }
+    .stage-node.upcoming .stage-indicator { background: var(--surface-alt); }
+    .indicator-icon { color: white; font-size: 0.9rem; font-weight: bold; }
+    .indicator-icon.upcoming { color: var(--text-tertiary); }
+    .stage-content { flex: 1; }
+    .stage-name { font-weight: 600; font-size: 1rem; margin-bottom: 0.25rem; }
+    .stage-role { font-weight: 400; font-size: 0.85rem; color: var(--text-secondary); }
+    .stage-node.upcoming .stage-name { color: var(--text-tertiary); }
+    .stage-desc { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; line-height: 1.5; }
+    .stage-progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin: 0.5rem 0; }
+    .progress-fill { height: 100%; background: var(--primary-color); border-radius: 3px; transition: width 0.3s; }
+    .progress-label { font-size: 0.8rem; color: var(--text-tertiary); }
+    .stage-summary-card {
+        margin-top: 0.75rem; padding: 0.85rem 1rem;
+        background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(255,152,0,0.06));
+        border: 1px solid rgba(255,152,0,0.25);
+        border-radius: 10px;
+    }
+    .summary-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .summary-icon { font-size: 1rem; }
+    .summary-title { font-weight: 600; font-size: 0.9rem; color: var(--primary-text); }
+    .summary-text { font-size: 0.85rem; line-height: 1.6; }
+    .summary-text :deep(p) { margin: 6px 0; }
+    .btn-complete { margin-top: 0.75rem; }
+
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+    .modal-content { background: var(--surface); padding: 24px; border-radius: 16px; max-width: 360px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+    .stage-complete-modal { text-align: center; }
+    .stage-complete-modal .modal-icon { font-size: 48px; margin-bottom: 0.5rem; }
+    .stage-complete-modal h4 { font-size: 1.3rem; margin-bottom: 0.5rem; color: var(--primary-text); }
+    .completed-stage-name { font-size: 1.1rem; color: var(--primary-color); font-weight: 600; margin-bottom: 1rem; }
+    .complete-summary { text-align: left; background: var(--card-bg); border-radius: 10px; padding: 12px 14px; margin-bottom: 1rem; }
+    .complete-summary-title { font-size: 0.85rem; color: var(--text-tertiary); margin-bottom: 6px; }
+    .complete-summary-content { font-size: 0.9rem; line-height: 1.6; color: var(--primary-text); }
+    .complete-blessing { text-align: left; padding: 10px 14px; margin-bottom: 1rem; border-radius: 10px; background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(76,175,80,0.06)); border: 1px solid rgba(76,175,80,0.2); }
+    .blessing-text { font-size: 0.95rem; line-height: 1.6; color: var(--primary-text); font-style: italic; }
+    .complete-corrections { text-align: left; padding: 10px 14px; margin-bottom: 1rem; border-radius: 10px; background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.2); }
+    .corrections-title { font-size: 0.85rem; color: #ff9800; margin-bottom: 6px; }
+    .corrections-content { font-size: 0.9rem; line-height: 1.6; color: rgba(255,200,100,0.9); }
+    .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+    .modal-actions .btn { flex: 1; }
+
+    .vault-focus-section { margin: 1rem; padding: 1rem; background: var(--card-bg); border-radius: 12px; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+    .section-title { font-weight: 600; font-size: 1rem; }
+    .vault-empty { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 1rem; color: var(--text-tertiary); font-size: 0.85rem; }
+    .vault-hint { font-size: 0.75rem; text-align: center; }
+    .vault-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .vault-item { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.75rem; background: var(--surface-alt); border-radius: 8px; }
+    .vault-info { display: flex; align-items: center; gap: 0.5rem; }
+    .vault-icon { font-size: 1.2rem; }
+    .vault-details { display: flex; flex-direction: column; }
+    .vault-name { font-weight: 500; font-size: 0.9rem; }
+    .vault-stage { font-size: 0.75rem; color: var(--text-tertiary); }
+    .btn-remove { background: none; border: none; color: var(--text-tertiary); cursor: pointer; font-size: 0.9rem; padding: 0.25rem; }
+    .btn-remove:hover { color: #f44336; }
+    .vault-picker { max-width: 360px; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; }
+    .vault-picker h4 { margin: 0 0 1rem; font-size: 1.1rem; }
+    .vault-picker-list { display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; flex: 1; }
+    .vault-picker-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.75rem; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+    .vault-picker-item:hover { background: var(--surface-alt); }
+    .vault-picker-item.selected { background: rgba(255,36,66,0.1); border: 1px solid var(--primary-color); }
+    .check-icon { margin-left: auto; color: var(--primary-color); font-weight: bold; }
+</style>
+
+@code {
+    [Parameter] public string MasterId { get; set; } = "";
+
+    private ApprenticeProfileResponse? _profile;
+    private bool _isLoading = true;
+    private bool _isCompleting;
+    private string _errorMessage = "";
+    private bool _showStageCompleteModal;
+    private string _completedStageName = "";
+    private string _stageCompleteSummary = "";
+    private string _stageCompleteBlessing = "";
+    private string _stageCompleteCorrections = "";
+
+    private List<VaultFocusItem> _focusedVaults = new();
+    private List<VaultListItem> _availableVaults = new();
+    private bool _showVaultPicker;
+    private bool _isLoadingVaults;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(MasterId))
+        {
+            await LoadProfileAsync();
+            await LoadVaultFocusAsync();
+        }
+    }
+
+    private void GoBack()
+    {
+        Nav.NavigateTo("/master-list");
+    }
+
+    private void GoToChat()
+    {
+        if (_profile != null)
+            Nav.NavigateTo($"/master-chat/{_profile.MasterId}");
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        _isLoading = true;
+        _errorMessage = "";
+        try
+        {
+            _profile = await MasterService.GetProfileAsync(MasterId, useCache: false);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+            System.Diagnostics.Debug.WriteLine($"Load profile failed: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CompleteStageAsync(string stageName)
+    {
+        if (_profile == null) return;
+
+        _isCompleting = true;
+        try
+        {
+            var result = await MasterService.CompleteStageAsync(MasterId, stageName);
+            if (result.Success)
+            {
+                _completedStageName = stageName;
+                _stageCompleteSummary = result.Summary ?? "";
+                _stageCompleteBlessing = result.Blessing ?? "";
+                _stageCompleteCorrections = result.KeyCorrections ?? "";
+                _showStageCompleteModal = true;
+                await LoadProfileAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Stage complete failed: {ex.Message}");
+        }
+        finally
+        {
+            _isCompleting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadVaultFocusAsync()
+    {
+        try
+        {
+            _focusedVaults = await MasterService.GetVaultFocusAsync(MasterId);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Load vault focus failed: {ex.Message}");
+        }
+    }
+
+    private async Task OpenVaultPicker()
+    {
+        _showVaultPicker = true;
+        _isLoadingVaults = true;
+        StateHasChanged();
+
+        try
+        {
+            _availableVaults = await MasterService.GetAvailableVaultsAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Load vaults failed: {ex.Message}");
+        }
+        finally
+        {
+            _isLoadingVaults = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseVaultPicker()
+    {
+        _showVaultPicker = false;
+        StateHasChanged();
+    }
+
+    private async Task ToggleFocusAsync(VaultListItem vault)
+    {
+        var isFocused = _focusedVaults.Any(f => f.VaultId == vault.Id);
+        try
+        {
+            if (isFocused)
+            {
+                var focused = _focusedVaults.First(f => f.VaultId == vault.Id);
+                if (!string.IsNullOrEmpty(focused.VaultId))
+                    await MasterService.RemoveVaultFocusAsync(MasterId, vault.Id);
+                _focusedVaults = _focusedVaults.Where(f => f.VaultId != vault.Id).ToList();
+            }
+            else
+            {
+                await MasterService.FocusVaultAsync(MasterId, vault.Id, _profile?.CurrentStage);
+                _focusedVaults.Add(new VaultFocusItem
+                {
+                    VaultId = vault.Id,
+                    VaultName = vault.Name,
+                    State = "focused",
+                    StageName = _profile?.CurrentStage,
+                    UpdatedAt = DateTime.Now
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Toggle focus failed: {ex.Message}");
+        }
+        StateHasChanged();
+    }
+
+    private async Task RemoveFocusAsync(string vaultId)
+    {
+        try
+        {
+            await MasterService.RemoveVaultFocusAsync(MasterId, vaultId);
+            _focusedVaults = _focusedVaults.Where(f => f.VaultId != vaultId).ToList();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Remove focus failed: {ex.Message}");
+        }
+        StateHasChanged();
+    }
+
+    private void CloseModal()
+    {
+        _showStageCompleteModal = false;
+        StateHasChanged();
+    }
+}

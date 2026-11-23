@@ -1,0 +1,39 @@
+# 基础镜像 - Runtime 阶段（包含运行时依赖）
+# 用于加速 Baihua 服务构建和 WebUI 的最终镜像构建
+#
+# 构建命令：
+#   docker build -f Dockerfile.base-runtime -t bh/base-runtime:latest ..
+#
+# 更新频率：
+#   - 仅当系统依赖变化时需要重建
+#   - 应用代码变更无需重建此镜像
+
+# Ubuntu 26.04 (resolute) 基础：.NET 10 mcr 镜像的 26.04 变体（与宿主机 26.04 一致）
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-resolute
+WORKDIR /app
+
+# 使用华为云镜像源（解决容器内无法访问 archive.ubuntu.com 的问题）
+RUN sed -i 's|http://archive.ubuntu.com|https://mirrors.huaweicloud.com|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null; \
+    sed -i 's|http://security.ubuntu.com|https://mirrors.huaweicloud.com|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null; \
+    sed -i 's|http://archive.ubuntu.com|https://mirrors.huaweicloud.com|g' /etc/apt/sources.list 2>/dev/null; \
+    sed -i 's|http://security.ubuntu.com|https://mirrors.huaweicloud.com|g' /etc/apt/sources.list 2>/dev/null; \
+    true
+
+# 安装运行时依赖（所有 .NET 容器的最小公共集）：
+# - libgomp1: OpenMP 支持（本地推理后端）
+# - curl: 健康检查
+# - ca-certificates: HTTPS 证书
+# 注意：合并后不再有独立的 AI 容器，Vulkan 运行时也已随之退役（LLamaSharp 依赖已移除），
+# 因此基础镜像不需要任何 GPU 依赖。
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgomp1 \
+        curl \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# 创建数据/日志目录
+RUN mkdir -p /app/data /app/logs
+
+# 设置默认环境变量
+ENV DOTNET_RUNNING_IN_CONTAINER=true

@@ -1,0 +1,148 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject NavigationManager Navigation
+@inject Baihua.Web.Services.VaultStatusService VaultStatusService
+@inject Baihua.Web.Services.AIStatusService AIStatusService
+@inject ILogger<StatusContainer> Logger
+
+
+<div class="status-container">
+    <!-- AI 状态显示 -->
+    <div class="status-item" @onclick="NavigateToSettings">
+        <StatusBadge 
+            IsConfigured="@(AIStatus?.IsConfigured ?? true)"
+            Icon="🤖"
+            Title="@AIStatus?.ProviderName"
+            Detail="@(AIStatus?.IsConfigured ?? true ? GetShortModelName(AIStatus?.Model) : "点击设置 API Key")"
+            ConfiguredClass="ai-configured"
+            NotConfiguredClass="ai-not-configured"
+            ConfiguredTitle="AI 已配置 - 点击修改"
+            NotConfiguredTitle="AI 未配置 - 点击设置"
+            NotConfiguredText="AI 未配置" />
+    </div>
+
+    <!-- 知识库状态显示 -->
+    <div class="status-item" @onclick="NavigateToVaults">
+        <StatusBadge 
+            IsConfigured="@(VaultStatus?.IsConfigured ?? false)"
+            Icon="📁"
+            Title="@(GetVaultDisplayTitle())"
+            Detail="@(GetVaultDisplayDetail())"
+            ConfiguredClass="vault-configured"
+            NotConfiguredClass="@(GetVaultNotConfiguredClass())"
+            ConfiguredTitle="知识库已配置 - 点击管理"
+            NotConfiguredTitle="@(GetVaultNotConfiguredTitle())"
+            NotConfiguredText="@(GetVaultNotConfiguredText())" />
+    </div>
+
+</div>
+
+@code {
+    [Parameter]
+    public AIStatusSummary? AIStatus { get; set; }
+    
+    [Parameter]
+    public VaultStatusSummary? VaultStatus { get; set; }
+    
+
+
+    protected override void OnInitialized()
+    {
+        // 不订阅事件，完全依赖MainLayout传递的状态
+        // MainLayout会通过SignalR和事件机制更新状态
+        Logger.LogDebug("OnInitialized，使用MainLayout传递的状态");
+    }
+
+    // 不需要事件处理，MainLayout会更新Parameter
+    // 当MainLayout的aiStatus或vaultStatus变化时，StatusContainer会自动重新渲染
+
+    private void NavigateToSettings()
+    {
+        Navigation.NavigateTo("settings");
+    }
+
+    private void NavigateToVaults()
+    {
+        Navigation.NavigateTo("vaults");
+    }
+
+    private string GetShortModelName(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return "默认模型";
+        
+        var parts = fullName.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length > 0)
+        {
+            var lastPart = parts[^1];
+            if (lastPart.Length > 20)
+            {
+                if (lastPart.Contains("DeepSeek"))
+                    return "DeepSeek";
+                if (lastPart.Contains("Qwen"))
+                    return "Qwen";
+                if (lastPart.Contains("GPT"))
+                    return "GPT";
+                return lastPart.Substring(0, 20) + "...";
+            }
+            return lastPart;
+        }
+        
+        return fullName.Length > 20 ? fullName.Substring(0, 20) + "..." : fullName;
+    }
+
+    private string GetShortPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return "未设置路径";
+        
+        if (path.Length > 25)
+        {
+            var parts = path.Split('/', '\\');
+            if (parts.Length > 2)
+            {
+                return "..." + parts[^1];
+            }
+            return "..." + path.Substring(path.Length - 22);
+        }
+        
+        return path;
+    }
+
+    // 知识库显示辅助方法
+    private string GetVaultDisplayTitle()
+    {
+        if (VaultStatus?.Status == VaultConfigurationStatus.PathNotFound)
+            return "路径不存在";
+        return VaultStatus?.ActiveVaultName ?? "未选择";
+    }
+
+    private string GetVaultDisplayDetail()
+    {
+        if (VaultStatus?.Status == VaultConfigurationStatus.PathNotFound)
+            return "点击重新配置";
+        if (VaultStatus?.IsConfigured ?? false)
+            return GetShortPath(VaultStatus?.ActiveVaultPath);
+        return "点击设置知识库路径";
+    }
+
+    private string GetVaultNotConfiguredClass()
+    {
+        return VaultStatus?.Status == VaultConfigurationStatus.PathNotFound 
+            ? "vault-path-missing" 
+            : "vault-not-configured";
+    }
+
+    private string GetVaultNotConfiguredTitle()
+    {
+        if (VaultStatus?.Status == VaultConfigurationStatus.PathNotFound)
+            return $"知识库路径不存在: {VaultStatus?.ActiveVaultPath}。点击重新配置";
+        return "知识库未配置 - 点击设置";
+    }
+
+    private string GetVaultNotConfiguredText()
+    {
+        return VaultStatus?.Status == VaultConfigurationStatus.PathNotFound 
+            ? "路径不存在" 
+            : "知识库未配置";
+    }
+}

@@ -1,0 +1,270 @@
+@page "/master-profile/{MasterId}"
+@inject IMasterService MasterService
+@inject NavigationManager Nav
+
+<PageTitle>学徒画像</PageTitle>
+
+<div class="profile-page">
+    @if (_isLoading || _profile == null)
+    {
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <div class="loading-text">加载画像中...</div>
+        </div>
+    }
+    else
+    {
+        <div class="profile-header">
+            <button class="btn-icon" @onclick="@GoBack">&larr;</button>
+            <h1>学徒画像</h1>
+            <button class="btn-icon" @onclick="@ToggleEdit">@(_isEditing ? "取消" : "编辑")</button>
+        </div>
+
+        <div class="profile-content">
+            @if (_isEditing)
+            {
+                <EditForm Model="_editRequest" OnValidSubmit="@SaveProfileAsync" class="edit-form">
+                    <div class="form-section">
+                        <h3>基础信息</h3>
+                        <div class="form-group">
+                            <label>学习基础</label>
+                            <textarea @bind="_editRequest.Foundation" placeholder="如：零基础、有一定了解..." rows="2"></textarea>
+                            <small class="hint">告诉师父你已掌握的知识</small>
+                        </div>
+                        <div class="form-group">
+                            <label>学习风格</label>
+                            <select @bind="_editRequest.LearningStyle">
+                                <option value="">请选择...</option>
+                                <option value="visual">视觉型 - 通过图像/图表学习</option>
+                                <option value="auditory">听觉型 - 通过听讲学习</option>
+                                <option value="reading">阅读型 - 通过阅读学习</option>
+                                <option value="kinesthetic">动手型 - 通过实践学习</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>自我评估</h3>
+                        <div class="form-group">
+                            <label>你的优势</label>
+                            <textarea @bind="_editRequest.Strengths" placeholder="如：记忆力好、逻辑思维强..." rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>需要加强的方面</label>
+                            <textarea @bind="_editRequest.Weaknesses" placeholder="如：容易紧张、计算速度慢..." rows="3"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn" @onclick="@ToggleEdit">取消</button>
+                        <button type="submit" class="btn btn-primary" disabled="@(_isSaving)">
+                            @(_isSaving ? "保存中..." : "保存")
+                        </button>
+                    </div>
+                </EditForm>
+            }
+            else
+            {
+                <div class="view-mode">
+                    <div class="info-card">
+                        <div class="info-row">
+                            <span class="info-label">目标</span>
+                            <span class="info-value">@_profile.Goal</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">行业</span>
+                            <span class="info-value">@_profile.Industry</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">当前阶段</span>
+                            <span class="info-value highlight">@_profile.CurrentStage</span>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_profile.Foundation))
+                    {
+                        <div class="section">
+                            <h4>📚 学习基础</h4>
+                            <p>@_profile.Foundation</p>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_profile.LearningStyle))
+                    {
+                        <div class="section">
+                            <h4>🎯 学习风格</h4>
+                            <p>@GetLearningStyleText(_profile.LearningStyle)</p>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_profile.Strengths))
+                    {
+                        <div class="section strengths">
+                            <h4>💪 优势</h4>
+                            <p>@_profile.Strengths</p>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_profile.Weaknesses))
+                    {
+                        <div class="section weaknesses">
+                            <h4>⚠️ 需要加强</h4>
+                            <p>@_profile.Weaknesses</p>
+                        </div>
+                    }
+
+                    @if (_profile.GraduatedStages.Count > 0)
+                    {
+                        <div class="section">
+                            <h4>✅ 已完成阶段</h4>
+                            <div class="stage-tags">
+                                @foreach (var stage in _profile.GraduatedStages)
+                                {
+                                    <span class="stage-tag">@stage</span>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @if (string.IsNullOrEmpty(_profile.Foundation) &&
+                         string.IsNullOrEmpty(_profile.LearningStyle) &&
+                         string.IsNullOrEmpty(_profile.Strengths) &&
+                         string.IsNullOrEmpty(_profile.Weaknesses))
+                    {
+                        <div class="empty-profile">
+                            <div class="empty-icon">📝</div>
+                            <p>画像信息为空</p>
+                            <button class="btn btn-primary" @onclick="@ToggleEdit">填写画像</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .profile-page { min-height: 100vh; }
+    .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--primary-color); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .loading-text { margin-top: 1rem; color: var(--text-secondary); }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .profile-header { display: flex; align-items: center; padding: 0.75rem 1rem; background: var(--card-bg); border-bottom: 1px solid var(--border); }
+    .profile-header h1 { flex: 1; margin: 0; font-size: 1.2rem; }
+    .btn-icon { background: none; border: none; font-size: 1rem; cursor: pointer; padding: 0.5rem; color: var(--text-primary); }
+    .profile-content { padding: 1rem; }
+    .info-card { background: var(--card-bg); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
+    .info-row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
+    .info-row:last-child { margin-bottom: 0; }
+    .info-label { color: var(--text-tertiary); font-size: 0.85rem; }
+    .info-value { font-weight: 500; }
+    .info-value.highlight { color: var(--primary-color); font-weight: 600; }
+    .section { background: var(--card-bg); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
+    .section h4 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+    .section p { margin: 0; line-height: 1.6; color: var(--text-secondary); }
+    .section.strengths { border-left: 3px solid #4caf50; }
+    .section.weaknesses { border-left: 3px solid #ff9800; }
+    .stage-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .stage-tag { padding: 4px 10px; background: var(--surface-alt); border-radius: 12px; font-size: 0.85rem; }
+    .empty-profile { text-align: center; padding: 2rem; color: var(--text-secondary); }
+    .empty-profile .empty-icon { font-size: 48px; margin-bottom: 1rem; }
+    .empty-profile p { margin: 0 0 1rem; }
+    .edit-form .form-section { margin-bottom: 1.5rem; }
+    .edit-form h3 { margin: 0 0 0.75rem; font-size: 1rem; }
+    .edit-form .form-group { margin-bottom: 1rem; }
+    .edit-form label { display: block; font-size: 0.9rem; margin-bottom: 0.3rem; font-weight: 500; }
+    .edit-form textarea, .edit-form select { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text-primary); font-size: 0.9rem; resize: vertical; }
+    .edit-form .hint { display: block; font-size: 0.8rem; color: var(--text-tertiary); margin-top: 0.3rem; }
+    .form-actions { display: flex; justify-content: flex-end; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+</style>
+
+@code {
+    [Parameter] public string MasterId { get; set; } = "";
+
+    private ApprenticeProfileResponse? _profile;
+    private UpdateProfileRequest _editRequest = new();
+    private bool _isEditing;
+    private bool _isLoading = true;
+    private bool _isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProfileAsync();
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _profile = await MasterService.GetProfileAsync(MasterId);
+            if (_profile.Success)
+            {
+                _editRequest = new UpdateProfileRequest
+                {
+                    Foundation = _profile.Foundation,
+                    LearningStyle = _profile.LearningStyle,
+                    Strengths = _profile.Strengths,
+                    Weaknesses = _profile.Weaknesses
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Load profile failed: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleEdit()
+    {
+        if (_isEditing && !_isSaving)
+        {
+            _ = LoadProfileAsync();
+        }
+        _isEditing = !_isEditing;
+        StateHasChanged();
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        _isSaving = true;
+        try
+        {
+            var result = await MasterService.UpdateProfileAsync(MasterId, _editRequest);
+            if (result.Success)
+            {
+                _profile = result;
+                _isEditing = false;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Save profile failed: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void GoBack()
+    {
+        Nav.NavigateTo($"/master-chat/{MasterId}");
+    }
+
+    private static string GetLearningStyleText(string? style) => style switch
+    {
+        "visual" => "视觉型 - 通过图像/图表学习",
+        "auditory" => "听觉型 - 通过听讲学习",
+        "reading" => "阅读型 - 通过阅读学习",
+        "kinesthetic" => "动手型 - 通过实践学习",
+        _ => style ?? "未设置"
+    };
+}

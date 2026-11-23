@@ -1,0 +1,1061 @@
+@page "/learn/generate"
+@implements IAsyncDisposable
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.SettingsService SettingsService
+@inject NavigationManager Navigation
+@inject Microsoft.Extensions.Logging.ILogger<LearnGenerate> Logger
+@using System.Text.Json
+@using Microsoft.AspNetCore.Http.Connections
+@using Microsoft.AspNetCore.SignalR.Client
+@using Baihua.Contracts.Learn
+@using Baihua.Web.Services
+
+<PageTitle>生成题库 · 学习</PageTitle>
+
+<div class="generate-page">
+    <div class="page-head">
+        <h1>✨ 生成题库</h1>
+        <a class="btn btn-link" href="/learn">← 返回题库</a>
+    </div>
+
+    @if (importResult != null)
+    {
+        <div class="card-panel success-panel">
+            <h2>✅ 导入完成</h2>
+            <div class="meta-line">
+                题库 <b>@importResult.BankCode</b> · 新增条目 <b>@importResult.ItemsImported</b>
+                · 新增题目 <b>@importResult.QuestionsImported</b>
+                @if (importResult.ItemsSkipped + importResult.QuestionsSkipped > 0)
+                {
+                    <span>· 跳过已存在 @(importResult.ItemsSkipped + importResult.QuestionsSkipped) 条</span>
+                }
+            </div>
+            @if (importResult.Warnings.Count > 0)
+            {
+                <details class="warn-details">
+                    <summary>查看 @importResult.Warnings.Count 条提示</summary>
+                    <ul>
+                        @foreach (var w in importResult.Warnings.Take(50))
+                        {
+                            <li>@w</li>
+                        }
+                    </ul>
+                </details>
+            }
+            <div class="actions">
+                <a class="btn btn-primary" href="/learn">去刷题</a>
+                <button class="btn btn-outline-secondary" @onclick="ResetAsync">再生成一批</button>
+            </div>
+        </div>
+    }
+    else if (package == null || validation == null)
+    {
+        <div class="card-panel">
+            <div class="source-tabs">
+                <button class="btn @(source == Source.Ai ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => source = Source.Ai">🤖 AI 生成</button>
+                <button class="btn @(source == Source.Paste ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => source = Source.Paste">📋 粘贴题库包 JSON</button>
+            </div>
+
+            @if (error != null)
+            {
+                <div class="alert-error">@error</div>
+            }
+
+            @if (source == Source.Ai)
+            {
+                <p class="hint">
+                    只需填「题库名称 + 生成主题」——行业代码、题库代码、题号前缀都由系统自动处理（可在「高级选项」里覆盖）。
+                    题量可选「自适应」，由 AI 按知识点覆盖范围决定。<b>生成结果必须先预览确认，不会自动入库。</b>
+                    行业决定题型与术语：内置 @profiles.Count(p => p.BuiltIn) 个行业画像，未登记的行业使用「通用知识」。
+                </p>
+
+                <div class="form-grid">
+                    <label>行业</label>
+                    <select class="form-select" @bind="industryCode" @bind:after="ApplyIndustryProfile">
+                        @foreach (var p in profiles)
+                        {
+                            <option value="@p.Code">@p.Name@(p.BuiltIn ? "" : "（已有）")</option>
+                        }
+                        @if (SelectedProfile == null && !string.IsNullOrWhiteSpace(industryCode))
+                        {
+                            <option value="@industryCode">@industryCode（自定义）</option>
+                        }
+                    </select>
+
+                    <label>行业名称</label>
+                    <input class="form-control" @bind="industryName" placeholder="如 中医 / 驾照 / 编程" />
+
+                    <label>题库名称 <span class="required">*</span></label>
+                    <input class="form-control" @bind="bankName" placeholder="如 经方扩充 / 交规题库" />
+
+                    <label class="span-2">生成主题 / 提示词 <span class="required">*</span></label>
+                    <textarea class="form-control span-2" rows="4" @bind="topic"
+                              placeholder="@SelectedProfile?.TopicPlaceholder"></textarea>
+
+                    <label>题型</label>
+                    <select class="form-select" @bind="target">
+                        @if (SelectedProfile != null)
+                        {
+                            @foreach (var t in SelectedProfile.Targets)
+                            {
+                                <option value="@t.Code">@t.Label</option>
+                            }
+                        }
+                        <option value="mixed">混合（画像内题型混合）</option>
+                        <option value="custom">自定义题型…</option>
+                    </select>
+
+                    @if (target == "custom")
+                    {
+                        <label>自定义题型代码</label>
+                        <input class="form-control" @bind="customTargetCode" placeholder="如 case_analysis" />
+                        <label class="span-2">题型说明</label>
+                        <input class="form-control span-2" @bind="targetDescription"
+                               placeholder="这个题型问什么、选项里放什么（如：给出案例，选出正确的处理方式）" />
+                    }
+
+                    <label>参考范围（可选）</label>
+                    <input class="form-control" @bind="referenceScope"
+                           placeholder="@(SelectedProfile?.ReferenceScopePlaceholder ?? "如 某本教材的章节 / 知识库 id")" />
+
+                    <label>题量</label>
+                    <select class="form-select" @bind="questionCount">
+                        <option value="0">自适应（由 AI 按知识点覆盖决定 8-30 题）</option>
+                        <option value="5">5 题</option>
+                        <option value="10">10 题</option>
+                        <option value="20">20 题（分 2 批）</option>
+                        <option value="30">30 题（分 3 批）</option>
+                    </select>
+
+                    <label>难度</label>
+                    <select class="form-select" @bind="difficulty">
+                        <option value="1">1 · 最易</option>
+                        <option value="2">2</option>
+                        <option value="3">3 · 中等</option>
+                        <option value="4">4</option>
+                        <option value="5">5 · 最难</option>
+                    </select>
+
+                    <label>干扰项策略</label>
+                    <select class="form-select" @bind="distractorStrategy">
+                        <option value="same_scope">同范围易混对象</option>
+                        <option value="random">随机对象</option>
+                    </select>
+
+                    <label>AI 提供商</label>
+                    <select class="form-select" @bind="providerId">
+                        <option value="">（使用主模型）</option>
+                        @foreach (var p in providers)
+                        {
+                            <option value="@p.Id">@p.Name@(p.IsMain ? "（主）" : "")</option>
+                        }
+                    </select>
+
+                    <label>模型</label>
+                    <select class="form-select" @bind="model">
+                        <option value="">（该提供商主模型）</option>
+                        @if (SelectedProvider != null)
+                        {
+                            @foreach (var m in SelectedProvider.Models)
+                            {
+                                <option value="@m.Name">@m.Name@(m.IsMain ? "（主）" : "")</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <details class="advanced">
+                    <summary>高级选项（代码类字段留空即自动生成）</summary>
+                    <div class="form-grid">
+                        <label>行业代码</label>
+                        <input class="form-control" @bind="industryCode" placeholder="留空自动生成" />
+                        <label>题库代码</label>
+                        <input class="form-control" @bind="bankCode" placeholder="留空自动生成" />
+                        <label>题号前缀</label>
+                        <input class="form-control" @bind="codePrefix" placeholder="留空自动生成" />
+                        <span class="field-note span-2">追加到已有题库时，题库代码与题号前缀请填既有值或唯一值。</span>
+                    </div>
+                </details>
+
+                <div class="hint-block">
+                    <div>当前行业：@(SelectedProfile?.Description ?? "自定义行业（使用通用画像）")</div>
+                    <div>已有题库（点击填入）：</div>
+                    <div class="chips">
+                        @foreach (var b in banks)
+                        {
+                            <button class="chip" @onclick="() => PickBank(b)">@b.IndustryName · @b.BankName（@b.QuestionCount 题）</button>
+                        }
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button class="btn btn-primary" @onclick="GenerateAsync" disabled="@(busy || IsJobRunning)">
+                        @(IsJobRunning ? "后台生成中…" : "开始生成")
+                    </button>
+                    <span class="field-note">任务在后台执行，可以关闭页面</span>
+                </div>
+
+                @if (currentJob is { Status: "queued" or "running" })
+                {
+                    <div class="job-card">
+                        <div class="job-head">
+                            <span class="job-title">@(currentJob!.Status == "queued" ? "排队中…" : currentJob.Message)</span>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="CancelJobAsync">取消任务</button>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" style="width:@(currentJob.ProgressPercent)%"></div>
+                        </div>
+                        <div class="meta-line">
+                            @if (currentJob.TotalBatches <= 1)
+                            {
+                                <span>AI 生成中 · 已用时 @ElapsedText · 通常 30–120 秒 · 可以关闭页面，任务会在后台继续</span>
+                            }
+                            else
+                            {
+                                <span>@currentJob.CompletedBatches / @currentJob.TotalBatches 批 · @(currentJob.ProgressPercent)% · 已用时 @ElapsedText · 可以关闭页面，任务会在后台继续</span>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (recentJobs.Count > 0)
+                {
+                    <details class="recent-jobs">
+                        <summary>最近生成任务（@recentJobs.Count）</summary>
+                        <div class="job-list">
+                            @foreach (var job in recentJobs)
+                            {
+                                <div class="job-row">
+                                    <span class="job-status @job.Status">@StatusText(job.Status)</span>
+                                    <span class="job-topic">@(string.IsNullOrWhiteSpace(job.BankName) ? job.Topic : job.BankName)</span>
+                                    <span class="job-time">@job.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                                    @if (job.Status is "succeeded")
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenJobAsync(job.JobId)">查看结果</button>
+                                    }
+                                    else if (job.Status is "queued" or "running")
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ResumeJobAsync(job.JobId)">查看进度</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </details>
+                }
+            }
+            else
+            {
+                <p class="hint">
+                    把 Agent（MCP <code>baihua_learn_import_package</code>）或其它来源产出的题库包 JSON 粘贴到这里，
+                    先校验、预览，再确认导入。<b>同样不会自动入库。</b>
+                </p>
+                <textarea class="form-control" rows="14" @bind="pasteJson"
+                          placeholder='{ "formatVersion": 1, "industry": { ... }, "bank": { ... }, "items": [], "questions": [] }'></textarea>
+                <div class="actions">
+                    <button class="btn btn-primary" @onclick="ValidatePasteAsync">校验并预览</button>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card-panel">
+            <div class="preview-head">
+                <h2>预览审核</h2>
+                <div class="meta-line">
+                    @package.Industry.Name · @package.Bank.Name（@package.Bank.Code）
+                    · 条目 @package.Items.Count · 题目 @package.Questions.Count
+                    @if (!string.IsNullOrEmpty(modelUsed))
+                    {
+                        <span>· 模型 @modelUsed</span>
+                    }
+                    @if (batchCount > 1)
+                    {
+                        <span>· @batchCount 批</span>
+                    }
+                </div>
+            </div>
+
+            @if (error != null)
+            {
+                <div class="alert-error">@error</div>
+            }
+
+            @if (validation.Errors.Count > 0)
+            {
+                <div class="alert-error">
+                    <b>校验未通过（@validation.Errors.Count 项），修正前无法导入：</b>
+                    <ul>
+                        @foreach (var e in validation.Errors)
+                        {
+                            <li>@e</li>
+                        }
+                    </ul>
+                </div>
+            }
+            @if (validation.Warnings.Count > 0)
+            {
+                <details class="warn-details" open="@(validation.IsValid ? null : "open")">
+                    <summary>@validation.Warnings.Count 条质量提示</summary>
+                    <ul>
+                        @foreach (var w in validation.Warnings.Take(100))
+                        {
+                            <li>@w</li>
+                        }
+                    </ul>
+                </details>
+            }
+            @if (validation.TargetCounts.Count > 0)
+            {
+                <div class="meta-line">
+                    题型分布：
+                    @foreach (var kv in validation.TargetCounts)
+                    {
+                        <span class="target-badge">@kv.Key × @kv.Value</span>
+                    }
+                </div>
+            }
+
+            <div class="question-list">
+                @foreach (var q in package.Questions)
+                {
+                    <div class="preview-q">
+                        <div class="q-head">
+                            <span class="q-code">@q.QuestionCode</span>
+                            <span class="q-meta">@q.Target · 难度 @q.Difficulty</span>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveQuestionAsync(q)">删除</button>
+                        </div>
+                        <div class="q-stem">@q.Stem</div>
+                        @if (q.StemDetail != null)
+                        {
+                            <div class="q-signs">
+                                @if (!string.IsNullOrWhiteSpace(q.StemDetail.Patient))
+                                {
+                                    <span class="patient">@q.StemDetail.Patient</span>
+                                }
+                                @foreach (var s in q.StemDetail.Signs)
+                                {
+                                    <span class="sign">@s</span>
+                                }
+                            </div>
+                        }
+                        <ul class="q-options">
+                            @foreach (var o in q.Options)
+                            {
+                                <li class="@(o.IsCorrect ? "right" : "")">
+                                    <span class="opt-key">@o.Key</span>
+                                    <span>@o.Content</span>
+                                    @if (o.IsCorrect)
+                                    {
+                                        <span class="opt-mark">✓ 正确</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(o.Explanation))
+                                    {
+                                        <div class="opt-exp">@o.Explanation</div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                        <details class="q-analysis">
+                            <summary>解析与区分点</summary>
+                            <div>@q.Analysis</div>
+                            @if ((q.Discrimination?.Count ?? 0) > 0)
+                            {
+                                <ul>
+                                    @foreach (var d in q.Discrimination!)
+                                    {
+                                        <li>vs @d.Versus：@d.Point</li>
+                                    }
+                                </ul>
+                            }
+                        </details>
+                    </div>
+                }
+            </div>
+
+            @if (package.Questions.Count == 0)
+            {
+                <p class="alert-error">题目已全部删除，请返回修改或重新生成。</p>
+            }
+
+            <div class="actions sticky-actions">
+                <button class="btn btn-primary" @onclick="ImportAsync"
+                        disabled="@(importing || !validation.IsValid || package.Questions.Count == 0)">
+                    @(importing ? "导入中…" : "确认导入")
+                </button>
+                <label class="overwrite-toggle">
+                    <input type="checkbox" @bind="overwriteExisting" />
+                    允许覆盖已存在的同代码条目/题目（危险）
+                </label>
+                <button class="btn btn-outline-secondary" @onclick="BackToForm" disabled="@importing">返回修改</button>
+            </div>
+            <p class="hint">默认 append：同代码的既有条目/题目会保留，只新增新代码。</p>
+        </div>
+    }
+</div>
+
+<style>
+    .generate-page { max-width: 960px; margin: 0 auto; padding: 1rem; }
+    .page-head { display: flex; align-items: center; justify-content: space-between; }
+    .card-panel { background: var(--bs-tertiary-bg); border-radius: .6rem; padding: 1.2rem; margin-top: 1rem; }
+    .source-tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
+    .form-grid { display: grid; grid-template-columns: 140px 1fr; gap: .55rem .8rem; align-items: center; }
+    .form-grid .span-2 { grid-column: span 2; }
+    .required { color: var(--bs-danger); }
+    .advanced, .recent-jobs { margin-top: 1rem; font-size: .9rem; }
+    .advanced summary, .recent-jobs summary { cursor: pointer; color: var(--bs-secondary-color); }
+    .advanced .form-grid { margin-top: .6rem; }
+    .job-card { margin-top: 1rem; background: var(--bs-body-bg); border-radius: .5rem; padding: .9rem 1rem; }
+    .job-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+    .job-title { font-weight: 600; }
+    .progress-track { height: .5rem; background: var(--bs-secondary-bg); border-radius: 999px; overflow: hidden; margin: .6rem 0 .4rem; }
+    .progress-fill { height: 100%; background: var(--bs-primary); transition: width .3s ease; }
+    .progress-track.indeterminate .progress-fill {
+        width: 35%;
+        animation: progress-indeterminate 1.2s ease-in-out infinite;
+    }
+    @@keyframes progress-indeterminate {
+        0% { margin-left: -35%; }
+        100% { margin-left: 100%; }
+    }
+    .job-list { display: flex; flex-direction: column; gap: .4rem; margin-top: .6rem; }
+    .job-row { display: flex; align-items: center; gap: .6rem; font-size: .85rem; flex-wrap: wrap; }
+    .job-status { border-radius: 999px; padding: .05rem .55rem; background: var(--bs-secondary-bg); font-size: .78rem; }
+    .job-status.succeeded { background: rgba(25, 135, 84, .15); color: var(--bs-success); }
+    .job-status.failed { background: rgba(220, 53, 69, .12); color: var(--bs-danger); }
+    .job-status.running { background: rgba(13, 110, 253, .12); color: var(--bs-primary); }
+    .job-topic { flex: 1; min-width: 8rem; }
+    .job-time { color: var(--bs-secondary-color); font-size: .78rem; }
+    .field-note { font-size: .8rem; color: var(--bs-secondary-color); }
+    .hint { color: var(--bs-secondary-color); font-size: .9rem; margin: .5rem 0; }
+    .hint-block { margin-top: 1rem; font-size: .85rem; }
+    .chips { display: flex; flex-wrap: wrap; gap: .4rem; margin: .3rem 0 .7rem; }
+    .chip { border: 1px solid var(--bs-border-color); background: transparent; border-radius: 999px; padding: .15rem .7rem; font-size: .82rem; }
+    .chip:hover { background: var(--bs-secondary-bg); }
+    .actions { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: 1rem; }
+    .alert-error { background: rgba(220, 53, 69, .12); border-left: 3px solid var(--bs-danger); padding: .6rem .9rem; border-radius: .3rem; margin: .6rem 0; }
+    .warn-details { background: rgba(255, 193, 7, .12); border-left: 3px solid #ffc107; padding: .5rem .9rem; border-radius: .3rem; margin: .6rem 0; }
+    .warn-details ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+    .success-panel { border-left: 4px solid var(--bs-success); }
+    .meta-line { color: var(--bs-secondary-color); font-size: .9rem; }
+    .preview-head h2 { margin-bottom: .2rem; }
+    .question-list { display: flex; flex-direction: column; gap: .8rem; margin-top: 1rem; }
+    .preview-q { background: var(--bs-body-bg); border-radius: .5rem; padding: .9rem 1rem; }
+    .q-head { display: flex; align-items: center; gap: .7rem; margin-bottom: .4rem; }
+    .q-code { font-weight: 700; font-family: var(--bs-font-monospace); font-size: .85rem; }
+    .q-meta { color: var(--bs-secondary-color); font-size: .8rem; flex: 1; }
+    .q-stem { white-space: pre-wrap; }
+    .q-signs { display: flex; flex-wrap: wrap; gap: .35rem; margin: .4rem 0; }
+    .patient { font-weight: 600; font-size: .85rem; }
+    .sign { background: var(--bs-tertiary-bg); border-radius: 999px; padding: .1rem .6rem; font-size: .8rem; }
+    .q-options { list-style: none; padding: 0; margin: .5rem 0 0; }
+    .q-options li { padding: .3rem .5rem; border-radius: .3rem; margin-bottom: .25rem; }
+    .q-options li.right { background: rgba(25, 135, 84, .12); }
+    .opt-key { font-weight: 700; margin-right: .4rem; }
+    .opt-mark { color: var(--bs-success); font-weight: 600; margin-left: .5rem; }
+    .opt-exp { font-size: .82rem; color: var(--bs-secondary-color); margin-top: .15rem; }
+    .q-analysis { margin-top: .4rem; font-size: .87rem; }
+    .target-badge { display: inline-block; background: var(--bs-secondary-bg); border-radius: 999px; padding: .05rem .55rem; margin-left: .4rem; font-size: .8rem; }
+    .overwrite-toggle { font-size: .85rem; color: var(--bs-secondary-color); }
+    .sticky-actions { position: sticky; bottom: 0; background: var(--bs-tertiary-bg); padding: .7rem 0; border-top: 1px solid var(--bs-border-color); }
+</style>
+
+@code {
+    private enum Source { Ai, Paste }
+
+    private Source source = Source.Ai;
+    private bool busy;
+    private string? error;
+
+    private List<QuizBankOverviewDto> banks = new();
+    private List<QuizIndustryProfileDto> profiles = new();
+    private List<AiProviderInfo> providers = new();
+
+    private string industryCode = "";
+    private string industryName = "";
+    private string bankCode = "";
+    private string bankName = "";
+    private string codePrefix = "";
+    private string topic = "";
+    private string target = "";
+    private string customTargetCode = "";
+    private string targetDescription = "";
+    private string referenceScope = "";
+    private int questionCount = 0;
+    private int difficulty = 3;
+    private string distractorStrategy = "same_scope";
+    private string providerId = "";
+    private string model = "";
+
+    private string pasteJson = "";
+
+    private QuizBankPackage? package;
+    private QuizBankValidationResultDto? validation;
+    private string? modelUsed;
+    private int batchCount;
+    private bool importing;
+    private bool overwriteExisting;
+    private QuizBankImportResultDto? importResult;
+
+    private QuizGenerateJobDto? currentJob;
+    private List<QuizGenerateJobSummaryDto> recentJobs = new();
+    private CancellationTokenSource? pollCts;
+    private HubConnection? hubConnection;
+    private string? dismissedJobId;
+
+    /// <summary>当前正在预览的任务 id（用于「返回修改」精确记忆本次结果，而不是猜最近一条）</summary>
+    private string? openedJobId;
+
+    /// <summary>销毁标记：Hub 连接是 fire-and-forget，晚到的连接必须自行关闭，否则泄漏连接</summary>
+    private bool disposed;
+
+    /// <summary>
+    /// 显式任务地址（<c>/learn/generate?job=xxx</c>）：由任务管理页点某条生成任务带入，
+    /// 直接打开该任务结果，不再依赖「最近 30 分钟」的推断。
+    /// </summary>
+    [Parameter, SupplyParameterFromQuery(Name = "job")]
+    public string? JobId { get; set; }
+
+
+    private bool IsJobRunning => currentJob is { Status: "queued" or "running" };
+
+    /// <summary>已用时（每次推送/轮询刷新时重算）</summary>
+    private string ElapsedText
+    {
+        get
+        {
+            if (currentJob is null) return "";
+            var start = currentJob.StartedAt ?? currentJob.CreatedAt;
+            var elapsed = DateTime.UtcNow - start;
+            if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
+            return elapsed.TotalMinutes >= 1
+                ? $"{(int)elapsed.TotalMinutes} 分 {elapsed.Seconds} 秒"
+                : $"{elapsed.Seconds} 秒";
+        }
+    }
+
+    private QuizIndustryProfileDto? SelectedProfile =>
+        profiles.FirstOrDefault(p => string.Equals(p.Code, industryCode, StringComparison.OrdinalIgnoreCase));
+
+    private AiProviderInfo? SelectedProvider =>
+        providers.FirstOrDefault(p => p.Id == providerId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        banks = await ApiService.GetLearnBanksAsync();
+        profiles = await ApiService.GetLearnIndustryProfilesAsync();
+        providers = await ApiService.GetAiProvidersAsync();
+
+        if (banks.Count > 0)
+        {
+            industryCode = banks[0].IndustryCode;
+            industryName = banks[0].IndustryName;
+        }
+        else
+        {
+            var general = profiles.FirstOrDefault(p => p.Code == "general") ?? profiles.FirstOrDefault();
+            industryCode = general?.Code ?? "general";
+            industryName = general?.Name ?? "通用知识";
+        }
+
+        ApplyIndustryProfile();
+
+        recentJobs = await ApiService.ListLearnGenerateJobsAsync();
+        var active = recentJobs.FirstOrDefault(j => j.Status is "queued" or "running");
+        if (active is not null) _ = StartPollingAsync(active.JobId);
+
+        _ = StartHubConnectionAsync();
+
+        await AutoOpenAsync(active);
+    }
+
+    /// <summary>
+    /// 打开本应显示的任务：
+    /// 1. 显式 <c>?job=</c>（任务页跳转）——精确打开，不做推断；
+    /// 2. 否则自动打开最近 30 分钟内成功、且用户没主动「返回修改」的结果（关掉页面再回来不用重新找）。
+    /// </summary>
+    private async Task AutoOpenAsync(QuizGenerateJobSummaryDto? active)
+    {
+        if (!string.IsNullOrWhiteSpace(JobId))
+        {
+            Logger.LogInformation("按 job 参数打开生成任务 {JobId}", JobId);
+            await OpenJobAsync(JobId!);
+            return;
+        }
+
+        var candidates = recentJobs
+            .Where(j => j.Status == "succeeded"
+                        && j.CompletedAt is { } completedAt
+                        && DateTime.UtcNow - completedAt < TimeSpan.FromMinutes(30))
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            // 记录一次判定依据：历史上这里「静默不打开」被误判成渲染/超时问题，浪费了排查
+            Logger.LogDebug(
+                "生成页未自动打开结果：recentJobs={Count}（运行中={Active}），30 分钟内成功任务=0",
+                recentJobs.Count, active?.JobId ?? "无");
+            return;
+        }
+
+        var target = candidates[0];
+        if (target.JobId == dismissedJobId) return;
+
+        Logger.LogInformation(
+            "自动打开最近生成的题库结果 {JobId}（{BankName}，{Minutes:0.#} 分钟前完成）",
+            target.JobId, target.BankName, (DateTime.UtcNow - (target.CompletedAt ?? DateTime.UtcNow)).TotalMinutes);
+
+        try
+        {
+            await OpenJobAsync(target.JobId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "自动打开最近生成结果失败 job={JobId}", target.JobId);
+        }
+    }
+
+    /// <summary>切换行业后：同步名称、题型默认取该画像第一个题型</summary>
+    private void ApplyIndustryProfile()
+    {
+        var profile = SelectedProfile;
+        if (profile != null)
+        {
+            industryName = profile.Name;
+            target = profile.Targets.FirstOrDefault()?.Code ?? "single_answer";
+        }
+        else
+        {
+            target = "single_answer";
+        }
+
+        customTargetCode = "";
+        targetDescription = "";
+    }
+
+    private void PickBank(QuizBankOverviewDto bank)
+    {
+        industryCode = bank.IndustryCode;
+        industryName = bank.IndustryName;
+        bankCode = bank.BankCode;
+        bankName = bank.BankName;
+        ApplyIndustryProfile();
+    }
+
+    private async Task GenerateAsync()
+    {
+        if (busy || IsJobRunning) return;
+        error = null;
+        if (string.IsNullOrWhiteSpace(topic))
+        {
+            error = "请先填写生成主题";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(bankName))
+        {
+            error = "请填写题库名称（如 经方扩充 / 交规题库）";
+            return;
+        }
+
+        var effectiveTarget = target;
+        string? effectiveDescription = null;
+        if (target == "custom")
+        {
+            effectiveTarget = string.IsNullOrWhiteSpace(customTargetCode) ? "custom" : customTargetCode.Trim();
+            effectiveDescription = string.IsNullOrWhiteSpace(targetDescription) ? null : targetDescription.Trim();
+        }
+
+        busy = true;
+        try
+        {
+            var request = new QuizGenerateRequestDto
+            {
+                IndustryCode = industryCode.Trim(),
+                IndustryName = industryName.Trim(),
+                BankCode = bankCode.Trim(),
+                BankName = string.IsNullOrWhiteSpace(bankName) ? bankCode.Trim() : bankName.Trim(),
+                Topic = topic.Trim(),
+                Target = effectiveTarget,
+                TargetDescription = effectiveDescription,
+                QuestionCount = questionCount <= 0 ? 30 : questionCount,
+                QuestionCountMode = questionCount <= 0 ? "auto" : "fixed",
+                Difficulty = difficulty,
+                ReferenceScope = string.IsNullOrWhiteSpace(referenceScope) ? null : referenceScope.Trim(),
+                DistractorStrategy = distractorStrategy,
+                CodePrefix = string.IsNullOrWhiteSpace(codePrefix) ? "ai" : codePrefix.Trim(),
+                ProviderId = string.IsNullOrWhiteSpace(providerId) ? null : providerId,
+                Model = string.IsNullOrWhiteSpace(model) ? null : model,
+            };
+
+            var jobId = await ApiService.CreateLearnGenerateJobAsync(request);
+            if (string.IsNullOrWhiteSpace(jobId))
+            {
+                error = "创建后台任务失败（后端不可用）";
+                return;
+            }
+
+            await LoadRecentJobsAsync();
+            _ = StartPollingAsync(jobId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "创建题库生成任务失败");
+            error = "创建任务失败：" + ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    /// <summary>轮询后台任务；页面关闭后轮询停止，但服务端任务继续执行</summary>
+    private async Task StartPollingAsync(string jobId)
+    {
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+        pollCts = new CancellationTokenSource();
+        var token = pollCts.Token;
+
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                var job = await ApiService.GetLearnGenerateJobAsync(jobId, token);
+                if (job is null)
+                {
+                    error = "任务不存在或已过期";
+                    break;
+                }
+
+                currentJob = job;
+                await InvokeAsync(StateHasChanged);
+
+                if (job.Status is "succeeded" or "failed" or "canceled") break;
+                await Task.Delay(TimeSpan.FromSeconds(10), token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 页面关闭/切换任务：轮询停止，服务端任务不受影响
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "轮询题库生成任务失败");
+            error = "轮询任务状态失败：" + ex.Message;
+        }
+        finally
+        {
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (currentJob is { Status: "succeeded" } && currentJob.Result is { } result)
+                    {
+                        package = result.Package;
+                        validation = result.Validation;
+                        modelUsed = result.ModelUsed;
+                        batchCount = result.BatchCount;
+                        currentJob = null;
+                    }
+                    else if (currentJob is { Status: "failed" })
+                    {
+                        error = currentJob.Error ?? "生成失败";
+                    }
+                    else if (currentJob is { Status: "canceled" })
+                    {
+                        currentJob = null;
+                    }
+
+                    await LoadRecentJobsAsync();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException)
+            {
+                // 组件已销毁
+            }
+        }
+    }
+
+    private async Task LoadRecentJobsAsync()
+    {
+        recentJobs = await ApiService.ListLearnGenerateJobsAsync();
+        // 调用方可能已在渲染上下文（OnAfterRender/InvokeAsync 内），此处不能再嵌套 InvokeAsync（会自等待死锁）
+        try { StateHasChanged(); }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private async Task CancelJobAsync()
+    {
+        if (currentJob is null) return;
+        if (!await ApiService.CancelLearnGenerateJobAsync(currentJob.JobId))
+        {
+            error = "取消失败（任务可能已结束）";
+        }
+    }
+
+    private Task ResumeJobAsync(string jobId)
+    {
+        _ = StartPollingAsync(jobId);
+        return Task.CompletedTask;
+    }
+
+    private async Task OpenJobAsync(string jobId)
+    {
+        error = null;
+        var job = await ApiService.GetLearnGenerateJobAsync(jobId);
+        if (job is null)
+        {
+            error = "任务不存在或已过期";
+            return;
+        }
+
+        if (job.Status is "queued" or "running")
+        {
+            currentJob = job;
+            _ = StartPollingAsync(jobId);
+            return;
+        }
+
+        await HandleFinalJobAsync(job);
+    }
+
+    private static string StatusText(string status) => status switch
+    {
+        "queued" => "排队中",
+        "running" => "生成中",
+        "succeeded" => "已完成",
+        "failed" => "失败",
+        "canceled" => "已取消",
+        _ => status,
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        pollCts?.Cancel();
+        pollCts?.Dispose();
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+            hubConnection = null;
+        }
+    }
+
+    /// <summary>连接 Server 的任务推送 Hub（浏览器侧无需轮询，状态变更即时刷新）</summary>
+    private async Task StartHubConnectionAsync()
+    {
+        try
+        {
+            var backend = BaihuaEndpointHelper.NormalizeOutboundBaseUrl(SettingsService.BackendUrl);
+            var pageBase = Navigation.BaseUri.TrimEnd('/');
+            if (IsLoopbackUrl(backend) && !IsLoopbackUrl(pageBase)) backend = pageBase;
+            var hubUrl = $"{backend}/hubs/task-progress";
+
+            var connection = new HubConnectionBuilder()
+                .WithUrl(hubUrl, o =>
+                {
+                    o.Transports = HttpTransportType.WebSockets;
+                    o.SkipNegotiation = true;
+                    o.HttpMessageHandlerFactory = _ => new SocketsHttpHandler { UseProxy = false };
+                })
+                .WithServerTimeout(TimeSpan.FromSeconds(15))
+                .WithKeepAliveInterval(TimeSpan.FromSeconds(10))
+                .WithAutomaticReconnect()
+                .Build();
+
+            connection.On<QuizGenerateJobSummaryDto>("LearnJobUpdated", summary =>
+            {
+                _ = InvokeAsync(() => ApplyJobSummaryAsync(summary));
+            });
+
+            await connection.StartAsync();
+
+            // 连接建立期间页面可能已关闭：此时必须立刻释放这条连接，否则连接常驻
+            if (disposed)
+            {
+                await connection.DisposeAsync();
+                return;
+            }
+
+            hubConnection = connection;
+            Logger.LogInformation("生成页已连接任务推送 Hub");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "生成页任务推送 Hub 连接失败，继续使用兜底轮询");
+        }
+    }
+
+    private static bool IsLoopbackUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+        return uri.IsLoopback || uri.Host is "localhost" or "127.0.0.1";
+    }
+
+    /// <summary>收到推送：更新当前任务与最近列表；终态时拉一次详情（含结果）</summary>
+    private async Task ApplyJobSummaryAsync(QuizGenerateJobSummaryDto summary)
+    {
+        var index = recentJobs.FindIndex(j => j.JobId == summary.JobId);
+        if (index >= 0) recentJobs[index] = summary;
+        else recentJobs.Insert(0, summary);
+
+        if (currentJob is null || currentJob.JobId != summary.JobId)
+        {
+            switch (summary.Status)
+            {
+                case "queued" or "running":
+                    _ = StartPollingAsync(summary.JobId);
+                    break;
+                case "succeeded" when package is null && summary.JobId != dismissedJobId:
+                    // 本页没在跟这条任务（例如从别的标签页发起，或本页刚刷新）：
+                    // 生成成功即自动打开结果——这是本页的核心体验，不依赖轮询先建立 currentJob。
+                    var done = await ApiService.GetLearnGenerateJobAsync(summary.JobId);
+                    if (done is not null) await HandleFinalJobAsync(done);
+                    return;
+            }
+            StateHasChanged();
+            return;
+        }
+
+        currentJob.Status = summary.Status;
+        currentJob.ProgressPercent = summary.ProgressPercent;
+        currentJob.Message = summary.Message;
+        currentJob.Error = summary.Error;
+        StateHasChanged();
+
+        if (summary.Status is "succeeded" or "failed" or "canceled")
+        {
+            var job = await ApiService.GetLearnGenerateJobAsync(summary.JobId);
+            if (job is not null) await HandleFinalJobAsync(job);
+        }
+    }
+
+    private async Task HandleFinalJobAsync(QuizGenerateJobDto job)
+    {
+        if (job.Status == "succeeded" && job.Result is { } result)
+        {
+            package = result.Package;
+            validation = result.Validation;
+            modelUsed = result.ModelUsed;
+            batchCount = result.BatchCount;
+            currentJob = null;
+            openedJobId = job.JobId;
+        }
+        else if (job.Status == "failed")
+        {
+            error = job.Error ?? "生成失败";
+            currentJob = job;
+        }
+        else if (job.Status == "canceled")
+        {
+            currentJob = null;
+        }
+
+        await LoadRecentJobsAsync();
+        StateHasChanged();
+    }
+
+    private async Task ValidatePasteAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(pasteJson))
+        {
+            error = "请先粘贴题库包 JSON";
+            return;
+        }
+
+        QuizBankPackage? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<QuizBankPackage>(pasteJson, JsonSerializerOptions.Web);
+        }
+        catch (JsonException ex)
+        {
+            error = "JSON 解析失败：" + ex.Message;
+            return;
+        }
+
+        if (parsed is null)
+        {
+            error = "无法解析题库包（JSON 为 null）";
+            return;
+        }
+
+        var result = await ApiService.ValidateLearnPackageAsync(parsed);
+        if (result is null)
+        {
+            error = "校验接口不可用，请稍后重试";
+            return;
+        }
+
+        package = parsed;
+        validation = result;
+        modelUsed = null;
+        batchCount = 0;
+    }
+
+    private async Task RemoveQuestionAsync(QuizQuestionDto question)
+    {
+        if (package is null) return;
+        package.Questions.Remove(question);
+        validation = await ApiService.ValidateLearnPackageAsync(package) ?? validation;
+    }
+
+    private async Task ImportAsync()
+    {
+        if (package is null || validation is null || !validation.IsValid || importing) return;
+
+        importing = true;
+        error = null;
+        try
+        {
+            var result = await ApiService.ImportLearnPackageAsync(package, overwriteExisting);
+            if (result is null)
+            {
+                error = "导入失败（后端不可用或校验未通过）";
+                return;
+            }
+            importResult = result;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "导入题库失败");
+            error = "导入失败：" + ex.Message;
+        }
+        finally
+        {
+            importing = false;
+        }
+    }
+
+    private Task BackToForm()
+    {
+        package = null;
+        validation = null;
+        error = null;
+        modelUsed = null;
+        batchCount = 0;
+        // 用户主动返回修改：不再对「刚看的这条结果」自动打开（只压这一条，不影响其它任务）
+        if (openedJobId is not null) dismissedJobId = openedJobId;
+        openedJobId = null;
+        return Task.CompletedTask;
+    }
+
+    private Task ResetAsync()
+    {
+        importResult = null;
+        package = null;
+        validation = null;
+        error = null;
+        modelUsed = null;
+        batchCount = 0;
+        currentJob = null;
+        openedJobId = null;
+        overwriteExisting = false;
+        return Task.CompletedTask;
+    }
+}

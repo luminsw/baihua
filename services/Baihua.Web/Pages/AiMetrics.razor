@@ -1,0 +1,303 @@
+@page "/ai-metrics"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Baihua.Contracts.Metrics
+@inject Baihua.Web.Services.IApiService ApiService
+@implements IDisposable
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["AiMetrics_PageTitle"]</PageTitle>
+
+<h1>@L["AiMetrics_Title"]</h1>
+
+@if (isLoading)
+{
+    <div class="loading-spinner">@L["AiMetrics_Loading"]</div>
+}
+else
+{
+    <!-- 时间范围选择 -->
+    <div class="metrics-filter">
+        <span>@L["AiMetrics_TimeRangeLabel"]</span>
+        @foreach (var d in dayOptions)
+        {
+            <button class="btn btn-sm @(selectedDays == d ? "btn-primary" : "btn-outline-secondary")"
+                    @onclick="() => ChangeDays(d)">
+                @L["AiMetrics_DaysFormat", d]
+            </button>
+        }
+    </div>
+
+    <!-- 总览卡片 -->
+    <div class="metrics-cards">
+        <div class="metric-card">
+            <div class="metric-value">@summary?.TotalCalls</div>
+            <div class="metric-label">@L["AiMetrics_TotalCalls"]</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">@(summary?.AvgLatencyMs)ms</div>
+            <div class="metric-label">@L["AiMetrics_AvgLatency"]</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">@(summary?.SuccessRate)%</div>
+            <div class="metric-label">@L["AiMetrics_SuccessRate"]</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">@FormatNumber(summary?.TotalTokens ?? 0)</div>
+            <div class="metric-label">@L["AiMetrics_TotalTokens"]</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-value">@(summary?.BestProvider ?? "-")</div>
+            <div class="metric-label">@L["AiMetrics_BestProvider"] @(summary?.BestProviderTps != null ? $"({Math.Round(summary.BestProviderTps.Value, 1)} tps)" : "")
+            </div>
+        </div>
+    </div>
+
+    <!-- 趋势图 -->
+    @if (trends?.Count > 0)
+    {
+        <div class="metrics-section">
+            <h3>@L["AiMetrics_TrendTitle", selectedDays]</h3>
+            <div class="trend-chart">
+                @foreach (var t in trends)
+                {
+                    var height = maxTrendCalls > 0 ? (int)(t.CallCount * 100.0 / maxTrendCalls) : 0;
+                    <div class="trend-bar-wrapper">
+                        <div class="trend-bar" style="height: @(height)%" title="@t.Date: @t.CallCount 次, @t.AvgLatencyMs ms"></div>
+                        <div class="trend-label">@t.Date.Substring(5)</div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Provider 排行榜 -->
+    <div class="metrics-section">
+        <h3>@L["AiMetrics_ProviderRankingTitle"]</h3>
+        @if (providerMetrics?.Count > 0)
+        {
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Provider</th>
+                        <th>@L["AiMetrics_Col_CallCount"]</th>
+                        <th>@L["AiMetrics_Col_AvgLatency"]</th>
+                        <th>@L["AiMetrics_Col_AvgTps"]</th>
+                        <th>@L["AiMetrics_Col_SuccessRate"]</th>
+                        <th>@L["AiMetrics_Col_TotalTokens"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in providerMetrics)
+                    {
+                        <tr>
+                            <td>@p.ProviderName</td>
+                            <td>@p.CallCount</td>
+                            <td>@p.AvgLatencyMs ms</td>
+                            <td>@(p.AvgTokensPerSecond?.ToString("F1") ?? "-")</td>
+                            <td>@p.SuccessRate%</td>
+                            <td>@FormatNumber(p.TotalTokens)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">@L["AiMetrics_NoData"]</p>
+        }
+    </div>
+
+    <!-- 模型排行榜 -->
+    <div class="metrics-section">
+        <h3>@L["AiMetrics_ModelRankingTitle"]</h3>
+        @if (modelMetrics?.Count > 0)
+        {
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>@L["AiMetrics_Col_Model"]</th>
+                        <th>Provider</th>
+                        <th>@L["AiMetrics_Col_CallCount"]</th>
+                        <th>@L["AiMetrics_Col_AvgLatency"]</th>
+                        <th>@L["AiMetrics_Col_AvgTps"]</th>
+                        <th>@L["AiMetrics_Col_SuccessRate"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in modelMetrics)
+                    {
+                        <tr>
+                            <td>@m.ModelId</td>
+                            <td>@m.ProviderName</td>
+                            <td>@m.CallCount</td>
+                            <td>@m.AvgLatencyMs ms</td>
+                            <td>@(m.AvgTokensPerSecond?.ToString("F1") ?? "-")</td>
+                            <td>@m.SuccessRate%</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">@L["AiMetrics_NoData"]</p>
+        }
+    </div>
+
+    <!-- 最近调用记录 -->
+    <div class="metrics-section">
+        <h3>@L["AiMetrics_RecentCallsTitle"]</h3>
+        @if (recentMetrics?.Count > 0)
+        {
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>@L["AiMetrics_Col_Time"]</th>
+                        <th>Provider</th>
+                        <th>@L["AiMetrics_Col_Model"]</th>
+                        <th>@L["AiMetrics_Col_Operation"]</th>
+                        <th>@L["AiMetrics_Col_Latency"]</th>
+                        <th>Tokens</th>
+                        <th>TPS</th>
+                        <th>@L["AiMetrics_Col_Status"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in recentMetrics)
+                    {
+                        <tr class="@(r.IsSuccess ? "" : "table-danger")">
+                            <td>@r.CalledAt.ToLocalTime().ToString("MM-dd HH:mm")</td>
+                            <td>@r.ProviderName</td>
+                            <td>@r.ModelId</td>
+                            <td>@r.Operation</td>
+                            <td>@r.LatencyMs ms</td>
+                            <td>@(r.TotalTokens?.ToString() ?? "-")</td>
+                            <td>@(r.TokensPerSecond?.ToString("F1") ?? "-")</td>
+                            <td>@(r.IsSuccess ? "✅" : "❌")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">@L["AiMetrics_NoData"]</p>
+        }
+    </div>
+}
+
+<style>
+    .metrics-filter {
+        margin-bottom: 1rem;
+    }
+    .metrics-filter button {
+        margin-right: 0.5rem;
+    }
+    .metrics-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .metric-card {
+        background: var(--bs-light);
+        border-radius: 8px;
+        padding: 1rem;
+        text-align: center;
+    }
+    .metric-value {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--bs-primary);
+    }
+    .metric-label {
+        font-size: 0.85rem;
+        color: var(--bs-secondary);
+        margin-top: 0.25rem;
+    }
+    .metrics-section {
+        margin-bottom: 2rem;
+    }
+    .metrics-section h3 {
+        font-size: 1.1rem;
+        margin-bottom: 0.75rem;
+    }
+    .trend-chart {
+        display: flex;
+        align-items: flex-end;
+        height: 150px;
+        gap: 8px;
+        padding: 0.5rem;
+        background: var(--bs-light);
+        border-radius: 8px;
+    }
+    .trend-bar-wrapper {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        height: 100%;
+    }
+    .trend-bar {
+        width: 100%;
+        background: var(--bs-primary);
+        border-radius: 4px 4px 0 0;
+        min-height: 4px;
+        transition: height 0.3s ease;
+    }
+    .trend-label {
+        font-size: 0.7rem;
+        color: var(--bs-secondary);
+        margin-top: 4px;
+        white-space: nowrap;
+    }
+</style>
+
+@code {
+    private bool isLoading = true;
+    private int selectedDays = 7;
+    private readonly int[] dayOptions = new[] { 1, 7, 30 };
+
+    private AiMetricsSummaryDto? summary;
+    private List<AiProviderMetricsDto> providerMetrics = new();
+    private List<AiModelMetricsDto> modelMetrics = new();
+    private List<AiMetricsTrendDto> trends = new();
+    private List<AiUsageMetricDto> recentMetrics = new();
+
+    private int maxTrendCalls => trends.Count > 0 ? trends.Max(t => t.CallCount) : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+        StateHasChanged();
+
+        summary = await ApiService.GetAiMetricsSummaryAsync(selectedDays);
+        providerMetrics = await ApiService.GetAiProviderMetricsAsync(selectedDays);
+        modelMetrics = await ApiService.GetAiModelMetricsAsync(selectedDays);
+        trends = await ApiService.GetAiMetricsTrendsAsync(selectedDays);
+        recentMetrics = await ApiService.GetAiRecentMetricsAsync(50, selectedDays);
+
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task ChangeDays(int days)
+    {
+        selectedDays = days;
+        await LoadDataAsync();
+    }
+
+    private static string FormatNumber(long n)
+    {
+        if (n >= 1_000_000) return $"{n / 1_000_000.0:F1}M";
+        if (n >= 1_000) return $"{n / 1_000.0:F1}K";
+        return n.ToString();
+    }
+
+    public void Dispose() { }
+}

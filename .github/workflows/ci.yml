@@ -1,0 +1,223 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  # ── SDK + 服务端单元测试（Linux 跑最快） ──
+  sdk-tests:
+    name: SDK & Service Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Run Baihua.Sdk tests
+        run: dotnet test tests/Baihua.Sdk.Tests/Baihua.Sdk.Tests.csproj -c Release
+
+      - name: Run Huapu tests
+        run: dotnet test tests/Huapu.Tests/Huapu.Tests.csproj -c Release
+
+      - name: Run backend tests (Baihua.Server + modules)
+        run: dotnet test tests/Baihua.Family.Tests/Baihua.Family.Tests.csproj -c Release -r linux-x64
+
+  # ── 服务端全方案编译（防止 Contract/适配器变更后编译失败） ──
+  family-build:
+    name: Family Solution Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Build BaiHua solution
+        run: dotnet build services/BaiHua.slnx -c Release
+
+  # ── Playwright E2E：本地启动 4 个服务后跑浏览器测试 ──
+  # 只跑不依赖外部 AI 模型的稳定 project（navigation/dashboard/migration），
+  # CI 无 GPU/真实模型，避免触发模型推理的用例。
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # 合并后为单一 PostgreSQL 数据库（DbConnections 默认值与下方凭据对齐：
+    # PG_USER=baihua / PG_PASSWORD=Baihua2026Pg! / PG_DATABASE=baihua），无需额外环境变量
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: baihua
+          POSTGRES_PASSWORD: Baihua2026Pg!
+          POSTGRES_DB: baihua
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U baihua"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Cache npm + Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/ms-playwright
+          key: ${{ runner.os }}-e2e-npm-${{ hashFiles('tests/package-lock.json') }}
+
+      - name: Install Playwright
+        run: |
+          # @playwright/test 依赖锁在 tests/ 根（tests/package-lock.json）：tests/shared-e2e（global-setup/helpers）
+          # 从 tests/ 向上解析 @playwright/test，因此不要在 tests/e2e 单独 npm ci——
+          # 双份 @playwright/test 会触发 "Requiring @playwright/test second time" 报错；npx 会向上找到 tests/node_modules/.bin。
+          cd tests
+          npm ci --no-audit --no-fund
+          cd e2e
+          # GH runner 无系统 Chromium，安装 Playwright 自带浏览器（config 的 launchOptions 会回退到它）
+          npx playwright install --with-deps chromium
+
+      - name: Build services (Debug)
+        run: dotnet build services/BaiHua.slnx -c Debug
+
+      - name: Start Baihua services
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/baihua-logs
+          # 与本地开发一致：Development 环境 + 统一 BAIHUA_HOME
+          export ASPNETCORE_ENVIRONMENT=Development
+          export BAIHUA_HOME=/tmp/baihua-data
+          # 合并后只有两个进程：单一后端（Baihua.Server，8788）+ WebUI（5177）
+          dotnet run --project services/Baihua.Server --no-build --no-launch-profile --urls http://127.0.0.1:8788 > /tmp/baihua-logs/server.log 2>&1 &
+          dotnet run --project services/Baihua.Web    --no-build --no-launch-profile --urls http://127.0.0.1:5177 > /tmp/baihua-logs/web.log 2>&1 &
+
+      - name: Wait for services healthy
+        run: |
+          set -euxo pipefail
+          wait_for() {
+            local url="$1" name="$2"
+            # 冷启动实测约 96s（dotnet run + DatabaseInitializer），放宽到 240s
+            for i in $(seq 1 120); do
+              if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
+                echo "OK: $name ($url)"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "::error::$name 未在 240s 内就绪: $url"
+            return 1
+          }
+          wait_for http://127.0.0.1:8788/health Server
+          wait_for http://127.0.0.1:5177/ WebUI
+
+      - name: Run Playwright tests (navigation/dashboard/migration)
+        run: |
+          cd tests/e2e
+          npx playwright test --project=navigation --project=dashboard --project=migration
+
+      - name: Dump service logs (on failure)
+        if: failure()
+        run: |
+          echo "===== curl /family/checkin (raw response head) ====="
+          curl -isS --max-time 5 http://127.0.0.1:5177/family/checkin | head -30 || true
+          echo "===== curl /api/achievements/learners ====="
+          curl -isS --max-time 5 http://127.0.0.1:8788/api/achievements/learners | head -15 || true
+          for f in /tmp/baihua-logs/*.log; do
+            echo "===== $(basename "$f") ====="
+            grep -E "checkin|family|Error|ERR|warn|Exception" "$f" | tail -n 60 || true
+          done
+
+      - name: Upload Playwright artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-playwright-results
+          path: |
+            tests/e2e/test-results/
+            tests/e2e/playwright-report/
+            tests/e2e/test-results.json
+          if-no-files-found: ignore
+
+  # ── Android 编译（.NET 9 MAUI） ──
+  android-build:
+    name: Android MAUI Build
+    runs-on: ubuntu-latest
+    needs: sdk-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-maui-${{ hashFiles('clients/**/*.csproj', 'libs/**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-maui-
+            ${{ runner.os }}-nuget-
+
+      - name: Install MAUI Android workload
+        run: dotnet workload install maui-android
+
+      - name: Build Android
+        run: dotnet build clients/Huapu/Huapu.csproj -f net10.0-android36.1 -c Release

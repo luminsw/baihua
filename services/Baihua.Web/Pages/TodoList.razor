@@ -1,0 +1,543 @@
+@page "/todo"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject IApiService ApiService
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@using Baihua.Contracts.Todo
+
+<PageTitle>@L["Todo_PageTitle"]</PageTitle>
+
+<div class="todo-page">
+    <h1>📝 @L["Todo_PageTitle"]</h1>
+
+    <!-- AI 目标生成区：输入一个目标，AI 拆解为一组具体待办 -->
+    <div class="todo-ai mb-2">
+        <div class="input-group">
+            <input class="form-control" placeholder="@L["Todo_GoalPlaceholder"]" maxlength="200"
+                   @bind="_goalInput" @bind:event="oninput"
+                   @onkeydown="OnGoalKeyDown" aria-label="@L["Todo_GoalPlaceholder"]" />
+            <button class="btn btn-success" disabled="@(_generating || string.IsNullOrWhiteSpace(_goalInput))" @onclick="GenerateAsync">
+                @L["Todo_AiGenerate"]
+            </button>
+        </div>
+        @if (_generating)
+        {
+            <div class="todo-generating">
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                @L["Todo_Generating"]
+            </div>
+        }
+        @if (_aiError != null)
+        {
+            <div class="alert alert-warning py-1 px-2 small mb-0 mt-1">⚠️ @_aiError</div>
+        }
+    </div>
+
+    <!-- 快速添加（无目标的"其他待办"） -->
+    <div class="input-group mb-3">
+        <input class="form-control" placeholder="@L["Todo_AddPlaceholder"]" maxlength="200"
+               @bind="_newTitle" @bind:event="oninput"
+               @onkeydown="OnNewTitleKeyDown" aria-label="@L["Todo_AddPlaceholder"]" />
+        <button class="btn btn-primary" disabled="@(_saving || string.IsNullOrWhiteSpace(_newTitle))" @onclick="AddAsync">
+            @L["Todo_Add"]
+        </button>
+    </div>
+
+    @if (_loadError != null)
+    {
+        <div class="alert alert-warning d-flex align-items-center gap-2">
+            <span>@L["Todo_LoadFailed"]</span>
+            <button class="btn btn-sm btn-outline-warning" @onclick="LoadAsync">@L["Todo_Retry"]</button>
+        </div>
+    }
+    else
+    {
+        <div class="btn-group btn-group-sm mb-3" role="group">
+            @foreach (var (key, label) in _filters)
+            {
+                <button class="btn @(_filter == key ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="() => SetFilter(key)">
+                    @label <span class="badge @(_filter == key ? "bg-light text-primary" : "bg-secondary")">@CountFor(key)</span>
+                </button>
+            }
+        </div>
+
+        @if (_isLoading)
+        {
+            <div class="todo-loading">@L["Todo_Loading"]</div>
+        }
+        else if (_visibleGoals.Count == 0 && _visibleUngrouped.Count == 0)
+        {
+            <div class="todo-empty">
+                @if (_goals.Count == 0)
+                {
+                    <div>🎯 @L["Todo_NoGoals"]</div>
+                }
+                else
+                {
+                    <div>@L["Todo_Empty"]</div>
+                }
+            </div>
+        }
+        else
+        {
+            <!-- 目标分组 -->
+            @foreach (var goal in _visibleGoals)
+            {
+                <div class="card todo-goal mb-3">
+                    <div class="card-header d-flex align-items-center gap-2 py-2">
+                        <span class="todo-goal-icon">🎯</span>
+                        <span class="fw-semibold flex-grow-1 todo-goal-title">@goal.Title</span>
+                        <span class="small text-muted">@ProgressText(goal)</span>
+                        <button class="btn btn-sm @(_pendingDeleteGoalId == goal.Id ? "btn-danger" : "btn-outline-danger")"
+                                @onclick="() => OnDeleteGoalClickAsync(goal.Id)">
+                            @(_pendingDeleteGoalId == goal.Id ? L["Todo_DeleteGoalConfirm"] : L["Todo_Delete"])
+                        </button>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        @foreach (var item in ItemsOf(goal))
+                        {
+                            <li class="list-group-item todo-item @(item.IsDone ? "todo-done" : "")">
+                                <input class="form-check-input me-2" type="checkbox"
+                                       checked="@item.IsDone" disabled="@_togglingIds.Contains(item.Id)"
+                                       @onchange="() => ToggleAsync(item)" aria-label="@item.Title" />
+                                <span class="todo-title flex-grow-1">@item.Title</span>
+                                @if (item.CreatedAt != default)
+                                {
+                                    <span class="todo-date small text-muted me-2">@item.CreatedAt.ToLocalTime().ToString("MM-dd")</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(item.Note))
+                                {
+                                    <button class="btn btn-sm btn-outline-info me-1"
+                                            @onclick="() => ToggleNote(item.Id)">
+                                        📋 @L["Todo_Guide"] @(_expandedNotes.Contains(item.Id) ? "▴" : "▾")
+                                    </button>
+                                }
+                                <button class="btn btn-sm @(_pendingDeleteId == item.Id ? "btn-danger" : "btn-outline-danger")"
+                                        @onclick="() => OnDeleteClickAsync(item.Id)">
+                                    @(_pendingDeleteId == item.Id ? L["Todo_ConfirmDelete"] : L["Todo_Delete"])
+                                </button>
+                            </li>
+                            @if (_expandedNotes.Contains(item.Id) && !string.IsNullOrWhiteSpace(item.Note))
+                            {
+                                <li class="list-group-item todo-note">
+                                    <div class="todo-note-text">@item.Note</div>
+                                </li>
+                            }
+                        }
+                    </ul>
+                </div>
+            }
+
+            <!-- 其他待办（无目标） -->
+            @if (_visibleUngrouped.Count > 0)
+            {
+                <h6 class="todo-ungrouped-title text-muted">🗂️ @L["Todo_Ungrouped"]</h6>
+                <ul class="list-group">
+                    @foreach (var item in _visibleUngrouped)
+                    {
+                        <li class="list-group-item todo-item @(item.IsDone ? "todo-done" : "")">
+                            <input class="form-check-input me-2" type="checkbox"
+                                   checked="@item.IsDone" disabled="@_togglingIds.Contains(item.Id)"
+                                   @onchange="() => ToggleAsync(item)" aria-label="@item.Title" />
+                            <span class="todo-title flex-grow-1">@item.Title</span>
+                            @if (item.CreatedAt != default)
+                            {
+                                <span class="todo-date small text-muted me-2">@item.CreatedAt.ToLocalTime().ToString("MM-dd")</span>
+                            }
+                            <button class="btn btn-sm @(_pendingDeleteId == item.Id ? "btn-danger" : "btn-outline-danger")"
+                                    @onclick="() => OnDeleteClickAsync(item.Id)">
+                                @(_pendingDeleteId == item.Id ? L["Todo_ConfirmDelete"] : L["Todo_Delete"])
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        }
+    }
+
+    <!-- AI 生成预览确认弹窗：确认后才保存 -->
+    @if (_preview != null)
+    {
+        <div class="modal fade show d-block todo-preview-modal" style="background:rgba(0,0,0,0.5);" tabindex="-1" role="dialog" aria-modal="true">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">✨ @L["Todo_AiPreviewTitle"]</h5>
+                        <button type="button" class="btn-close" @onclick="CancelPreview" aria-label="@L["Common_Cancel"]"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small mb-2">@L["Todo_PreviewHint"]</p>
+                        <div class="todo-preview-goal">🎯 <strong>@_preview.Title</strong></div>
+                        <ul class="list-group mt-2">
+                            @foreach (var item in _preview.Items)
+                            {
+                                <li class="list-group-item todo-preview-item">
+                                    <div class="todo-preview-item-title">☐ @item.Title</div>
+                                    @if (!string.IsNullOrWhiteSpace(item.Note))
+                                    {
+                                        <div class="todo-preview-item-note">📋 @item.Note</div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CancelPreview" disabled="@_savingPreview">@L["Common_Cancel"]</button>
+                        <button type="button" class="btn btn-success" @onclick="ConfirmSaveAsync" disabled="@_savingPreview">
+                            @(_savingPreview ? L["Todo_Saving"] : L["Todo_SaveConfirm"])
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly List<TodoItemDto> _items = new();
+    private readonly List<TodoGoalDto> _goals = new();
+    private readonly HashSet<int> _togglingIds = new();
+    private readonly HashSet<int> _expandedNotes = new();
+    private string _newTitle = "";
+    private string _goalInput = "";
+    private string _filter = "all";
+    private bool _isLoading;
+    private bool _saving;
+    private bool _generating;
+    private bool _savingPreview;
+    private string? _loadError;
+    private string? _aiError;
+    private int? _pendingDeleteId;
+    private int? _pendingDeleteGoalId;
+    private AiTodoPreviewDto? _preview;
+
+    /// <summary>筛选定义（key, 标签本地化键）——按固定顺序渲染</summary>
+    private static readonly (string Key, string LabelKey)[] _filterDefs =
+    [
+        ("all", "Todo_FilterAll"),
+        ("pending", "Todo_FilterPending"),
+        ("done", "Todo_FilterDone"),
+    ];
+
+    private List<(string Key, string Label)> _filters
+        => _filterDefs.Select(f => (f.Key, L[f.LabelKey].Value)).ToList();
+
+    private bool MatchFilter(TodoItemDto i) => _filter switch
+    {
+        "pending" => !i.IsDone,
+        "done" => i.IsDone,
+        _ => true
+    };
+
+    /// <summary>某目标下按筛选可见的待办（按创建顺序）</summary>
+    private List<TodoItemDto> ItemsOf(TodoGoalDto goal)
+        => _items.Where(i => i.GoalId == goal.Id && MatchFilter(i)).OrderBy(i => i.Id).ToList();
+
+    /// <summary>可见目标（筛选后仍有待办才显示）</summary>
+    private List<TodoGoalDto> _visibleGoals
+        => _goals.Where(g => ItemsOf(g).Count > 0).ToList();
+
+    /// <summary>可见的"其他待办"（无目标）</summary>
+    private List<TodoItemDto> _visibleUngrouped
+        => _items.Where(i => i.GoalId == null && MatchFilter(i)).OrderBy(i => i.Id).ToList();
+
+    /// <summary>目标进度文本（不受筛选影响）</summary>
+    private string ProgressText(TodoGoalDto goal)
+    {
+        var all = _items.Where(i => i.GoalId == goal.Id).ToList();
+        return string.Format(L["Todo_Progress"].Value, all.Count(i => i.IsDone), all.Count);
+    }
+
+    private int CountFor(string key) => key switch
+    {
+        "pending" => _items.Count(i => !i.IsDone),
+        "done" => _items.Count(i => i.IsDone),
+        _ => _items.Count
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _loadError = null;
+        try
+        {
+            var itemsTask = ApiService.GetTodosAsync();
+            var goalsTask = ApiService.GetTodoGoalsAsync();
+            await Task.WhenAll(itemsTask, goalsTask);
+            _items.Clear();
+            _items.AddRange(itemsTask.Result);
+            _goals.Clear();
+            _goals.AddRange(goalsTask.Result);
+        }
+        catch
+        {
+            _loadError = "load";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        var title = _newTitle.Trim();
+        if (title.Length == 0) return;
+
+        _saving = true;
+        try
+        {
+            var created = await ApiService.AddTodoAsync(new CreateTodoRequest { Title = title });
+            _items.Add(created);
+            _newTitle = "";
+            _filter = "all";
+        }
+        catch
+        {
+            _loadError ??= "save";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    /// <summary>AI 生成：把目标拆解为一组具体待办（仅预览，确认后才保存）</summary>
+    private async Task GenerateAsync()
+    {
+        var goal = _goalInput.Trim();
+        if (goal.Length == 0 || _generating) return;
+
+        _generating = true;
+        _aiError = null;
+        try
+        {
+            _preview = await ApiService.GenerateTodosAsync(new GenerateTodosRequest { Goal = goal });
+        }
+        catch (Exception ex)
+        {
+            _aiError = ex.Message ?? L["Todo_GenerateFailed"].Value;
+        }
+        finally
+        {
+            _generating = false;
+        }
+    }
+
+    /// <summary>取消预览：丢弃 AI 生成结果，不保存</summary>
+    private void CancelPreview() => _preview = null;
+
+    /// <summary>确认保存：把预览中的目标与待办入库</summary>
+    private async Task ConfirmSaveAsync()
+    {
+        if (_preview == null || _savingPreview) return;
+
+        _savingPreview = true;
+        _aiError = null;
+        try
+        {
+            var request = new SaveGeneratedTodosRequest { Title = _preview.Title, Items = _preview.Items };
+            var created = await ApiService.SaveGeneratedTodosAsync(request);
+            _goals.Add(created);
+            foreach (var item in created.Items)
+            {
+                if (_items.All(i => i.Id != item.Id))
+                    _items.Add(item);
+            }
+            _goalInput = "";
+            _filter = "all";
+            _preview = null;
+        }
+        catch
+        {
+            _aiError = L["Todo_SaveFailed"].Value;
+        }
+        finally
+        {
+            _savingPreview = false;
+        }
+    }
+
+    private void ToggleNote(int id)
+    {
+        if (!_expandedNotes.Add(id))
+            _expandedNotes.Remove(id);
+    }
+
+    private async Task ToggleAsync(TodoItemDto item)
+    {
+        if (_togglingIds.Contains(item.Id)) return;
+        _togglingIds.Add(item.Id);
+        try
+        {
+            var updated = await ApiService.UpdateTodoAsync(item.Id, new UpdateTodoRequest { IsDone = !item.IsDone });
+            if (updated != null)
+            {
+                var index = _items.FindIndex(i => i.Id == item.Id);
+                if (index >= 0) _items[index] = updated;
+            }
+        }
+        catch
+        {
+            _loadError ??= "save";
+        }
+        finally
+        {
+            _togglingIds.Remove(item.Id);
+        }
+    }
+
+    private async Task OnDeleteClickAsync(int id)
+    {
+        if (_pendingDeleteId != id)
+        {
+            _pendingDeleteId = id;
+            return;
+        }
+
+        _pendingDeleteId = null;
+        try
+        {
+            await ApiService.DeleteTodoAsync(id);
+            _items.RemoveAll(i => i.Id == id);
+            _expandedNotes.Remove(id);
+        }
+        catch
+        {
+            _loadError ??= "save";
+        }
+    }
+
+    private async Task OnDeleteGoalClickAsync(int id)
+    {
+        if (_pendingDeleteGoalId != id)
+        {
+            _pendingDeleteGoalId = id;
+            return;
+        }
+
+        _pendingDeleteGoalId = null;
+        try
+        {
+            await ApiService.DeleteTodoGoalAsync(id);
+            _goals.RemoveAll(g => g.Id == id);
+            _items.RemoveAll(i => i.GoalId == id);
+        }
+        catch
+        {
+            _loadError ??= "save";
+        }
+    }
+
+    private void SetFilter(string key)
+    {
+        _filter = key;
+        _pendingDeleteId = null;
+        _pendingDeleteGoalId = null;
+    }
+
+    private async Task OnNewTitleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_newTitle) && !_saving)
+        {
+            await AddAsync();
+        }
+    }
+
+    private async Task OnGoalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_goalInput) && !_generating)
+        {
+            await GenerateAsync();
+        }
+    }
+}
+
+<style>
+    .todo-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .todo-done .todo-title {
+        text-decoration: line-through;
+        opacity: 0.55;
+    }
+
+    .todo-title {
+        word-break: break-word;
+    }
+
+    .todo-empty, .todo-loading {
+        padding: 2rem 1rem;
+        text-align: center;
+        color: rgba(180, 200, 215, 0.7);
+    }
+
+    .todo-generating {
+        padding: 0.4rem 0;
+        display: flex;
+        align-items: center;
+        color: rgba(180, 200, 215, 0.85);
+        font-size: 0.9rem;
+    }
+
+    .todo-goal .card-header {
+        background: rgba(255, 255, 255, 0.04);
+    }
+
+    .todo-goal-title {
+        word-break: break-word;
+    }
+
+    .todo-goal-icon {
+        font-size: 1.1rem;
+    }
+
+    .todo-ungrouped-title {
+        margin-bottom: 0.5rem;
+    }
+
+    .todo-note {
+        background: rgba(13, 110, 253, 0.06);
+        padding-left: 2.6rem;
+    }
+
+    .todo-note-text {
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: rgba(180, 200, 215, 0.9);
+        font-size: 0.9rem;
+        line-height: 1.6;
+    }
+
+    .todo-preview-modal {
+        z-index: 2000;
+    }
+
+    .todo-preview-goal {
+        font-size: 1.05rem;
+        word-break: break-word;
+    }
+
+    .todo-preview-item-title {
+        word-break: break-word;
+    }
+
+    .todo-preview-item-note {
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: rgba(180, 200, 215, 0.9);
+        font-size: 0.9rem;
+        line-height: 1.6;
+        margin-top: 0.25rem;
+        padding-left: 1.4rem;
+        border-left: 2px solid rgba(13, 110, 253, 0.35);
+    }
+</style>

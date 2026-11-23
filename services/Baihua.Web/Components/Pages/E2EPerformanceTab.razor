@@ -1,0 +1,309 @@
+@using Baihua.Web.Services
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<!-- E2E 性能摘要 -->
+@if (Summary != null)
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-2">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@Summary.TotalOperations</div>
+                    <small>@L["E2EPerf_TotalOperations"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@Summary.AvgTotalTimeMs ms</div>
+                    <small>@L["E2EPerf_AvgTotalTime"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@Summary.AvgNetworkTimeMs ms</div>
+                    <small>@L["E2EPerf_AvgNetworkTime"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-warning text-dark">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@Summary.AvgRenderingTimeMs ms</div>
+                    <small>@L["E2EPerf_AvgRenderingTime"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card @(Summary.SlowOperationCount > 0 ? "bg-danger" : "bg-success") text-white">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@Summary.SlowOperationCount</div>
+                    <small>@L["E2EPerf_SlowOperationCount"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-secondary text-white">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@Summary.MaxTotalTimeMs ms</div>
+                    <small>@L["E2EPerf_MaxTime"]</small>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- 最慢的操作 -->
+@if (SlowestOperations?.Any() == true)
+{
+    <div class="card border-danger mb-4">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0">@L["E2EPerf_SlowestOperationsTop"] @(SlowestOperations.Count)</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>@L["E2EPerf_Time"]</th>
+                            <th>@L["E2EPerf_Page"]</th>
+                            <th>@L["E2EPerf_Operation"]</th>
+                            <th class="text-end">@L["E2EPerf_TotalTime"]</th>
+                            <th class="text-end">@L["E2EPerf_Network"]</th>
+                            <th class="text-end">@L["E2EPerf_Rendering"]</th>
+                            <th class="text-end">@L["E2EPerf_ApiCallCount"]</th>
+                            <th>@L["E2EPerf_SlowestComponent"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var op in SlowestOperations)
+                        {
+                            <tr class="@(op.TotalElapsedMs > 2000 ? "table-danger" : op.TotalElapsedMs > 1000 ? "table-warning" : "")">
+                                <td class="small">@op.StartTime.ToLocalTime().ToString("HH:mm:ss")</td>
+                                <td><span class="badge bg-secondary">@op.PageName</span></td>
+                                <td>@op.OperationName</td>
+                                <td class="text-end font-monospace">
+                                    <span class="badge @GetTimeBadgeClass(op.TotalElapsedMs)">
+                                        @op.TotalElapsedMs ms
+                                    </span>
+                                </td>
+                                <td class="text-end font-monospace text-info">@op.NetworkTimeMs ms</td>
+                                <td class="text-end font-monospace text-warning">@op.RenderingTimeMs ms</td>
+                                <td class="text-center">@op.ApiCallCount</td>
+                                <td><code class="small">@(op.SlowestComponent.Length > 20 ? op.SlowestComponent[..20] + "..." : op.SlowestComponent)</code></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- 操作详情（可展开） -->
+@if (Records?.Any() == true)
+{
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">@L["E2EPerf_RecentOperations"] (@Records.Count @L["E2EPerf_RecordsCountSuffix"])</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>@L["E2EPerf_Time"]</th>
+                            <th>@L["E2EPerf_Page"]</th>
+                            <th>@L["E2EPerf_Operation"]</th>
+                            <th class="text-end">@L["E2EPerf_TotalTime"]</th>
+                            <th class="text-end">@L["E2EPerf_Network"]</th>
+                            <th class="text-end">@L["E2EPerf_Rendering"]</th>
+                            <th>@L["E2EPerf_Details"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var record in Records.Take(50))
+                        {
+                            <tr>
+                                <td class="small text-nowrap">@record.StartTime.ToLocalTime().ToString("HH:mm:ss")</td>
+                                <td><span class="badge bg-secondary">@record.PageName</span></td>
+                                <td>@record.OperationName</td>
+                                <td class="text-end font-monospace">
+                                    <span class="badge @GetTimeBadgeClass(record.TotalElapsedMs)">
+                                        @record.TotalElapsedMs ms
+                                    </span>
+                                </td>
+                                <td class="text-end font-monospace">@record.NetworkTimeMs ms</td>
+                                <td class="text-end font-monospace">@record.RenderingTimeMs ms</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary py-0" @onclick="() => ToggleDetails(record.TraceId)">
+                                        @(ExpandedRows.Contains(record.TraceId) ? L["E2EPerf_Collapse"] : L["E2EPerf_Expand"])
+                                    </button>
+                                </td>
+                            </tr>
+                            @if (ExpandedRows.Contains(record.TraceId))
+                            {
+                                <tr>
+                                    <td colspan="7" class="p-0">
+                                        <div class="p-3 bg-body-tertiary">
+                                            <h6>@L["E2EPerf_ApiCalls"] (@record.ApiCalls.Count)</h6>
+                                            @if (record.ApiCalls.Any())
+                                            {
+                                                <table class="table table-sm table-bordered mb-3">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th>@L["E2EPerf_Endpoint"]</th>
+                                                            <th>@L["E2EPerf_Method"]</th>
+                                                            <th class="text-end">@L["E2EPerf_Elapsed"]</th>
+                                                            <th>@L["E2EPerf_Status"]</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var api in record.ApiCalls.OrderByDescending(a => a.ElapsedMilliseconds))
+                                                        {
+                                                            <tr>
+                                                                <td class="small"><code>@api.Endpoint</code></td>
+                                                                <td><span class="badge bg-secondary">@api.Method</span></td>
+                                                                <td class="text-end font-monospace">@api.ElapsedMilliseconds ms</td>
+                                                                <td>
+                                                                    @if (api.Success)
+                                                                    {
+                                                                        <span class="badge bg-success">✓</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="badge bg-danger">✗</span>
+                                                                    }
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            }
+                                            
+                                            <h6>@L["E2EPerf_ComponentRenders"] (@record.ComponentRenders.Count)</h6>
+                                            @if (record.ComponentRenders.Any())
+                                            {
+                                                <div class="row g-2">
+                                                    @foreach (var comp in record.ComponentRenders.OrderByDescending(c => c.RenderTimeMs).Take(10))
+                                                    {
+                                                        <div class="col-auto">
+                                                            <span class="badge @(comp.RenderTimeMs > 100 ? "bg-warning" : "bg-info")">
+                                                                @comp.ComponentName: @comp.RenderTimeMs ms
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- 性能优化建议 -->
+<div class="card border-warning mt-4">
+    <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0">@L["E2EPerf_OptTitle"]</h5>
+    </div>
+    <div class="card-body">
+        @if (HasData)
+        {
+            <p class="small text-muted mb-3">@L["E2EPerf_OptSubtitleData"]</p>
+        }
+        else
+        {
+            <p class="small text-muted mb-3">@L["E2EPerf_OptSubtitleNoData"]</p>
+        }
+        <ul class="list-unstyled mb-0">
+            <li class="py-2 px-3 mb-2 rounded @(Summary == null || Summary.AvgTotalTimeMs <= 2000 ? "bg-body-tertiary text-body-secondary" : "bg-warning bg-opacity-10 border-start border-3 border-warning")">
+                @if (Summary != null && Summary.AvgTotalTimeMs > 2000)
+                {
+                    <span class="badge bg-warning text-dark me-2">⚠</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary me-2">✓</span>
+                }
+                @((MarkupString)L["E2EPerf_AvgTotalTimeSuggestion"].Value)
+            </li>
+            <li class="py-2 px-3 mb-2 rounded @(Summary == null || Summary.AvgNetworkTimeMs <= 1000 ? "bg-body-tertiary text-body-secondary" : "bg-warning bg-opacity-10 border-start border-3 border-warning")">
+                @if (Summary != null && Summary.AvgNetworkTimeMs > 1000)
+                {
+                    <span class="badge bg-warning text-dark me-2">⚠</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary me-2">✓</span>
+                }
+                @((MarkupString)L["E2EPerf_NetworkSuggestion"].Value)
+            </li>
+            <li class="py-2 px-3 mb-2 rounded @(Summary == null || Summary.AvgRenderingTimeMs <= 500 ? "bg-body-tertiary text-body-secondary" : "bg-warning bg-opacity-10 border-start border-3 border-warning")">
+                @if (Summary != null && Summary.AvgRenderingTimeMs > 500)
+                {
+                    <span class="badge bg-warning text-dark me-2">⚠</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary me-2">✓</span>
+                }
+                @((MarkupString)L["E2EPerf_RenderingSuggestion"].Value)
+            </li>
+            <li class="py-2 px-3 rounded @(Summary == null || Summary.SlowOperationCount <= 0 ? "bg-body-tertiary text-body-secondary" : "bg-danger bg-opacity-10 border-start border-3 border-danger")">
+                @if (Summary != null && Summary.SlowOperationCount > 0)
+                {
+                    <span class="badge bg-danger text-white me-2">⚠</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary me-2">✓</span>
+                }
+                @((MarkupString)L["E2EPerf_SlowOpSuggestion"].Value)
+            </li>
+        </ul>
+    </div>
+</div>
+
+<style>
+    [data-bs-theme="dark"] .table-light {
+        --bs-table-bg: rgba(255,255,255,0.06);
+        --bs-table-color: #c0c8d0;
+    }
+    [data-bs-theme="dark"] .table-light th { color: #c0c8d0; }
+    [data-bs-theme="dark"] .sticky-top { background: #232a3b !important; }
+    [data-bs-theme="dark"] .bg-body-tertiary { background: rgba(255,255,255,0.04) !important; }
+</style>
+
+@code {
+    [Parameter] public E2EPerformanceSummary? Summary { get; set; }
+    [Parameter] public List<E2EPerformanceRecord>? Records { get; set; }
+    [Parameter] public List<E2EPerformanceRecord>? SlowestOperations { get; set; }
+    private HashSet<string> ExpandedRows { get; set; } = new();
+
+    private bool HasData => Summary?.TotalOperations > 0;
+
+    private void ToggleDetails(string traceId)
+    {
+        if (ExpandedRows.Contains(traceId))
+            ExpandedRows.Remove(traceId);
+        else
+            ExpandedRows.Add(traceId);
+    }
+
+    private string GetTimeBadgeClass(long ms)
+    {
+        if (ms > 2000) return "bg-danger";
+        if (ms > 1000) return "bg-warning text-dark";
+        if (ms > 500) return "bg-info";
+        return "bg-success";
+    }
+}

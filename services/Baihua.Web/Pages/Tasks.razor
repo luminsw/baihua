@@ -1,0 +1,990 @@
+@page "/tasks"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Net.Http
+@using System.Threading
+@using Microsoft.AspNetCore.Http.Connections
+@using Microsoft.Extensions.Localization
+@using Microsoft.AspNetCore.SignalR.Client
+@using Baihua.Contracts.LocalModels
+@using Baihua.Contracts.Learn
+@implements IAsyncDisposable
+@inject Baihua.Web.Services.IApiService ApiService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject Baihua.Web.Services.SettingsService SettingsService
+@inject Microsoft.Extensions.Logging.ILogger<Tasks> Logger
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["Tasks_PageTitle"]</PageTitle>
+
+<h1>📊 @L["Tasks_Title"]</h1>
+
+
+<div class="task-controls">
+    <span class="connection-status">
+        @if (isHubConnected)
+        {
+            <span>🟢 @L["Tasks_WebSocketConnected"]</span>
+        }
+        else
+        {
+            <span>🔴 @L["Tasks_WebSocketDisconnected"]</span>
+        }
+    </span>
+    @if (tasks.Any())
+    {
+        <label class="form-check form-switch form-check-inline mb-0 ms-2">
+            <input class="form-check-input" type="checkbox" @bind="hideCompleted" @bind:after="() => StateHasChanged()" />
+            <span class="form-check-label small">@L["Tasks_HideCompleted"]</span>
+        </label>
+        <button @onclick="ShowClearConfirm" class="btn btn-outline-danger btn-sm">
+            🗑️ @L["Tasks_ClearHistory"]
+        </button>
+    }
+</div>
+
+@if (showClearConfirm)
+{
+    <div class="modal-overlay" @onclick="HideClearConfirm">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <h3>⚠️ @L["Tasks_ConfirmClearTitle"]</h3>
+            <p>@L["Tasks_ConfirmClearMessage"]</p>
+            <div class="modal-actions">
+                <button @onclick="HideClearConfirm" class="btn btn-secondary">@L["Tasks_Cancel"]</button>
+                <button @onclick="ClearAllTasks" class="btn btn-danger">@L["Tasks_ConfirmClearButton"]</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (pendingConfirm != null)
+{
+    <div class="modal-overlay" @onclick="HideTaskConfirm">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <h3>⚠️ @(pendingConfirm.Value.Action == "delete" ? L["Tasks_DeleteTask"] : L["Tasks_CancelTask"])</h3>
+            <p>@(pendingConfirm.Value.Action == "delete"
+                ? L["Tasks_ConfirmDeleteMessage"]
+                : L["Tasks_ConfirmCancelMessage"])</p>
+            <div class="modal-actions">
+                <button @onclick="HideTaskConfirm" class="btn btn-secondary">@L["Tasks_Cancel"]</button>
+                <button @onclick="ConfirmTaskAction" class="btn btn-danger">
+                    @(pendingConfirm.Value.Action == "delete" ? L["Tasks_ConfirmDelete"] : L["Tasks_ConfirmCancel"])
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (isLoading)
+{
+    <div class="loading">
+        <div class="spinner"></div>
+        <span>@L["Tasks_Loading"]</span>
+    </div>
+}
+else if (!tasks.Any() && learnJobs.Count == 0)
+{
+    <div class="no-tasks">
+        <span>📋</span>
+        <p>@L["Tasks_NoTasks"]</p>
+    </div>
+}
+else
+{
+    <div class="task-list">
+        @foreach (var job in VisibleLearnJobs())
+        {
+            <div class="task-item clickable" @onclick="() => OpenLearnJobAsync(job.JobId)">
+                <div class="task-header">
+                    <div class="task-title-section">
+                        <span class="task-type">🧠 题库生成</span>
+                        <span class="task-title-badge">📚 @(string.IsNullOrWhiteSpace(job.BankName) ? job.Topic : job.BankName)</span>
+                    </div>
+                    <span class="task-status status-@LearnJobStatusClass(job.Status)">@LearnJobStatusText(job.Status)</span>
+                </div>
+                <div class="task-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: @job.ProgressPercent%"></div>
+                    </div>
+                    <span class="progress-text">@job.ProgressPercent%</span>
+                </div>
+                <div class="task-message">@job.Message</div>
+                @if (!string.IsNullOrWhiteSpace(job.Error))
+                {
+                    <div class="task-error">❌ @job.Error</div>
+                }
+                <div class="task-detail-info">
+                    <small class="text-muted">@job.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm") · 点击查看</small>
+                </div>
+            </div>
+        }
+        @foreach (var task in (hideCompleted ? tasks.Where(t => t.StatusText != "Success") : tasks))
+        {
+            <div class="task-item @(task.StatusText == "Success" ? "clickable" : "")" 
+                 @onclick="(() => OnTaskClick(task))">
+                <div class="task-header">
+                    <div class="task-title-section">
+                        <span class="task-type">@GetTaskTypeDisplayName(task.Type)</span>
+                        @if (task.Parameters != null && task.Parameters.ContainsKey("title"))
+                        {
+                            <span class="task-title-badge">📄 @task.Parameters["title"]</span>
+                        }
+                        @if (task.Parameters != null && task.Parameters.ContainsKey("vaultName") && !string.IsNullOrEmpty(task.Parameters["vaultName"]))
+                        {
+                            <span class="task-vault-badge">📚 @task.Parameters["vaultName"]</span>
+                        }
+                    </div>
+                    <span class="task-status status-@task.StatusText.ToLowerInvariant()">@GetStatusDisplay(task.StatusText)</span>
+                </div>
+                <div class="task-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: @task.Progress.Percentage%"></div>
+                    </div>
+                    <span class="progress-text">@task.Progress.Current / @task.Progress.Total</span>
+                </div>
+                <div class="task-message">@task.Progress.Message</div>
+                @if (task.Result?.Error != null)
+                {
+                    <div class="task-error">❌ @FriendlyError(task.Result.Error)</div>
+                    @if (task.Result.Error.Contains("返回内容为空") || task.Result.Error.Contains("不支持该问题"))
+                    {
+                        <div class="alert alert-warning mt-2 py-1 px-2" style="font-size: 0.85em;">
+                            @((MarkupString)L["Tasks_SuggestionHtml"].Value)
+                        </div>
+                    }
+                }
+                @if (task.StatusText == "Timeout" || task.StatusText == "Failed" || task.StatusText == "Pending" || task.StatusText == "Cancelled")
+                {
+                    <div class="task-detail-info">
+                        @if (task.Parameters != null)
+                        {
+                            @if (task.Parameters.ContainsKey("model") && !string.IsNullOrEmpty(task.Parameters["model"]))
+                            {
+                                <span class="badge bg-info me-1">🤖 @task.Parameters["model"]</span>
+                            }
+                            @if (task.Parameters.ContainsKey("query") && !string.IsNullOrEmpty(task.Parameters["query"]))
+                            {
+                                <small class="text-muted d-block mt-1">@L["Tasks_PromptLabel"] @task.Parameters["query"]</small>
+                            }
+                        }
+                    </div>
+                    <div class="task-retry-section mt-1">
+                        <button class="btn btn-outline-warning btn-sm"
+                                @onclick="(() => RetryTask(task))"
+                                @onclick:stopPropagation="true"
+                                disabled="@retryingTaskIds.Contains(task.Id)">
+                            @if (retryingTaskIds.Contains(task.Id))
+                            {
+                                <span class="spinner-border spinner-border-sm"></span>
+                            }
+                            else
+                            {
+                                <span>🔄 @L["Tasks_Retry"]</span>
+                            }
+                        </button>
+                    </div>
+                }
+                @if (task.Result?.Success == true && task.Result?.Data != null)
+                {
+                    if (TryExtractNotesFromData(task.Result.Data, out var notes))
+                    {
+                        if (notes.GetArrayLength() > 0)
+                        {
+                            <div class="task-notes-list">
+                                <strong>📝 @L["Tasks_GeneratedNotes"]</strong>
+                                <ul>
+                                @foreach (var note in notes.EnumerateArray())
+                                {
+                                    var noteTitle = GetJsonString(note, "title", L["Tasks_UnnamedNote"]);
+                                    var notePath = GetJsonString(note, "path");
+                                    var noteId = NormalizeNoteId(notePath);
+                                    var displayName = BuildNoteDisplayName(noteTitle, notePath, noteId);
+                                    <li>
+                                        @if (!string.IsNullOrWhiteSpace(noteId))
+                                        {
+                                            <a href="note?id=@Uri.EscapeDataString(noteId)"
+                                               @onclick:stopPropagation="true">
+                                                📄 @displayName
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <span>📄 @displayName @L["Tasks_NoPathSuffix"]</span>
+                                        }
+                                    </li>
+                                }
+                                </ul>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="task-notes-list">
+                                <small class="text-muted">@L["Tasks_SuccessNoNotes"]</small>
+                            </div>
+                        }
+                    }
+                    else if ((task.Type == "anki_generate" || task.Type == "anki_generate_ai" || task.Type == "anki_card_generate") && task.Result.Data is System.Text.Json.JsonElement ankiData)
+                    {
+                        <div class="task-notes-list">
+                            @if (ankiData.TryGetProperty("totalCards", out var tc))
+                            {
+                                <small class="text-success">@(string.Format(L["Tasks_GeneratedCards"], tc))</small>
+                            }
+                            @if (ankiData.TryGetProperty("message", out var msg))
+                            {
+                                <small class="text-muted d-block">@msg</small>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="task-notes-list">
+                            <small class="text-muted">@(string.Format(L["Tasks_UnparseableNotes"], task.Result.Data?.GetType().Name ?? "null"))</small>
+                        </div>
+                    }
+                    // 显示 AI 请求详情
+                    if (task.Result.Data is System.Text.Json.JsonElement dataEl 
+                        && dataEl.ValueKind == System.Text.Json.JsonValueKind.Object
+                        && dataEl.TryGetProperty("requests", out var requestsArr)
+                        && requestsArr.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        <div class="task-request-info mt-1">
+                            <small class="text-muted">📋 @L["Tasks_RequestDetails"]</small>
+                            @foreach (var req in requestsArr.EnumerateArray())
+                            {
+                                var providerName = GetJsonString(req, "providerName", "");
+                                var reqModel = GetJsonString(req, "model", "");
+                                var elapsed = req.TryGetProperty("elapsedMs", out var elMs) ? elMs.GetInt64() : 0;
+                                var ts = GetJsonString(req, "timestamp", "");
+                                <div class="ms-2">
+                                    <span class="badge bg-light text-dark me-1">🏢 @providerName</span>
+                                    <span class="badge bg-light text-dark me-1">🤖 @reqModel</span>
+                                    <span class="badge bg-light text-dark me-1">⏱️ @elapsed ms</span>
+                                    @if (!string.IsNullOrEmpty(ts))
+                                    {
+                                        <small class="text-muted">@ts</small>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                else if (task.Result?.Success == true && task.Result?.Data == null)
+                {
+                    <div class="task-notes-list">
+                        <small class="text-warning">@L["Tasks_SuccessDataNull"]</small>
+                    </div>
+                }
+                <div class="task-time">
+                    @task.UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                    <div class="task-actions">
+                        @if (task.StatusText == "Running" || task.StatusText == "Pending")
+                        {
+                            <button @onclick="(() => CancelTask(task.Id))"
+                                    @onclick:stopPropagation="true"
+                                    class="btn btn-sm btn-outline-secondary me-1">
+                                ⏹ @L["Tasks_Cancel"]
+                            </button>
+                        }
+                        <button @onclick="(() => DeleteTask(task.Id))" 
+                                @onclick:stopPropagation="true"
+                                class="btn btn-sm btn-outline-danger">
+                            🗑️ @L["Tasks_Delete"]
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>首屏 true，避免在 OnInitializedAsync 完成前误显示「暂无任务」。</summary>
+    private List<TaskInfo> tasks = new();
+    private List<QuizGenerateJobSummaryDto> learnJobs = new();
+    private bool isLoading = true;
+    private bool isHubConnected = false;
+    private bool showClearConfirm = false;
+    private bool hideCompleted = false; // 隐藏已完成任务（长列表折叠）
+    private HashSet<string> retryingTaskIds = new();
+    private readonly SemaphoreSlim _loadTasksLock = new(1, 1);
+    private HubConnection? _hubConnection;
+    private Timer? _pollTimer;
+
+    
+    // 节流控制：收到 TaskUpdated 后延迟 500ms 再刷新，避免频繁请求
+    private CancellationTokenSource? _refreshDebounceCts;
+    // 组件销毁令牌：DisposeAsync 时取消，防止异步回调操作已 Dispose 的对象
+    private CancellationTokenSource _disposeCts = new();
+
+    protected override Task OnInitializedAsync()
+    {
+        // 勿在 OnInitializedAsync 内 await LoadTasks：交互式 Server 组件会等本方法结束后才首次渲染，
+        // 等于整页白屏/无骨架直到 /api/tasks 返回。REST 与 Hub 均在后台跑，首屏立即显示加载态。
+        _ = LoadTasks();
+
+        _ = StartHubConnectionFireAndForgetAsync();
+        // 兜底轮询：WebSocket 未连接时静默轮询刷新任务进度（避免任务页永远停在旧状态）
+        _pollTimer = new Timer(async _ =>
+        {
+            if (_disposeCts.IsCancellationRequested) return;
+            if (!isHubConnected)
+            {
+                try
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        await LoadTasks(silent: true);
+                        // Timer 回调不自动重渲染，必须显式刷新
+                        StateHasChanged();
+                    });
+                }
+                catch { }
+            }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        return Task.CompletedTask;
+    }
+
+    private static bool IsLoopbackUrl(string baseUrl)
+    {
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)) return true;
+        return uri.Host is "127.0.0.1" or "localhost" or "::1";
+    }
+
+    /// <summary>后台连接 Hub，不阻塞任务列表首屏。</summary>
+    private async Task StartHubConnectionFireAndForgetAsync()
+    {
+        try
+        {
+            await StartHubConnectionAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "任务页 Hub 连接失败");
+        }
+    }
+
+    private async Task StartHubConnectionAsync()
+    {
+        var backend = BaihuaEndpointHelper.NormalizeOutboundBaseUrl(SettingsService.BackendUrl);
+        var pageBase = Navigation.BaseUri.TrimEnd('/');
+        // k8s/traefik 部署下，页面经代理入口访问（如 http://192.168.3.13），
+        // 但 BackendUrl 仍是服务器本机的 127.0.0.1:8788 —— 浏览器连的是自己机器的回环，必然失败。
+        // 此时改用页面同源，由反向代理把 /hubs/ 转发到后端（traefik 已配置 /hubs/ → bh-family）。
+        if (IsLoopbackUrl(backend) && !IsLoopbackUrl(pageBase))
+        {
+            backend = pageBase;
+        }
+        var hubUrl = $"{backend}/hubs/task-progress";
+
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o =>
+            {
+                // 仅 WebSocket；跳过 negotiate，少一次 HTTP 往返（ negotiate 仍走 HttpClient，易被系统代理/WPAD 拖慢数秒）
+                o.Transports = HttpTransportType.WebSockets;
+                o.SkipNegotiation = true;
+                o.HttpMessageHandlerFactory = _ => new SocketsHttpHandler
+                {
+                    UseProxy = false,
+                };
+            })
+            .WithServerTimeout(TimeSpan.FromSeconds(15))
+            .WithKeepAliveInterval(TimeSpan.FromSeconds(10))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<QuizGenerateJobSummaryDto>("LearnJobUpdated", summary =>
+        {
+            _ = InvokeAsync(() =>
+            {
+                var index = learnJobs.FindIndex(j => j.JobId == summary.JobId);
+                if (index >= 0) learnJobs[index] = summary;
+                else learnJobs.Insert(0, summary);
+                StateHasChanged();
+            });
+        });
+
+        _hubConnection.On<object>("TaskUpdated", async _ =>
+        {
+            // 防抖：延迟 500ms 再刷新，合并短时间内多次更新
+            var cts = new CancellationTokenSource();
+            var oldCts = System.Threading.Interlocked.Exchange(ref _refreshDebounceCts, cts);
+            oldCts?.Cancel();
+            
+            try
+            {
+                await Task.Delay(500, cts.Token);
+                if (_disposeCts.IsCancellationRequested) return;
+                await InvokeAsync(() => LoadTasks(silent: true));
+            }
+            catch (TaskCanceledException)
+            {
+                // 忽略取消，新的请求会替代它
+            }
+        });
+
+        _hubConnection.Reconnecting += _ =>
+        {
+            isHubConnected = false;
+            return InvokeAsync(StateHasChanged);
+        };
+
+        _hubConnection.Reconnected += _connectionId =>
+        {
+            isHubConnected = true;
+            if (!_disposeCts.IsCancellationRequested)
+                _ = InvokeAsync(() => LoadTasks(silent: true));
+            return InvokeAsync(StateHasChanged);
+        };
+
+        _hubConnection.Closed += _ =>
+        {
+            isHubConnected = false;
+            return InvokeAsync(StateHasChanged);
+        };
+
+        Logger.LogInformation("任务页 Hub 连接目标 hubUrl={HubUrl}", hubUrl);
+
+        try
+        {
+            using var hubBudget = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            await _hubConnection.StartAsync(hubBudget.Token);
+            isHubConnected = true;
+        }
+        catch (OperationCanceledException ex)
+        {
+            isHubConnected = false;
+            Logger.LogWarning(ex, "任务页 Hub 连接超时（{Seconds}s）hubUrl={HubUrl}", 8, hubUrl);
+        }
+        catch (Exception ex)
+        {
+            isHubConnected = false;
+            Logger.LogWarning(ex, "任务页 Hub 连接失败 hubUrl={HubUrl}", hubUrl);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+
+    public async ValueTask DisposeAsync()
+    {
+        // 先发取消信号，让所有异步操作尽早退出
+        _disposeCts.Cancel();
+        isHubConnected = false;
+        _refreshDebounceCts?.Cancel();
+        _refreshDebounceCts?.Dispose();
+        _pollTimer?.Dispose();
+
+        if (_hubConnection != null)
+        {
+            await _hubConnection.DisposeAsync();
+            _hubConnection = null;
+        }
+        // 等 _loadTasksLock 释放后再 Dispose，避免 ObjectDisposedException
+        _loadTasksLock.Dispose();
+        _disposeCts.Dispose();
+    }
+
+    /// <param name="silent">为 true 时不切换全页「加载中」，用于 Hub 推送刷新，避免列表闪烁。</param>
+    private async Task LoadTasks(bool silent = false)
+    {
+        try
+        {
+            await _loadTasksLock.WaitAsync(_disposeCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // 组件已销毁，直接返回
+            return;
+        }
+
+        try
+        {
+            if (!silent)
+            {
+                isLoading = true;
+                StateHasChanged();
+            }
+
+            try
+            {
+                tasks = await ApiService.GetTasksAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "加载任务失败");
+                tasks = new();
+            }
+
+            try
+            {
+                learnJobs = await ApiService.ListLearnGenerateJobsAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "加载题库生成任务失败");
+                learnJobs = new();
+            }
+
+            finally
+            {
+                if (!silent)
+                    isLoading = false;
+                StateHasChanged();
+            }
+        }
+        finally
+        {
+            try { _loadTasksLock.Release(); } catch (ObjectDisposedException) { }
+        }
+    }
+
+    private static string LearnJobStatusText(string status) => status switch
+    {
+        "queued" => "排队中",
+        "running" => "生成中",
+        "succeeded" => "已完成",
+        "failed" => "失败",
+        "canceled" => "已取消",
+        _ => status,
+    };
+
+    private static string LearnJobStatusClass(string status) => status switch
+    {
+        "queued" => "pending",
+        "running" => "running",
+        "succeeded" => "success",
+        "failed" => "failed",
+        "canceled" => "cancelled",
+        _ => "pending",
+    };
+
+    /// <summary>生成任务同样遵守「隐藏已完成」筛选（与普通任务列表口径一致）</summary>
+    private List<QuizGenerateJobSummaryDto> VisibleLearnJobs()
+        => hideCompleted
+            ? learnJobs.Where(j => j.Status is not ("succeeded" or "canceled")).ToList()
+            : learnJobs;
+
+    private void OpenLearnJobAsync(string jobId)
+    {
+        // 带 job 参数：生成页直接打开这一条任务（不再靠「最近 30 分钟」推断是哪条）
+        Navigation.NavigateTo($"/learn/generate?job={Uri.EscapeDataString(jobId)}");
+    }
+
+    private void OnTaskClick(TaskInfo task)
+    {
+        if (task.StatusText != "Success") return;
+        
+        if (task.Result?.Data != null)
+        {
+            if (TryExtractNotesFromData(task.Result.Data, out var notes) && notes.GetArrayLength() == 1)
+            {
+                var firstNote = notes.EnumerateArray().First();
+                var notePath = GetJsonString(firstNote, "path");
+                var noteId = NormalizeNoteId(notePath);
+                if (!string.IsNullOrEmpty(noteId))
+                {
+                    var vaultParam = task.Parameters != null && task.Parameters.TryGetValue("vaultId", out var vId)
+                        ? $"&vaultId={Uri.EscapeDataString(vId)}"
+                        : "";
+                    Navigation.NavigateTo($"note?id={Uri.EscapeDataString(noteId)}{vaultParam}");
+                }
+            }
+        }
+    }
+
+    private string NormalizeNoteId(string? rawPath)
+    {
+        if (string.IsNullOrWhiteSpace(rawPath)) return string.Empty;
+
+        var value = rawPath.Trim().Replace("\\", "/");
+
+        if (value.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+        {
+            value = value.Substring(0, value.Length - 3);
+        }
+
+        return value.Trim('/');
+    }
+
+    private static bool TryGetNotesArray(System.Text.Json.JsonElement data, out System.Text.Json.JsonElement notes)
+    {
+        notes = default;
+        if (data.ValueKind != System.Text.Json.JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (!data.TryGetProperty("notes", out notes))
+        {
+            return false;
+        }
+
+        return notes.ValueKind == System.Text.Json.JsonValueKind.Array;
+    }
+
+    /// <summary>
+    /// 从 TaskResult.Data 中安全地获取 notes 数组，处理多种可能的类型
+    /// </summary>
+    private static bool TryExtractNotesFromData(object? data, out System.Text.Json.JsonElement notes)
+    {
+        notes = default;
+        if (data == null) return false;
+
+        // 尝试直接转换为 JsonElement
+        if (data is System.Text.Json.JsonElement jsonElement)
+        {
+            return TryGetNotesArray(jsonElement, out notes);
+        }
+
+        // 处理 JsonDocument 类型（有时 System.Text.Json 会返回这个类型）
+        if (data is System.Text.Json.JsonDocument jsonDoc)
+        {
+            return TryGetNotesArray(jsonDoc.RootElement, out notes);
+        }
+
+        // 如果是字典类型（如 Dictionary<string, object>）
+        if (data is System.Collections.IDictionary dict)
+        {
+            // 先尝试直接获取 notes 值
+            if (dict.Contains("notes"))
+            {
+                var notesValue = dict["notes"];
+                if (notesValue is System.Text.Json.JsonElement notesElement)
+                {
+                    notes = notesElement;
+                    return notes.ValueKind == System.Text.Json.JsonValueKind.Array;
+                }
+                // 处理 List<object> 或数组类型
+                if (notesValue is System.Collections.IEnumerable enumerable && notesValue is not string)
+                {
+                    try
+                    {
+                        var json = System.Text.Json.JsonSerializer.Serialize(notesValue);
+                        notes = System.Text.Json.JsonDocument.Parse(json).RootElement;
+                        return notes.ValueKind == System.Text.Json.JsonValueKind.Array;
+                    }
+                    catch { }
+                }
+            }
+            
+            // 序列化整个字典再解析
+            try
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(data);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("notes", out notes))
+                {
+                    return notes.ValueKind == System.Text.Json.JsonValueKind.Array;
+                }
+            }
+            catch { }
+            
+            return false;
+        }
+
+        // 处理 List<KeyValuePair<string, object>> 或其他可枚举类型
+        if (data is System.Collections.IEnumerable enumerableData && data is not string)
+        {
+            try
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(data);
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                // 如果是数组，尝试查找包含 notes 的元素
+                if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var element in doc.RootElement.EnumerateArray())
+                    {
+                        if (TryGetNotesArray(element, out notes))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // 如果是其他类型，尝试序列化后再反序列化为 JsonElement
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(data);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("notes", out notes))
+            {
+                return notes.ValueKind == System.Text.Json.JsonValueKind.Array;
+            }
+        }
+        catch
+        {
+            // 忽略解析错误
+        }
+
+        return false;
+    }
+
+    private static string GetJsonString(System.Text.Json.JsonElement element, string propertyName, string fallback = "")
+    {
+        if (element.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            element.TryGetProperty(propertyName, out var value) &&
+            value.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+            return value.GetString() ?? fallback;
+        }
+
+        return fallback;
+    }
+
+    private string BuildNoteDisplayName(string title, string rawPath, string normalizedId)
+    {
+        // 优先显示分类路径（如：病机/气血不通）；缺失时回退标题
+        if (!string.IsNullOrWhiteSpace(normalizedId))
+        {
+            return normalizedId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(rawPath))
+        {
+            var value = rawPath.Trim().Replace("\\", "/");
+            if (value.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            {
+                value = value.Substring(0, value.Length - 3);
+            }
+            return value.Trim('/');
+        }
+
+        return string.IsNullOrWhiteSpace(title) ? L["Tasks_UnnamedNote"] : title;
+    }
+
+    private string GetTaskTypeDisplayName(string type)
+    {
+        return type switch
+        {
+            "split_atom_notes" => L["Tasks_TypeSplitAtomNotes"],
+            "ai_query" => L["Tasks_TypeAiQuery"],
+            "ai_vault_generation" => L["Tasks_TypeAiVaultGeneration"],
+            "sync" => L["Tasks_TypeSync"],
+            "openclaw" => L["Tasks_TypeOpenClaw"],
+            _ => type
+        };
+    }
+
+    private async Task DeleteTask(string taskId)
+    {
+        // 原生 confirm 改为站内确认弹窗（与清空历史一致）
+        pendingConfirm = ("delete", taskId);
+    }
+
+    private async Task CancelTask(string taskId)
+    {
+        pendingConfirm = ("cancel", taskId);
+    }
+
+    // ---- 统一确认弹窗（删除/取消任务）----
+    private (string Action, string Id)? pendingConfirm;
+
+    private void HideTaskConfirm() => pendingConfirm = null;
+
+    private async Task ConfirmTaskAction()
+    {
+        if (pendingConfirm == null) return;
+        var (action, id) = pendingConfirm.Value;
+        pendingConfirm = null;
+        var success = action == "delete"
+            ? await ApiService.DeleteTaskAsync(id)
+            : await ApiService.CancelTaskAsync(id);
+        if (success) await LoadTasks();
+    }
+
+    /// <summary>任务状态本地化（Success/Cancelled → 中文）</summary>
+    private string GetStatusDisplay(string status) => status switch
+    {
+        "Success" => L["Tasks_StatusSuccess"],
+        "Failed" => L["Tasks_StatusFailed"],
+        "Running" => L["Tasks_StatusRunning"],
+        "Pending" => L["Tasks_StatusPending"],
+        "Timeout" => L["Tasks_StatusTimeout"],
+        "Cancelled" => L["Tasks_StatusCancelled"],
+        _ => status
+    };
+
+    /// <summary>原始错误码友好化（Task_CancelledByUser 等枚举码对家庭用户不友好）</summary>
+    private string FriendlyError(string error)
+    {
+        if (string.IsNullOrWhiteSpace(error)) return error;
+        return error
+            .Replace("Task_CancelledByUser", L["Tasks_StatusCancelled"])
+            .Replace("Task_Cancelled", L["Tasks_StatusCancelled"])
+            .Replace("Task_Timeout", L["Tasks_StatusTimeout"])
+            .Replace("Task_Failed", L["Tasks_StatusFailed"]);
+    }
+
+    private async Task RetryTask(TaskInfo task)
+    {
+        retryingTaskIds.Add(task.Id);
+        try
+        {
+            var model = task.Parameters?.GetValueOrDefault("model");
+            var response = await ApiService.RetryAiTaskAsync(task.Id, 0, model);
+            if (response.Success)
+            {
+                await LoadTasks();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", string.IsNullOrWhiteSpace(response.Message) ? L["Tasks_RetryFailedTitle"] : response.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", string.Format(L["Tasks_RetryFailedWithMessage"], ex.Message));
+        }
+        finally
+        {
+            retryingTaskIds.Remove(task.Id);
+        }
+    }
+
+    private void ShowClearConfirm()
+    {
+        showClearConfirm = true;
+    }
+
+    private void HideClearConfirm()
+    {
+        showClearConfirm = false;
+    }
+
+    private async Task ClearAllTasks()
+    {
+        showClearConfirm = false;
+        isLoading = true;
+        StateHasChanged();
+        
+        try
+        {
+            var success = await ApiService.DeleteAllTasksAsync();
+            if (success)
+            {
+                tasks = new();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "清空任务失败");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+}
+
+<style>
+    .learn-jobs { background: var(--bs-tertiary-bg); border-radius: .6rem; padding: .8rem 1rem; margin-bottom: 1rem; }
+    .learn-jobs-head { display: flex; justify-content: space-between; align-items: center; }
+    .learn-jobs-head h2 { font-size: 1.05rem; margin: 0; }
+    .learn-job-row { display: flex; align-items: center; gap: .6rem; font-size: .85rem; padding: .35rem 0; border-top: 1px solid var(--bs-border-color); }
+    .learn-job-status { border-radius: 999px; padding: .05rem .55rem; background: var(--bs-secondary-bg); font-size: .78rem; }
+    .learn-job-status.succeeded { background: rgba(25, 135, 84, .15); color: var(--bs-success); }
+    .learn-job-status.failed { background: rgba(220, 53, 69, .12); color: var(--bs-danger); }
+    .learn-job-status.running { background: rgba(13, 110, 253, .12); color: var(--bs-primary); }
+    .learn-job-name { flex: 1; }
+    .learn-job-progress { font-weight: 600; }
+    .learn-job-error { color: var(--bs-danger); font-size: .8rem; max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .learn-job-time { color: var(--bs-secondary-color); font-size: .78rem; }
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        padding: 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        max-width: 400px;
+        width: 90%;
+        text-align: center;
+    }
+
+    .modal-content h3 {
+        margin-top: 0;
+        margin-bottom: 16px;
+        color: #c94c4c;
+    }
+
+    .modal-content p {
+        margin-bottom: 24px;
+        color: #666;
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+    }
+
+    .btn-secondary {
+        background-color: #5a6a72;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .btn-secondary:hover {
+        background-color: #5a6268;
+    }
+
+    .btn-danger {
+        background-color: #c94c4c;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .btn-danger:hover {
+        background-color: #c82333;
+    }
+
+    .btn-outline-danger {
+        background-color: transparent;
+        color: #c94c4c;
+        border: 1px solid #c94c4c;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.875rem;
+    }
+
+    .btn-outline-danger:hover {
+        background-color: #c94c4c;
+        color: white;
+    }
+
+    .task-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+
+    .connection-status {
+        font-size: 0.875rem;
+        color: #666;
+    }
+</style>

@@ -1,0 +1,38 @@
+#!/bin/sh
+# pre-commit — 百花仓库防泄密钩子：阻止把已知 token/长十六进制密钥提交进 git。
+#
+# 安装（本机）：复制本文件到 .git/hooks/pre-commit
+#   cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+#
+# 已知密钥清单放本地文件 scripts/git-hooks/secrets-local（已 gitignore，绝不提交）：
+#   每行一个字符串；钩子扫描「已暂存内容」是否包含其中任意一个。
+#   该文件缺失时仅做通用检查（64+ 连续十六进制，即桥接 token 形态）。
+#
+# 说明：appsettings.json 已带 skip-worktree 标记，本地 token 改动本就不进 git；
+# 本钩子是最后一道网，防止误 `git add -A` 把密钥扫进去。
+
+# 仅在 git 仓库内运行；非交互/无 git 环境直接放行
+command -v git >/dev/null 2>&1 || exit 0
+
+# 1) 已知密钥清单（gitignored 本地文件）
+SECRETS_FILE="$(git rev-parse --show-toplevel)/scripts/git-hooks/secrets-local"
+if [ -f "$SECRETS_FILE" ]; then
+  while IFS= read -r secret; do
+    [ -z "$secret" ] && continue
+    if git diff --cached --name-only -z | xargs -0 -r cat 2>/dev/null | grep -qF -- "$secret"; then
+      echo "pre-commit: 已暂存内容包含本地密钥文件中的敏感值，已阻止提交。"
+      echo "  命中值长度=${#secret}；如确需提交，先从 scripts/git-hooks/secrets-local 删除该行。"
+      exit 1
+    fi
+  done < "$SECRETS_FILE"
+fi
+
+# 2) 通用检查：64+ 连续十六进制（桥接 token 等长密钥形态；短哈希/短 token 不拦，避免误报）
+if git diff --cached --name-only -z | xargs -0 -r cat 2>/dev/null | grep -Eq '[0-9a-fA-F]{64,}'; then
+  echo "pre-commit: 已暂存内容疑似包含 64+ 位十六进制密钥，已阻止提交。"
+  git diff --cached --name-only -z | xargs -0 -r grep -nE '[0-9a-fA-F]{64,}' 2>/dev/null | head -5
+  echo "如确认不是密钥（例如文档中的长哈希示例），可临时绕过：git commit --no-verify"
+  exit 1
+fi
+
+exit 0

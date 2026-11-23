@@ -1,0 +1,11 @@
+# Baihua.Web — 预编译产物镜像（不依赖 .NET SDK 镜像）
+#
+# 用途：同 Dockerfile.server.prebuilt；构建上下文 = publish 输出目录。
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY . .
+EXPOSE 5177
+ENV ASPNETCORE_URLS=http://0.0.0.0:5177
+ENV WEBUI_CONFIG_DIR=/app/data
+ENV BaihuaServer__BaseUrl=http://127.0.0.1:8788/
+ENTRYPOINT ["dotnet", "bh-webui.dll"]

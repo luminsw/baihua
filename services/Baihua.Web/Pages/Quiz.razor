@@ -1,0 +1,281 @@
+@page "/family/quiz"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject Microsoft.Extensions.Logging.ILogger<Quiz> Logger
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@using Baihua.Contracts.Achievements
+
+<PageTitle>@L["Quiz_Title"]</PageTitle>
+
+<div class="quiz-page">
+    <h1>🎯 @L["Quiz_Title"]</h1>
+
+    @if (session == null)
+    {
+        <!-- AC1：选择对战双方 -->
+        <div class="quiz-setup">
+            <h2>@L["Quiz_SelectPlayers"]</h2>
+            @if (learners.Count < 2)
+            {
+                <div class="quiz-empty">@L["Quiz_NeedTwoLearners"]</div>
+            }
+            else
+            {
+                <div class="player-select">
+                    <div>
+                        <label>@L["Quiz_PlayerA"]</label>
+                        <select class="form-select" @bind="playerAId">
+                            @foreach (var l in learners)
+                            {
+                                <option value="@l.Id">@l.AvatarEmoji @l.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label>@L["Quiz_PlayerB"]</label>
+                        <select class="form-select" @bind="playerBId">
+                            @foreach (var l in learners)
+                            {
+                                <option value="@l.Id">@l.AvatarEmoji @l.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(setupError))
+                {
+                    <p class="quiz-error">@setupError</p>
+                }
+                <button class="btn btn-primary" @onclick="StartQuizAsync" disabled="@isStarting">
+                    @(isStarting ? L["Quiz_Starting"] : L["Quiz_Start"])
+                </button>
+            }
+        </div>
+    }
+    else if (session.Status == "finished" && result != null)
+    {
+        <!-- AC3：结算面板 -->
+        <div class="quiz-settlement">
+            <h2>🏆 @L["Quiz_Finished"]</h2>
+            <div class="settle-winner">
+                @if (result.WinnerId.HasValue)
+                {
+                    <span>@string.Format(L["Quiz_WinnerFormat"], result.WinnerName)</span>
+                }
+                else
+                {
+                    <span>@L["Quiz_Draw"]</span>
+                }
+            </div>
+            <div class="settle-scores">
+                <div class="settle-player">
+                    <div class="sp-avatar">@session.PlayerA.AvatarEmoji</div>
+                    <div class="sp-name">@session.PlayerA.Name</div>
+                    <div class="sp-score">@string.Format(L["Quiz_PointsFormat"], result.ScoreA)</div>
+                    <div class="sp-accuracy">@string.Format(L["Quiz_AccuracyFormat"], result.AccuracyA.ToString("P0"))</div>
+                </div>
+                <div class="settle-vs">VS</div>
+                <div class="settle-player">
+                    <div class="sp-avatar">@session.PlayerB.AvatarEmoji</div>
+                    <div class="sp-name">@session.PlayerB.Name</div>
+                    <div class="sp-score">@string.Format(L["Quiz_PointsFormat"], result.ScoreB)</div>
+                    <div class="sp-accuracy">@string.Format(L["Quiz_AccuracyFormat"], result.AccuracyB.ToString("P0"))</div>
+                </div>
+            </div>
+            <button class="btn btn-primary" @onclick="ResetQuiz">@L["Quiz_PlayAgain"]</button>
+        </div>
+    }
+    else
+    {
+        <!-- AC2：回合作答 -->
+        <div class="quiz-round">
+            <div class="scoreboard">
+                <div class="score-a">@session.PlayerA.AvatarEmoji @session.PlayerA.Name：<b>@session.ScoreA</b></div>
+                <div class="round-num">@string.Format(L["Quiz_RoundFormat"], session.CurrentRound, session.TotalRounds)</div>
+                <div class="score-b">@session.PlayerB.AvatarEmoji @session.PlayerB.Name：<b>@session.ScoreB</b></div>
+            </div>
+            <div class="question-card">
+                <div class="q-asker">@string.Format(L["Quiz_AskerFormat"], AskerName, session.TimeLimitSeconds)</div>
+                <div class="q-front">@session.CurrentQuestion?.Front</div>
+                <textarea class="form-control" @bind="answerText" rows="3" placeholder="@L["Quiz_AnswerPlaceholder"]"></textarea>
+                <button class="btn btn-primary" @onclick="SubmitAnswerAsync" disabled="@isSubmitting">
+                    @(isSubmitting ? L["Quiz_Judging"] : L["Quiz_Submit"])
+                </button>
+            </div>
+            @if (lastResult != null)
+            {
+                <div class="answer-feedback @(lastResult.IsCorrect ? "correct" : "wrong")">
+                    @(lastResult.IsCorrect ? L["Quiz_Correct"] : L["Quiz_Wrong"])
+                    @if (!lastResult.IsCorrect && !string.IsNullOrEmpty(lastResult.CorrectAnswer))
+                    {
+                        <div class="correct-answer">@string.Format(L["Quiz_CorrectAnswerFormat"], lastResult.CorrectAnswer)</div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .quiz-page { max-width: 720px; margin: 0 auto; padding: 1rem; }
+    .quiz-page h1 { margin-bottom: 1.5rem; }
+
+    .quiz-setup { background: #fff; border: 1px solid #e8eef2; border-radius: 12px; padding: 1.5rem; }
+    .quiz-setup h2 { margin-bottom: 1rem; }
+    .player-select { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
+    .player-select label { display: block; margin-bottom: 0.4rem; color: #555; font-size: 0.9rem; }
+    .quiz-empty { color: #888; padding: 1.5rem 0; text-align: center; }
+    .quiz-error { color: #c0392b; margin: 0.5rem 0; }
+
+    .quiz-round { background: #fff; border: 1px solid #e8eef2; border-radius: 12px; padding: 1.25rem; }
+    .scoreboard { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid #eef2f5; }
+    .score-a, .score-b { font-size: 1rem; }
+    .round-num { color: #888; font-size: 0.9rem; }
+    .question-card .q-asker { color: #1d9c73; font-size: 0.85rem; margin-bottom: 0.5rem; font-weight: 600; }
+    .question-card .q-front { font-size: 1.2rem; margin-bottom: 1rem; padding: 1rem; background: #f8fafc; border-radius: 8px; min-height: 60px; }
+    .question-card textarea { margin-bottom: 0.75rem; }
+    .answer-feedback { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; font-weight: 600; }
+    .answer-feedback.correct { background: #eafaf1; color: #1d9c73; }
+    .answer-feedback.wrong { background: #fff5f5; color: #c0392b; }
+    .correct-answer { font-weight: 400; margin-top: 0.25rem; color: #555; }
+
+    .quiz-settlement { background: #fff; border: 1px solid #e8eef2; border-radius: 12px; padding: 1.5rem; text-align: center; }
+    .settle-winner { font-size: 1.4rem; font-weight: 700; color: #e67e22; margin: 0.75rem 0; }
+    .settle-scores { display: flex; justify-content: center; align-items: center; gap: 1.5rem; margin: 1.25rem 0; }
+    .settle-player { text-align: center; }
+    .sp-avatar { font-size: 2rem; }
+    .sp-name { font-weight: 600; margin: 0.25rem 0; }
+    .sp-score { font-size: 1.3rem; color: #333; }
+    .sp-accuracy { color: #888; font-size: 0.85rem; }
+    .settle-vs { font-weight: 700; color: #aaa; }
+
+    @@media (max-width: 768px) {
+        .player-select { grid-template-columns: 1fr; }
+        .scoreboard { flex-wrap: wrap; gap: 0.5rem; }
+    }
+</style>
+
+@code {
+    private List<LearnerDto> learners = new();
+    private int playerAId;
+    private int playerBId;
+    private string setupError = "";
+    private bool isStarting = false;
+    private bool isSubmitting = false;
+    private string answerText = "";
+
+    private QuizSessionDto? session;
+    private QuizResultDto? result;
+    private QuizResultDto? lastResult;
+
+    private string AskerName =>
+        session != null && session.CurrentAskerId == session.PlayerA.LearnerId
+            ? session.PlayerA.Name
+            : session?.PlayerB.Name ?? "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        learners = await ApiService.GetLearnersAsync();
+        if (learners.Count >= 2)
+        {
+            playerAId = learners[0].Id;
+            playerBId = learners[1].Id;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task StartQuizAsync()
+    {
+        if (playerAId == playerBId)
+        {
+            setupError = L["Quiz_ErrorDifferentPlayers"].Value;
+            return;
+        }
+        setupError = "";
+        isStarting = true;
+        try
+        {
+            var vaults = await VaultsService.GetVaultsAsync();
+            var vaultId = vaults.Vaults.FirstOrDefault()?.Id;
+            session = await ApiService.CreateQuizAsync(new CreateQuizRequest
+            {
+                PlayerAId = playerAId,
+                PlayerBId = playerBId,
+                VaultId = vaultId,
+                Rounds = 5
+            });
+            answerText = "";
+            lastResult = null;
+            result = null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "创建互考失败");
+            setupError = L["Quiz_ErrorNoCards"].Value;
+        }
+        finally
+        {
+            isStarting = false;
+        }
+    }
+
+    private async Task SubmitAnswerAsync()
+    {
+        if (session == null || isSubmitting) return;
+        isSubmitting = true;
+        try
+        {
+            result = await ApiService.SubmitQuizAnswerAsync(new SubmitAnswerRequest
+            {
+                SessionId = session.SessionId,
+                PlayerA = session.PlayerA,
+                PlayerB = session.PlayerB,
+                TotalRounds = session.TotalRounds,
+                CurrentRound = session.CurrentRound,
+                CurrentAskerId = session.CurrentAskerId,
+                CurrentAnswererId = session.CurrentAnswererId,
+                TimeLimitSeconds = session.TimeLimitSeconds,
+                CurrentQuestion = session.CurrentQuestion,
+                ScoreA = session.ScoreA,
+                ScoreB = session.ScoreB,
+                Status = session.Status,
+                VaultId = session.VaultId,
+                Answer = answerText
+            });
+            lastResult = result;
+            if (result.Status == "finished")
+            {
+                session.Status = "finished";
+                session.ScoreA = result.ScoreA;
+                session.ScoreB = result.ScoreB;
+            }
+            else
+            {
+                session.CurrentRound = result.CurrentRound;
+                session.CurrentAskerId = result.NextAskerId ?? session.CurrentAskerId;
+                session.CurrentAnswererId = result.NextAnswererId ?? session.CurrentAnswererId;
+                session.CurrentQuestion = result.NextQuestion;
+                session.ScoreA = result.ScoreA;
+                session.ScoreB = result.ScoreB;
+            }
+            answerText = "";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "提交答案失败");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void ResetQuiz()
+    {
+        session = null;
+        result = null;
+        lastResult = null;
+        answerText = "";
+    }
+}

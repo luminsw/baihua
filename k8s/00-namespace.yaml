@@ -1,0 +1,7 @@
+# 百花服务 K8s 命名空间
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: baihua
+  labels:
+    app.kubernetes.io/part-of: baihua

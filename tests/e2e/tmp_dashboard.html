@@ -1,0 +1,73 @@
+﻿<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"><base href="/" />
+    
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.43atpzeawx.css" />
+    <link rel="stylesheet" href="lib/bootstrap-icons/bootstrap-icons.min.81z6rcxx3c.css" />
+    <link rel="stylesheet" href="lib/highlightjs/github.min.qn8z6teiym.css" />
+    <link rel="stylesheet" href="app.oiya5mn6zt.css" />
+    <link rel="stylesheet" href="WebUI.Family.styles.css" />
+    <script type="importmap">{
+  "imports": {
+    "./Components/Layout/ReconnectModal.razor.js": "./Components/Layout/ReconnectModal.abdmv1u4y3.razor.js",
+    "./_framework/blazor.server.js": "./_framework/blazor.server.68qhiysw0j.js",
+    "./_framework/blazor.web.js": "./_framework/blazor.web.f7fxoh55ae.js",
+    "./js/download-file.js": "./js/download-file.suti1obeyy.js",
+    "./js/enhanced-select.js": "./js/enhanced-select.7o8r1nilbn.js",
+    "./js/fab-menu.js": "./js/fab-menu.urshdy6xa3.js",
+    "./js/markdown-copy.js": "./js/markdown-copy.bwwv49uh3f.js",
+    "./js/qr-tool.js": "./js/qr-tool.n5qncpra46.js",
+    "./js/smart-select.js": "./js/smart-select.4bb8gi1ahu.js",
+    "./js/speech.js": "./js/speech.ktsijklu85.js",
+    "./lib/bootstrap/dist/js/bootstrap.bundle.js": "./lib/bootstrap/dist/js/bootstrap.bundle.4094rpi4f9.js",
+    "./lib/bootstrap/dist/js/bootstrap.bundle.min.js": "./lib/bootstrap/dist/js/bootstrap.bundle.min.hd3gran6i8.js",
+    "./lib/bootstrap/dist/js/bootstrap.esm.js": "./lib/bootstrap/dist/js/bootstrap.esm.ltid2c489k.js",
+    "./lib/bootstrap/dist/js/bootstrap.esm.min.js": "./lib/bootstrap/dist/js/bootstrap.esm.min.8vyfqsqgz1.js",
+    "./lib/bootstrap/dist/js/bootstrap.min.js": "./lib/bootstrap/dist/js/bootstrap.min.4d85u1mtcx.js",
+    "./lib/bootstrap/dist/js/bootstrap.js": "./lib/bootstrap/dist/js/bootstrap.u9q1upor1n.js",
+    "./lib/highlightjs/highlight.min.js": "./lib/highlightjs/highlight.min.kbldjbsqet.js",
+    "./lib/qrcode.min.js": "./lib/qrcode.min.h5gslb8p3n.js",
+    "./lib/signalr/signalr.min.js": "./lib/signalr/signalr.min.ap8wluut4l.js"
+  }
+}</script>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <title>&#x767E;&#x82B1;</title>
+    <!--Blazor:{"type":"server","key":{"locationHash":"77D12F14A8105320B1AAED6AE7E689DA0EC4483270A645E84079EAA0FFDF550D:35","formattedComponentKey":""},"sequence":0,"descriptor":"CfDJ8GQDAvz7gGtKhqiCAtS\u002BmR/Pe6NiEmQv5FfrDa7HbqNWQ52mreJER1lo\u002B5BMNm1VYaVh\u002BLeZwsQuwSUxshSW9vIPRxdRPzCWn3U4hUiRnOh/4ZTM8cN6LgpCmFtlZjxSWxh3P5GiB1dqNH1Id2K1NMi1eOJxz0YvTHRpts7vDy5cXGGgpJHX1n4YRo3qVNUomZrHZaNlne8jAE6TsNkoYfgoh8FIsWUt20gBdrOfFYWFGMX05PCM/naJZcdXEiUR5/4az6XJepXFb8ZfWCkyJK0VvmklRNg69XrEeUp1MuF16E0cPXaojOl3K2qJ9GiDcng51cftuXAkDR5nPBgl9QUF5cBRuEv9cP4J7G7IU/ZqMi7JAPz43R/toxqy/QoQ01hEcz7K\u002Ble4ZT7ZszBy3S606Brlf58f/39pqNtTGavjfZsiwTs8qzsfN32L7nmKKZdyhjm6nwHJUbIeDj9JbSqPxvY7W3PSiKD7b5T2qhOnHtkUiSh27GAiXkmVkg8nj85AGVaZFoRC360apJLehWlIFjJQN75TRJFgSUWd3r4y1ZlXA1SnC\u002B7bsacEDKrxnf3VuYN3/CMUp4zephqiXfQ="}--></head>
+
+<body><!--Blazor:{"type":"server","key":{"locationHash":"953657726485F43788BFBF200C1DFFF8ED97FE036C05D9601D493A413AA9CC9F:38","formattedComponentKey":""},"sequence":1,"descriptor":"CfDJ8GQDAvz7gGtKhqiCAtS\u002BmR/Wx80FLU/C8tXFINyMQ6UHCiVJBSBZ67XPtoVmWssvsh16CnXDDVblAcgPVEt5VFsiw3sl7ujoAzUSi4F/xRc5dr9LvwNC\u002BWhATrxyVkRXZp2/USwnrdcBW39c3woDBRnQvPa3SRHrkmihgSQfLpUX8Zyoo5/KW3gWRXbAScE1MvncvcLKURvw\u002BOVLEEvaBD6shmy28GwxHwfpHeu4E2Jb4U2PvQTND540Ry26ZIwoEQCrvL8XrFiqL6fDjzovsHTadjjnQI5ifdGPeKKsphTmXZ/hx6JX0oeA7\u002BGMhWBfwq1u4VossQHQp1oCmEVD58oiluHRvaIwbCfc7dTXZLgaKUTjPYcf55C6pITW3aLKJRxrbLMnK5eULd35R4TAQigMkEE0AUN55G6PIs71NtBXl5QvRA0UZCMfAIZIIgwgzwE5vKEiywHV6jx3trFwO\u002B8Ief\u002BI0mUoiheOdkrhL8j\u002BVK3RRotDCewBipH7jnsuR9rBiFDlBZPBOmsUmWBG3UM="}-->
+    <script type="module" src="Components/Layout/ReconnectModal.abdmv1u4y3.razor.js" b-dcwd6y986d></script>
+
+<dialog id="components-reconnect-modal" data-nosnippet b-dcwd6y986d><div class="components-reconnect-container" b-dcwd6y986d><div class="components-rejoining-animation" aria-hidden="true" b-dcwd6y986d><div b-dcwd6y986d></div>
+            <div b-dcwd6y986d></div></div>
+        <p class="components-reconnect-first-attempt-visible" b-dcwd6y986d>
+            Rejoining the server...
+        </p>
+        <p class="components-reconnect-repeated-attempt-visible" b-dcwd6y986d>
+            Rejoin failed... trying again in <span id="components-seconds-to-next-attempt" b-dcwd6y986d></span> seconds.
+        </p>
+        <p class="components-reconnect-failed-visible" b-dcwd6y986d>
+            Failed to rejoin.<br b-dcwd6y986d>Please retry or reload the page.
+        </p>
+        <button id="components-reconnect-button" class="components-reconnect-failed-visible" b-dcwd6y986d>
+            Retry
+        </button>
+        <p class="components-pause-visible" b-dcwd6y986d>
+            The session has been paused by the server.
+        </p>
+        <p class="components-resume-failed-visible" b-dcwd6y986d>
+            Failed to resume the session.<br b-dcwd6y986d>Please retry or reload the page.
+        </p>
+        <button id="components-resume-button" class="components-pause-visible components-resume-failed-visible" b-dcwd6y986d>
+            Resume
+        </button></div></dialog>
+    <script src="_framework/blazor.web.f7fxoh55ae.js"></script>
+    <script src="js/markdown-copy.bwwv49uh3f.js"></script>
+    <script src="js/download-file.suti1obeyy.js"></script>
+    <script src="js/smart-select.4bb8gi1ahu.js"></script>
+    <script src="js/enhanced-select.7o8r1nilbn.js"></script>
+
+    <script src="lib/highlightjs/highlight.min.kbldjbsqet.js"></script>
+    <script src="lib/signalr/signalr.min.ap8wluut4l.js"></script>
+    <script src="lib/qrcode.min.h5gslb8p3n.js"></script>
+    <script src="js/qr-tool.n5qncpra46.js"></script>
+    <script src="js/fab-menu.urshdy6xa3.js"></script></body></html><!--Blazor-Server-Component-State:CfDJ8GQDAvz7gGtKhqiCAtS+mR/hk8jiwlXtdJ/qWReZEVzTLtm7CDsPN5oZjiwFrbU34/WVDQLn4iiAeEPSJbGCWKyIH2JN5KV4wKLpD421EiBaq7OE6YouNMkOPqZgyjqnpGrnyc9ioVFXK4v7opwGE3y7nOYuJQu3yogdz4GNr7Eq+i/M0AsA5YBtqCGSEtaFHA90XzTsXnt+G7QZzegLqcmhibsNWjSs2F1wGEppyJUMVPWzPUv2sGJCUZBOr6EL4lUMgtvgYXfwyz2mbqY4He0G1d/6tUi+3vKr9ZThakRqxuBBxZsz5W3hdiuZwHQLBo+UND4j8RJttjcEUHVdhQfj3EAkeuZETTQLCkZQe94VxPUesYYOX79FG2p3BCrYylsckskmLjxpnCtUiLMW+5C6GU0b+ZsIBo5Qm5x+tca8JrC1JoIE78goD7x2njCB+w6B+gs8GF8o1FekrV+H4LzaBpg29EWYU/t3CXcwjfxOpJb7Pcaf02Oj7qP6c16Hn66O+mhSEJ3C8lH2VNWkz8y6myILnol/7jUwysxf9n3F7Z9AC5Y/WRJQWeTYuxOri+fHugpMCfwtApbonzPT1CJ3q4zkVIGN8SQmYnoSfjd00dIQdT1WpQRxt2eEBIRu0c6Hj2VjlhpUthquhw5KS8c1KniW64u8w7CVAmFZ+esZdlK1GDOjMTd5xKapC6cJR2mQWuDFzBr4OjIIgp2ci9i/VUEQ7Cq+ckDr+9KwPeMUrC9If2qezU6qjYA8K2tVeH97NaAQNQ4nXijkeoWd2jmfjtyuXKujWlKIW2LMd3aLyC5Er+zLd9cyuoL5CGPgH+JzheynaxQvfmtUu7JEDbcNDkk7SXGtffPOGRMhrmxJ4PdKG+g4AhSsWt3x31MMfKppLvYjTLuvmBVQrYef5WbFoqrb9c5QhZOejL7Sss19v9Zr3ihucj9EcFq4WH1i9R8bqcEB1MMjjw7xHRVk2VrukTLuDrm5Sz95PNQ1MDAprtKiccUumkf8tofd9tQ/fzP2kSoTm5JS5BQw9Z1LIulbgituTf/huFRBEpMqvnBBppVlZOWbu9SpYfkY/rzWYx+UoYXyNIQ6KQ27NLpFlQ/o6UMxB8JgtQzs/bEdErGcnXLb9d0Awizk9qVHcUZ7EA==-->

@@ -1,0 +1,99 @@
+@using Baihua.Contracts.Achievements
+
+<div class="dashboard-first-screen">
+    <!-- 今日三件事 -->
+    <section class="today-highlights section">
+        <h2>今日三件事</h2>
+        @if (Data.TodayActivities.Count == 0)
+        {
+            <div class="empty-hint">
+                <p>今天还没有学习记录</p>
+                <a class="cta-btn" href="/daily-card">开始今天的学习吧</a>
+            </div>
+        }
+        else
+        {
+            @foreach (var act in Data.TodayActivities)
+            {
+                <div class="today-item">
+                    <span class="ti-avatar">👤</span>
+                    <div class="ti-body">
+                        <div class="ti-learner">@act.LearnerName</div>
+                        <div class="ti-desc">@act.Description</div>
+                    </div>
+                </div>
+            }
+            <div class="today-summary">
+                <span class="ts-count">今日完成 @Data.TodayCompleted 张卡片</span>
+                @if (Data.TrendArrow == "up")
+                {
+                    <span class="trend-arrow trend-up">↑ +@(Data.TodayCompleted - Data.YesterdayCompleted)</span>
+                }
+                else if (Data.TrendArrow == "down")
+                {
+                    <span class="trend-arrow trend-down">↓ @(Data.TodayCompleted - Data.YesterdayCompleted)</span>
+                }
+                else if (Data.TrendArrow == "flat")
+                {
+                    <span class="trend-arrow trend-flat">→ 持平</span>
+                }
+                else
+                {
+                    <span class="trend-arrow">--</span>
+                }
+                <span class="ts-vs">较昨天</span>
+            </div>
+        }
+    </section>
+
+    <!-- 连续打卡 + 火焰 -->
+    <section class="streak-section section">
+        <h2>连续打卡 <span class="flame">🔥</span></h2>
+        <div class="streak-value">
+            <span class="flame">🔥</span>
+            <span class="streak-num">@Data.FamilyStreak</span>
+            <span class="streak-unit">天</span>
+        </div>
+        <div class="streak-sub">任意成员有学习行为即算当天打卡</div>
+    </section>
+
+    <!-- 最新成就 -->
+    <section class="achievements-section section">
+        <h2>最新成就</h2>
+        @if (Data.LatestAchievements.Count == 0)
+        {
+            <div class="empty-hint">
+                <p>完成第一次学习来解锁成就吧</p>
+            </div>
+        }
+        else
+        {
+            @foreach (var ach in Data.LatestAchievements)
+            {
+                <div class="ach-item">
+                    <span class="ach-icon">@ach.Icon</span>
+                    <div class="ach-body">
+                        <div class="ach-title">@ach.Title</div>
+                        <div class="ach-time">@RelativeTime(ach.UnlockedAt)</div>
+                    </div>
+                </div>
+            }
+        }
+    </section>
+</div>
+
+@code {
+    [Parameter] public DashboardDataDto Data { get; set; } = new();
+
+    private static string RelativeTime(DateTime utc)
+    {
+        var now = DateTime.UtcNow;
+        var diff = now - utc;
+        if (diff.TotalMinutes < 1) return "刚刚";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes} 分钟前";
+        if (diff.TotalHours < 24 && now.Date == utc.Date) return "今天";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours} 小时前";
+        if (diff.TotalDays < 2) return "昨天";
+        return utc.ToString("MM-dd");
+    }
+}

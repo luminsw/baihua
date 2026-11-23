@@ -1,0 +1,747 @@
+@using Microsoft.JSInterop
+@using Baihua.Contracts.Pairing
+@inject IJSRuntime JS
+@inject IHttpClientFactory HttpClientFactory
+
+<div class="qr-tool-container">
+    <!-- Tab 导航 -->
+    <div class="qr-tabs">
+        <button class="qr-tab @(_activeTab == "server" ? "active" : "")" @onclick='() => SetActiveTab("server")'>🏠 服务器配对</button>
+        <button class="qr-tab @(_activeTab == "aikey" ? "active" : "")" @onclick='() => SetActiveTab("aikey")'>🤖 AI API Key</button>
+        <button class="qr-tab @(_activeTab == "general" ? "active" : "")" @onclick='() => SetActiveTab("general")'>📝 通用二维码</button>
+    </div>
+
+    <!-- 服务器配对二维码 -->
+    @if (_activeTab == "server")
+    {
+        <div class="qr-tab-content">
+            <div class="d-flex justify-content-end mb-2">
+                <button class="btn btn-sm btn-outline-primary" @onclick="LoadServerQRCode" disabled="@_isLoadingServerQR">
+                    @if (_isLoadingServerQR)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                        <span>加载中...</span>
+                    }
+                    else
+                    {
+                        <span>🔄 刷新</span>
+                    }
+                </button>
+            </div>
+            @if (_serverQRCode != null)
+            {
+                @if (_isEditingName)
+                {
+                    <div class="name-edit-section">
+                        <div class="name-edit-row">
+                            <span class="info-label">名称</span>
+                            <input class="name-edit-input" @bind="_editingName" @bind:event="oninput" @onkeydown="OnNameKeydown" placeholder="输入服务器名称" autofocus />
+                            <button class="name-edit-btn name-save" @onclick="SaveDisplayNameAsync" disabled="@_isSavingName" title="保存">
+                                @if (_isSavingName) { <span class="spinner-border spinner-border-sm"></span> } else { <span>✓</span> }
+                            </button>
+                            <button class="name-edit-btn name-cancel" @onclick="CancelEditName" disabled="@_isSavingName" title="取消">✗</button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_nameSaveMessage))
+                        {
+                            <div class="name-save-msg @(_nameSaveSuccess ? "success" : "error")">@_nameSaveMessage</div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="server-qr-compact">
+                        <div class="qr-zoom" role="button" tabindex="0" title="点击放大二维码"
+                             @onclick="() => ShowFullscreenQrAsync(_serverQRCode?.QrCodeData)"
+                             @onkeydown="e => OnQrZoomKeydownAsync(e, _serverQRCode?.QrCodeData)">
+                            <div class="qr-code-wrapper qr-compact" id="server-qr-container" @ref="_serverQrContainer"></div>
+                            <div class="qr-zoom-hint">🔍 点击放大</div>
+                        </div>
+                        <div class="server-info-compact">
+                            <div class="info-row info-row-editable">
+                                <span class="info-label">名称</span>
+                                <span class="info-value">@_serverQRCode.HostName</span>
+                                <button class="name-edit-trigger" @onclick="StartEditName" title="修改名称">✏️</button>
+                            </div>
+                            @if (!string.IsNullOrEmpty(_nameSaveMessage))
+                            {
+                                <div class="name-save-msg @(_nameSaveSuccess ? "success" : "error")">@_nameSaveMessage</div>
+                            }
+                            <div class="info-row">
+                                <span class="info-label">ServerId</span>
+                                <span class="info-value text-truncate" title="@_serverQRCode.ServerId">@_serverQRCode.ServerId</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-label">地址</span>
+                                <span class="info-value text-truncate" title="@_serverQRCode.Url">@_serverQRCode.Url</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 自动授权开关 -->
+                    <div class="auto-auth-toggle mt-3">
+                        <label class="form-check form-switch d-flex align-items-center gap-2 mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                   checked="@_autoAuthorizeEnabled"
+                                   @onchange="ToggleAutoAuth"
+                                   disabled="@_isTogglingAutoAuth" />
+                            <span class="form-check-label">
+                                自动授权
+                                @if (_isTogglingAutoAuth)
+                                {
+                                    <span class="spinner-border spinner-border-sm ms-1" style="width:12px;height:12px;"></span>
+                                }
+                            </span>
+                        </label>
+                        <small class="text-muted d-block mt-1">开启后，扫码设备自动获得授权，无需手动审批</small>
+                    </div>
+                }
+            }
+            else if (!string.IsNullOrEmpty(_serverQRError))
+            {
+                <div class="alert alert-warning mb-0">@_serverQRError</div>
+            }
+            else
+            {
+                <p class="text-muted mb-0">点击「刷新」加载服务器配对二维码</p>
+            }
+        </div>
+    }
+
+    <!-- 主 AI API Key 二维码 -->
+    @if (_activeTab == "aikey")
+    {
+        <div class="qr-tab-content">
+            <div class="d-flex justify-content-end mb-2">
+                <button class="btn btn-sm btn-outline-primary" @onclick="LoadMainAiApiKey" disabled="@_isLoadingAiKey">
+                    @if (_isLoadingAiKey)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                        <span>加载中...</span>
+                    }
+                    else
+                    {
+                        <span>🔄 刷新</span>
+                    }
+                </button>
+            </div>
+            @if (_aiKeyQRCode != null)
+            {
+                <div class="server-qr-compact">
+                    <div class="qr-zoom" role="button" tabindex="0" title="点击放大二维码"
+                         @onclick="() => ShowFullscreenQrAsync(_aiKeyQRCode?.ApiKey)"
+                         @onkeydown="e => OnQrZoomKeydownAsync(e, _aiKeyQRCode?.ApiKey)">
+                        <div class="qr-code-wrapper qr-compact" id="aikey-qr-container" @ref="_aiKeyQrContainer"></div>
+                        <div class="qr-zoom-hint">🔍 点击放大</div>
+                    </div>
+                    <div class="server-info-compact">
+                        <div class="info-row">
+                            <span class="info-label">提供商</span>
+                            <span class="info-value">@_aiKeyQRCode.ProviderName</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">ProviderId</span>
+                            <span class="info-value text-truncate" title="@_aiKeyQRCode.ProviderId">@_aiKeyQRCode.ProviderId</span>
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(_aiKeyQRError))
+            {
+                <div class="alert alert-warning mb-0">@_aiKeyQRError</div>
+            }
+            else
+            {
+                <p class="text-muted mb-0">点击「刷新」加载主 AI API Key 二维码</p>
+            }
+        </div>
+    }
+
+    <!-- 通用二维码生成 -->
+    @if (_activeTab == "general")
+    {
+        <div class="qr-tab-content">
+            <div class="server-qr-compact">
+                <div class="qr-form-left">
+                    <textarea class="form-control" @bind="_inputText" rows="2" placeholder="粘贴要转成二维码的内容..."></textarea>
+                    <div class="form-actions mt-2">
+                        <button class="btn btn-primary btn-sm" @onclick="GenerateQR">生成二维码</button>
+                        <button class="btn btn-secondary btn-sm" @onclick="ClearAll">清空</button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_errorMessage))
+                    {
+                        <div class="alert alert-error mt-2 mb-0">@_errorMessage</div>
+                    }
+                </div>
+                <div class="qr-result-compact @(_showQR ? "" : "d-none")">
+                    <div class="qr-zoom" role="button" tabindex="0" title="点击放大二维码"
+                         @onclick="() => ShowFullscreenQrAsync(_inputText)"
+                         @onkeydown="e => OnQrZoomKeydownAsync(e, _inputText)">
+                        <div class="qr-code-wrapper qr-compact" id="general-qr-container" @ref="_qrContainer"></div>
+                        <div class="qr-zoom-hint">🔍 点击放大</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    // 服务器配对二维码
+    private ElementReference _serverQrContainer;
+    private ServerQRResponse? _serverQRCode;
+    private bool _isLoadingServerQR = false;
+    private string _serverQRError = "";
+
+    // 主 AI API Key 二维码
+    private ElementReference _aiKeyQrContainer;
+    private AiKeyQRResponse? _aiKeyQRCode;
+    private bool _isLoadingAiKey = false;
+    private string _aiKeyQRError = "";
+
+    // 名称内联编辑
+    private bool _isEditingName = false;
+    private string _editingName = "";
+    private bool _isSavingName = false;
+    private string _nameSaveMessage = "";
+    private bool _nameSaveSuccess = false;
+
+    // Tab 状态
+    private string _activeTab = "server";
+
+    // 自动授权
+    private bool _autoAuthorizeEnabled = false;
+    private bool _isTogglingAutoAuth = false;
+
+    private async Task SetActiveTab(string tab)
+    {
+        _activeTab = tab;
+        StateHasChanged();
+        // 切换到 AI Key tab 时重绘二维码（之前 tab 隐藏时容器不存在）
+        if (tab == "aikey" && _aiKeyQRCode != null && !string.IsNullOrEmpty(_aiKeyQRCode.ApiKey))
+        {
+            await JS.InvokeVoidAsync("generateCompactQRCode", "aikey-qr-container", _aiKeyQRCode.ApiKey);
+        }
+        // 切换到服务器 tab 时重绘
+        if (tab == "server" && _serverQRCode != null && !string.IsNullOrEmpty(_serverQRCode.QrCodeData))
+        {
+            await JS.InvokeVoidAsync("generateCompactQRCode", "server-qr-container", _serverQRCode.QrCodeData);
+        }
+    }
+
+    // 通用二维码
+    private string _inputText = "";
+    private bool _showQR = false;
+    private string _errorMessage = "";
+    private string? _pendingQrText = null;
+    private ElementReference _qrContainer;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadAutoAuthStatus();
+            await LoadServerQRCode();
+            await LoadMainAiApiKey();
+        }
+
+        // 待生成二维码：StateHasChanged 触发的本次渲染已完成，此时 DOM 必已更新
+        if (_pendingQrText != null)
+        {
+            var text = _pendingQrText;
+            _pendingQrText = null;
+            var ok = await JS.InvokeAsync<bool>("generateCompactQRCode", "general-qr-container", text);
+            if (!ok) _errorMessage = "生成二维码失败，请重试";
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadAutoAuthStatus()
+    {
+        try
+        {
+            var apiClient = HttpClientFactory.CreateClient("FamilyApi");
+            var result = await apiClient.GetFromJsonAsync<AutoAuthStatusResponse>("api/devices/auto-auth");
+            _autoAuthorizeEnabled = result?.Enabled ?? false;
+            StateHasChanged();
+        }
+        catch
+        {
+            // 加载失败保持默认值
+        }
+    }
+
+    private async Task ToggleAutoAuth(ChangeEventArgs e)
+    {
+        _autoAuthorizeEnabled = e.Value is true;
+        _isTogglingAutoAuth = true;
+        try
+        {
+            var apiClient = HttpClientFactory.CreateClient("FamilyApi");
+            var response = await apiClient.PostAsJsonAsync("api/devices/auto-auth",
+                new { enabled = _autoAuthorizeEnabled });
+            if (!response.IsSuccessStatusCode)
+            {
+                // 回退
+                _autoAuthorizeEnabled = !_autoAuthorizeEnabled;
+            }
+        }
+        catch
+        {
+            // 网络失败，回退
+            _autoAuthorizeEnabled = !_autoAuthorizeEnabled;
+        }
+        finally
+        {
+            _isTogglingAutoAuth = false;
+            StateHasChanged();
+        }
+    }
+
+    public record AutoAuthStatusResponse(bool Enabled);
+
+    private async Task LoadMainAiApiKey()
+    {
+        _isLoadingAiKey = true;
+        _aiKeyQRError = "";
+        try
+        {
+            var aiClient = HttpClientFactory.CreateClient("AiApi");
+            var response = await aiClient.GetAsync("api/ai/config/main-apikey");
+            var json = await response.Content.ReadAsStringAsync();
+            if (response.IsSuccessStatusCode)
+            {
+                _aiKeyQRCode = System.Text.Json.JsonSerializer.Deserialize<AiKeyQRResponse>(json, System.Text.Json.JsonSerializerOptions.Web);
+                if (_aiKeyQRCode != null && !string.IsNullOrEmpty(_aiKeyQRCode.ApiKey))
+                {
+                    StateHasChanged();
+                    await JS.InvokeVoidAsync("generateCompactQRCode", "aikey-qr-container", _aiKeyQRCode.ApiKey);
+                }
+            }
+            else
+            {
+                // 尝试解析后端返回的结构化错误
+                try
+                {
+                    var errorObj = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.Nodes.JsonObject>(json);
+                    var errorMsg = errorObj?["error"]?.GetValue<string>();
+                    _aiKeyQRError = !string.IsNullOrEmpty(errorMsg) ? errorMsg : $"加载失败: {response.ReasonPhrase}";
+                }
+                catch
+                {
+                    _aiKeyQRError = $"加载失败: {response.ReasonPhrase ?? response.StatusCode.ToString()}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _aiKeyQRError = $"加载失败: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingAiKey = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadServerQRCode()
+    {
+        _isLoadingServerQR = true;
+        _serverQRError = "";
+        try
+        {
+            var apiClient = HttpClientFactory.CreateClient("FamilyApi");
+            _serverQRCode = await apiClient.GetFromJsonAsync<ServerQRResponse>("api/pairing/qrcode");
+            // 先触发渲染再调 JS：OnAfterRenderAsync 中改状态不会自动重渲染，容器可能尚未出现
+            StateHasChanged();
+            await RenderServerQRCodeAsync();
+        }
+        catch (Exception ex)
+        {
+            _serverQRError = $"加载失败: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingServerQR = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GenerateQR()
+    {
+        _errorMessage = "";
+        if (string.IsNullOrWhiteSpace(_inputText))
+        {
+            _errorMessage = "请输入内容";
+            _showQR = false;
+            return;
+        }
+        _showQR = true;
+        // 不在事件处理器内直接调 JS（渲染要等处理器返回后才会发生），改为渲染完成后（OnAfterRenderAsync）再生成
+        _pendingQrText = _inputText.Trim();
+        StateHasChanged();
+    }
+
+    private void ClearAll()
+    {
+        _inputText = "";
+        _showQR = false;
+        _errorMessage = "";
+    }
+
+    private async Task RenderServerQRCodeAsync()
+    {
+        if (_serverQRCode != null && !string.IsNullOrEmpty(_serverQRCode.QrCodeData))
+        {
+            // 传 id 而非 ElementReference：容器可能尚未渲染，JS 侧 getElementById + 等待重试
+            await JS.InvokeVoidAsync("generateCompactQRCode", "server-qr-container", _serverQRCode.QrCodeData);
+        }
+    }
+
+    /// <summary>
+    /// 点击二维码全屏放大：交给 JS 按视口尺寸重绘一张大二维码（实现见 wwwroot/js/qr-tool.js）。
+    /// 只传内容文本过去，覆盖层由 JS 挂在 body 上，不参与 Blazor 渲染。
+    /// </summary>
+    private async Task ShowFullscreenQrAsync(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("openQrFullscreen", text);
+        }
+        catch (Exception)
+        {
+            // 电路已断开等场景：静默忽略，不影响页面其它功能
+        }
+    }
+
+    /// <summary>键盘可达：Enter / 空格 等同于点击放大。</summary>
+    private async Task OnQrZoomKeydownAsync(KeyboardEventArgs e, string? text)
+    {
+        if (e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar")
+        {
+            await ShowFullscreenQrAsync(text);
+        }
+    }
+
+    private void StartEditName()
+    {
+        _editingName = _serverQRCode?.HostName ?? "";
+        _isEditingName = true;
+        _nameSaveMessage = "";
+    }
+
+    private async Task CancelEditName()
+    {
+        _isEditingName = false;
+        _nameSaveMessage = "";
+        StateHasChanged();
+        await RenderServerQRCodeAsync();
+    }
+
+    private async Task OnNameKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveDisplayNameAsync();
+        else if (e.Key == "Escape") await CancelEditName();
+    }
+
+    private async Task SaveDisplayNameAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editingName))
+        {
+            _nameSaveSuccess = false;
+            _nameSaveMessage = "名称不能为空";
+            return;
+        }
+
+        _isSavingName = true;
+        _nameSaveMessage = "";
+        try
+        {
+            var apiClient = HttpClientFactory.CreateClient("FamilyApi");
+            var response = await apiClient.PostAsJsonAsync("api/server-address", new { displayName = _editingName.Trim() });
+            if (response.IsSuccessStatusCode)
+            {
+                _isEditingName = false;
+                _nameSaveSuccess = true;
+                _nameSaveMessage = "名称已更新";
+                await LoadServerQRCode();
+            }
+            else
+            {
+                _nameSaveSuccess = false;
+                _nameSaveMessage = "保存失败";
+            }
+        }
+        catch (Exception ex)
+        {
+            _nameSaveSuccess = false;
+            _nameSaveMessage = $"保存失败: {ex.Message}";
+        }
+        finally
+        {
+            _isSavingName = false;
+        }
+    }
+}
+
+<style>
+    .qr-tool-container {
+        max-width: 600px;
+        margin-top: 1.5rem;
+    }
+
+    .qr-tabs {
+        display: flex;
+        gap: 4px;
+        border-bottom: 2px solid #e0e6ea;
+        margin-bottom: 0.75rem;
+    }
+
+    .qr-tab {
+        padding: 0.5rem 0.75rem;
+        border: none;
+        background: transparent;
+        color: #5a6a72;
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+    }
+
+    .qr-tab:hover {
+        color: #2e8baf;
+    }
+
+    .qr-tab.active {
+        color: #2e8baf;
+        border-bottom-color: #2e8baf;
+    }
+
+    .qr-tab-content {
+        padding: 0.5rem 0;
+    }
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-weight: 500;
+    }
+    .form-control {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #c8d4dc;
+        border-radius: 4px;
+        font-size: 0.95rem;
+        font-family: monospace;
+    }
+    .form-actions {
+        display: flex;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .btn {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9rem;
+    }
+    .btn-primary {
+        background: #2e8baf;
+        color: white;
+    }
+    .btn-secondary {
+        background: #5a6a72;
+        color: white;
+    }
+    .qr-result {
+        margin-top: 1.5rem;
+        padding: 1.5rem;
+        background: #f5f8fa;
+        border-radius: 8px;
+        text-align: center;
+    }
+    .qr-result.qr-hidden {
+        display: none;
+    }
+    .qr-code-wrapper {
+        display: inline-block;
+        padding: 1rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        min-height: 200px;
+        min-width: 200px;
+    }
+    .qr-hint {
+        margin-top: 1rem;
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .alert-error {
+        background: #e0ecf4;
+        border: 1px solid #c8dde8;
+        color: #4a2a30;
+        padding: 0.75rem 1rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+    }
+    .server-info {
+        background: #f5f8fa;
+        padding: 0.75rem;
+        border-radius: 6px;
+        font-size: 0.9rem;
+    }
+    .collapse-indicator {
+        font-size: 0.75rem;
+        color: #888;
+        transition: transform 0.2s;
+    }
+    .card-header[role="button"] {
+        cursor: pointer;
+        user-select: none;
+    }
+    .card-header[role="button"]:hover {
+        background-color: rgba(0,0,0,0.02);
+    }
+
+    /* 紧凑横排布局：二维码左 + 信息右 */
+    .server-qr-compact {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .qr-code-wrapper.qr-compact {
+        flex-shrink: 0;
+        min-height: auto;
+        min-width: auto;
+        padding: 0.5rem;
+    }
+    .qr-code-wrapper.qr-compact canvas,
+    .qr-code-wrapper.qr-compact img {
+        display: block;
+        width: 180px;
+        height: 180px;
+    }
+    .server-info-compact {
+        flex: 1;
+        min-width: 0;
+        font-size: 0.85rem;
+    }
+
+    /* 点击放大：二维码 + 提示整体作为可点区域，全屏覆盖层样式在 wwwroot/app.css */
+    .qr-zoom {
+        flex-shrink: 0;
+        text-align: center;
+        border-radius: 8px;
+        cursor: zoom-in;
+    }
+    .qr-zoom:focus-visible {
+        outline: 2px solid #2e8baf;
+        outline-offset: 3px;
+    }
+    .qr-zoom:hover .qr-code-wrapper.qr-compact {
+        box-shadow: 0 4px 14px rgba(46,139,175,0.35);
+    }
+    .qr-zoom-hint {
+        margin-top: 0.15rem;
+        font-size: 0.72rem;
+        color: #2e8baf;
+        white-space: nowrap;
+    }
+    .info-row {
+        display: flex;
+        align-items: baseline;
+        gap: 0.5rem;
+        padding: 0.2rem 0;
+    }
+    .info-row + .info-row {
+        border-top: 1px solid #eee;
+    }
+    .info-label {
+        flex-shrink: 0;
+        color: #888;
+        min-width: 4.5em;
+    }
+    .info-value {
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* 通用二维码紧凑横排：输入区左 + 二维码右 */
+    .qr-form-left {
+        flex: 1;
+        min-width: 0;
+    }
+    .qr-result-compact {
+        flex-shrink: 0;
+    }
+    .qr-result-compact.d-none {
+        display: none;
+    }
+
+    /* 名称内联编辑 */
+    .name-edit-section {
+        max-width: 320px;
+    }
+    .name-edit-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .name-edit-input {
+        flex: 1;
+        padding: 0.2rem 0.4rem;
+        border: 1px solid #c8d4dc;
+        border-radius: 3px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        min-width: 0;
+    }
+    .name-edit-input:focus {
+        outline: none;
+        border-color: #80bdff;
+        box-shadow: 0 0 0 0.15rem rgba(0,123,255,.2);
+    }
+    .name-edit-btn {
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        padding: 0.15rem 0.5rem;
+        line-height: 1.3;
+    }
+    .name-save {
+        background: #6b9e75;
+        color: white;
+    }
+    .name-save:disabled { opacity: 0.6; cursor: not-allowed; }
+    .name-cancel {
+        background: #e8eef2;
+        color: #5a6a72;
+    }
+    .name-edit-trigger {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 0.8rem;
+        opacity: 0.4;
+        padding: 0 0.2rem;
+        transition: opacity 0.2s;
+    }
+    .name-edit-trigger:hover { opacity: 1; }
+    .name-save-msg {
+        font-size: 0.75rem;
+        padding: 0.15rem 0.4rem;
+        margin-top: 0.15rem;
+        border-radius: 3px;
+    }
+    .name-save-msg.success { color: #3d6b45; background: #e0f0e5; }
+    .name-save-msg.error { color: #4a2a30; background: #e0ecf4; }
+</style>

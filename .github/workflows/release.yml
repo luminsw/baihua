@@ -1,0 +1,284 @@
+name: Release
+
+# 打 tag v* 自动发布（如 v0.1.0）；也可手动触发指定 tag。
+# 产物：server（唯一后端）+ webui 两个服务，win-x64 + linux-x64 双平台 zip，附加到 GitHub Release。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag（手动触发时填写，例如 v0.1.0；留空则用当前分支名）'
+        required: false
+        default: ''
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, linux-x64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Publish services (${{ matrix.rid }})
+        run: |
+          dotnet publish services/Baihua.Server/Baihua.Server.csproj -c Release -r ${{ matrix.rid }} --self-contained false -o publish/${{ matrix.rid }}/server
+          dotnet publish services/Baihua.Web/Baihua.Web.csproj         -c Release -r ${{ matrix.rid }} --self-contained false -o publish/${{ matrix.rid }}/webui
+
+      - name: Package zip
+        run: |
+          cd publish/${{ matrix.rid }}
+          zip -qr ../../baihua-${{ matrix.rid }}.zip server webui
+          cd ../..
+          ls -lh baihua-${{ matrix.rid }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: baihua-${{ matrix.rid }}
+          path: baihua-${{ matrix.rid }}.zip
+          if-no-files-found: error
+
+  docker:
+    name: Publish images (Docker Hub)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve tag
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${{ github.ref_name }}"; fi
+          if [ -z "$TAG" ]; then TAG="latest"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.server
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/baihua-server:${{ steps.meta.outputs.tag }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/baihua-server:latest
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+
+      - name: Build & push webui
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.webui
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/baihua-webui:${{ steps.meta.outputs.tag }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/baihua-webui:latest
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+
+  acr:
+    name: Publish images (Aliyun ACR)
+    if: ${{ vars.ACR_REGISTRY != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Resolve tag
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${{ github.ref_name }}"; fi
+          if [ -z "$TAG" ]; then TAG="latest"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.server
+          push: true
+          # ACR 不认 buildx 默认附加的 provenance 清单（oci.empty descriptor），必须关掉
+          provenance: false
+          tags: |
+            ${{ vars.ACR_REGISTRY }}/${{ vars.ACR_NAMESPACE || 'luminsw' }}/baihua-server:${{ steps.meta.outputs.tag }}
+            ${{ vars.ACR_REGISTRY }}/${{ vars.ACR_NAMESPACE || 'luminsw' }}/baihua-server:latest
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+
+      - name: Build & push webui
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.webui
+          push: true
+          provenance: false
+          tags: |
+            ${{ vars.ACR_REGISTRY }}/${{ vars.ACR_NAMESPACE || 'luminsw' }}/baihua-webui:${{ steps.meta.outputs.tag }}
+            ${{ vars.ACR_REGISTRY }}/${{ vars.ACR_NAMESPACE || 'luminsw' }}/baihua-webui:latest
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+
+  swr:
+    name: Publish images (Huawei SWR)
+    if: ${{ vars.SWR_REGISTRY != '' && vars.SWR_REGION != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # SWR 长期登录密码不是 SK 本身，而是 hex(HMAC-SHA256(key=SK, data=AK))
+      # https://support.huaweicloud.com/usermanual-swr/swr_01_1000.html
+      - name: Derive SWR login key
+        id: swrkey
+        env:
+          AK: ${{ secrets.SWR_AK }}
+          SK: ${{ secrets.SWR_SK }}
+        run: |
+          KEY="$(printf '%s' "$AK" | openssl dgst -binary -sha256 -hmac "$SK" | od -An -vtx1 | tr -d ' \n')"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Login SWR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.SWR_REGISTRY }}
+          username: ${{ format('{0}@{1}', vars.SWR_REGION, secrets.SWR_AK) }}
+          password: ${{ steps.swrkey.outputs.key }}
+
+      - name: Resolve tag
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${{ github.ref_name }}"; fi
+          if [ -z "$TAG" ]; then TAG="latest"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.server
+          push: true
+          # SWR 基础版不支持 OCI 规范清单，provenance 必须关掉（同 ACR）
+          provenance: false
+          tags: |
+            ${{ vars.SWR_REGISTRY }}/${{ vars.SWR_ORG || 'luminsw' }}/baihua-server:${{ steps.meta.outputs.tag }}
+            ${{ vars.SWR_REGISTRY }}/${{ vars.SWR_ORG || 'luminsw' }}/baihua-server:latest
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+
+      - name: Build & push webui
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.webui
+          push: true
+          provenance: false
+          tags: |
+            ${{ vars.SWR_REGISTRY }}/${{ vars.SWR_ORG || 'luminsw' }}/baihua-webui:${{ steps.meta.outputs.tag }}
+            ${{ vars.SWR_REGISTRY }}/${{ vars.SWR_ORG || 'luminsw' }}/baihua-webui:latest
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # gh release create 需要 git 仓库上下文来解析远程仓库/tag
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 只下载构建产物 zip，跳过 docker job 的 .dockerbuild 元数据（体积大且无用）
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: baihua-*
+
+      - name: Collect zips
+        run: |
+          mkdir -p dist
+          find artifacts -name '*.zip' -exec cp {} dist/ \;
+          ls -lh dist/
+
+      - name: Determine tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${{ github.ref_name }}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # 最终用户瘦部署包（bh CLI + nginx 配置 + env 模板；不含源码，镜像从 registry 拉）
+      # 生成到 dist/，与构建产物一起上传到 Release（脚本内统一转 CRLF，Linux CI 可安全打包）
+      - name: Build deploy package
+        shell: pwsh
+        run: |
+          $tag = '${{ steps.tag.outputs.tag }}'
+          & scripts/make-deploy-package.ps1 -Tag $tag -Version $tag
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          TAG="${{ steps.tag.outputs.tag }}"
+          # 幂等：Release 已存在则覆盖上传产物（重推 tag / 重跑 job 场景）
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" *.zip --clobber
+          else
+            gh release create "$TAG" *.zip --generate-notes
+          fi

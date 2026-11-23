@@ -1,0 +1,102 @@
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+@if (Visible)
+{
+    <div class="confirm-dialog-overlay" tabindex="-1" @ref="OverlayRef"
+         @onkeydown="HandleKeyDown" @onkeydown:preventDefault
+         @onclick="OnOverlayClick">
+        <div class="confirm-dialog-box" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <h3>@TitleText</h3>
+            <div class="confirm-dialog-body">
+                @if (MessageContent is not null)
+                {
+                    @MessageContent
+                }
+                else
+                {
+                    <p>@Message</p>
+                }
+            </div>
+            <div class="confirm-dialog-actions">
+                <button type="button" class="btn btn-secondary" @onclick="OnCancelAsync">@CancelLabelText</button>
+                <button type="button" class="btn @(Danger ? "btn-danger" : "btn-primary")" @onclick="OnConfirmAsync">@ConfirmLabelText</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>弹窗标题；为空时使用本地化默认值。</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>确认提示文案（字符串形式）。</summary>
+    [Parameter] public string? Message { get; set; }
+
+    /// <summary>确认提示内容（自定义片段形式，优先于 Message）。</summary>
+    [Parameter] public RenderFragment? MessageContent { get; set; }
+
+    /// <summary>确认按钮文案；为空时使用本地化默认值。</summary>
+    [Parameter] public string? ConfirmLabel { get; set; }
+
+    /// <summary>取消按钮文案；为空时使用本地化默认值。</summary>
+    [Parameter] public string? CancelLabel { get; set; }
+
+    /// <summary>危险操作样式（红色确认按钮），默认 true。</summary>
+    [Parameter] public bool Danger { get; set; } = true;
+
+    /// <summary>是否显示弹窗（由调用方控制）。</summary>
+    [Parameter] public bool Visible { get; set; }
+
+    /// <summary>点击确认按钮时触发。</summary>
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    /// <summary>点击取消按钮 / 遮罩 / 按下 Esc 时触发。</summary>
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private ElementReference OverlayRef;
+    private bool _visiblePrev;
+
+    private string TitleText => string.IsNullOrWhiteSpace(Title) ? L["Common_ConfirmTitle"] : Title!;
+    private string ConfirmLabelText => string.IsNullOrWhiteSpace(ConfirmLabel) ? L["Common_Confirm"] : ConfirmLabel!;
+    private string CancelLabelText => string.IsNullOrWhiteSpace(CancelLabel) ? L["Common_Cancel"] : CancelLabel!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 弹窗打开后将焦点移到遮罩，保证 Esc 关闭可用
+        if (Visible && !_visiblePrev)
+        {
+            try
+            {
+                await OverlayRef.FocusAsync(false);
+            }
+            catch
+            {
+                // 忽略聚焦失败（组件被移除等竞态场景）
+            }
+        }
+        _visiblePrev = Visible;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await OnCancel.InvokeAsync();
+        }
+    }
+
+    private async Task OnOverlayClick()
+    {
+        await OnCancel.InvokeAsync();
+    }
+
+    private async Task OnConfirmAsync()
+    {
+        await OnConfirm.InvokeAsync();
+    }
+
+    private async Task OnCancelAsync()
+    {
+        await OnCancel.InvokeAsync();
+    }
+}

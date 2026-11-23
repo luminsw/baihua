@@ -1,0 +1,255 @@
+@using Baihua.Web.Services
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<!-- API 调用性能摘要 -->
+@if (ApiSummary != null)
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-2">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@ApiSummary.TotalCalls</div>
+                    <small>@L["ApiCallPerf_TotalCalls"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card @(ApiSummary.ErrorCount > 0 ? "bg-danger" : "bg-success") text-white">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@ApiSummary.SuccessCount</div>
+                    <small>@L["ApiCallPerf_SuccessCount"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card @(ApiSummary.ErrorCount > 0 ? "bg-danger" : "bg-success") text-white">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@ApiSummary.ErrorCount</div>
+                    <small>@L["ApiCallPerf_ErrorCount"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@ApiSummary.AvgElapsedMs.ToString("F1")</div>
+                    <small>@L["ApiCallPerf_AvgElapsed"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-warning text-dark">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@ApiSummary.MaxElapsedMs.ToString("F0")</div>
+                    <small>@L["ApiCallPerf_MaxElapsed"]</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-secondary text-white">
+                <div class="card-body text-center">
+                    <div class="h3 mb-0">@ApiSummary.SuccessRate.ToString("F1")%</div>
+                    <small>@L["ApiCallPerf_SuccessRate"]</small>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- 瓶颈分析 -->
+@if (EndpointStats?.Any() == true)
+{
+    <div class="card border-warning mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">@L["ApiCallPerf_BottleneckAnalysis"]</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>@L["ApiCallPerf_Endpoint"]</th>
+                            <th class="text-end">@L["ApiCallPerf_CallCount"]</th>
+                            <th class="text-end">@L["ApiCallPerf_SuccessRateHeader"]</th>
+                            <th class="text-end">@L["ApiCallPerf_AvgElapsedHeader"]</th>
+                            <th class="text-end">P50</th>
+                            <th class="text-end">P95</th>
+                            <th class="text-end">P99</th>
+                            <th class="text-end">@L["ApiCallPerf_MaxElapsedHeader"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var stat in EndpointStats.OrderByDescending(s => s.AvgElapsedMs).Take(10))
+                        {
+                            <tr class="@(GetRowClass(stat.AvgElapsedMs))">
+                                <td><code class="small">@stat.Method @stat.Endpoint</code></td>
+                                <td class="text-end">@stat.CallCount</td>
+                                <td class="text-end">
+                                    <span class="badge @(stat.SuccessRate >= 99 ? "bg-success" : stat.SuccessRate >= 95 ? "bg-warning" : "bg-danger")">
+                                        @stat.SuccessRate.ToString("F1")%
+                                    </span>
+                                </td>
+                                <td class="text-end font-monospace">
+                                    <span class="badge @GetBadgeClass(stat.AvgElapsedMs)">
+                                        @stat.AvgElapsedMs ms
+                                    </span>
+                                </td>
+                                <td class="text-end font-monospace text-muted">@stat.P50ElapsedMs ms</td>
+                                <td class="text-end font-monospace">@stat.P95ElapsedMs ms</td>
+                                <td class="text-end font-monospace @(stat.P99ElapsedMs > 1000 ? "text-danger fw-bold" : "")">@stat.P99ElapsedMs ms</td>
+                                <td class="text-end font-monospace text-danger">@stat.MaxElapsedMs ms</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- 最慢调用 -->
+@if (ApiMetrics?.Any() == true)
+{
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">@L["ApiCallPerf_SlowestApiCalls", ApiMetrics.Count]</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>@L["ApiCallPerf_Time"]</th>
+                            <th>@L["ApiCallPerf_Method"]</th>
+                            <th>@L["ApiCallPerf_Endpoint"]</th>
+                            <th class="text-end">@L["ApiCallPerf_Elapsed"]</th>
+                            <th>@L["ApiCallPerf_Status"]</th>
+                            <th>@L["ApiCallPerf_Error"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var call in ApiMetrics)
+                        {
+                            <tr class="@(call.ElapsedMilliseconds > 1000 ? "table-danger" : call.ElapsedMilliseconds > 500 ? "table-warning" : "")">
+                                <td class="small text-nowrap">@call.Timestamp.ToLocalTime().ToString("HH:mm:ss")</td>
+                                <td><span class="badge bg-secondary">@call.Method</span></td>
+                                <td><code class="small">@call.Endpoint</code></td>
+                                <td class="text-end font-monospace">
+                                    <span class="badge @GetBadgeClass(call.ElapsedMilliseconds)">
+                                        @call.ElapsedMilliseconds ms
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (call.Success)
+                                    {
+                                        <span class="badge bg-success">@L["ApiCallPerf_Success"]</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">@L["ApiCallPerf_Failure"]</span>
+                                    }
+                                </td>
+                                <td class="small text-danger">@(call.Error?.Length > 50 ? call.Error.Substring(0, 50) + "..." : call.Error)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- 性能优化建议 -->
+<div class="card border-warning mt-4">
+    <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0">@L["ApiCallPerf_OptTitle"]</h5>
+    </div>
+    <div class="card-body">
+        @if (HasData)
+        {
+            <p class="small text-muted mb-3">@L["ApiCallPerf_OptSubtitleData"]</p>
+        }
+        else
+        {
+            <p class="small text-muted mb-3">@L["ApiCallPerf_OptSubtitleNoData"]</p>
+        }
+        <ul class="list-unstyled mb-0">
+            <li class="py-2 px-3 mb-2 rounded @(ApiSummary == null || ApiSummary.AvgElapsedMs <= 500 ? "bg-body-tertiary text-body-secondary" : "bg-warning bg-opacity-10 border-start border-3 border-warning")">
+                @if (ApiSummary != null && ApiSummary.AvgElapsedMs > 500)
+                {
+                    <span class="badge bg-warning text-dark me-2">⚠</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary me-2">✓</span>
+                }
+                @((MarkupString)L["ApiCallPerf_TipAvgElapsed"].Value)
+            </li>
+            <li class="py-2 px-3 mb-2 rounded @(ApiSummary == null || ApiSummary.MaxElapsedMs <= 2000 ? "bg-body-tertiary text-body-secondary" : "bg-warning bg-opacity-10 border-start border-3 border-warning")">
+                @if (ApiSummary != null && ApiSummary.MaxElapsedMs > 2000)
+                {
+                    <span class="badge bg-warning text-dark me-2">⚠</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary me-2">✓</span>
+                }
+                @((MarkupString)L["ApiCallPerf_TipP99"].Value)
+            </li>
+            <li class="py-2 px-3 mb-2 rounded @(ApiSummary == null || ApiSummary.SuccessRate >= 99 ? "bg-body-tertiary text-body-secondary" : "bg-danger bg-opacity-10 border-start border-3 border-danger")">
+                @if (ApiSummary != null && ApiSummary.SuccessRate < 99)
+                {
+                    <span class="badge bg-danger text-white me-2">⚠</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary me-2">✓</span>
+                }
+                @((MarkupString)L["ApiCallPerf_TipSuccessRate"].Value)
+            </li>
+            <li class="py-2 px-3 rounded @(ApiSummary == null || ApiSummary.TotalCalls <= 1000 ? "bg-body-tertiary text-body-secondary" : "bg-info bg-opacity-10 border-start border-3 border-info")">
+                @if (ApiSummary != null && ApiSummary.TotalCalls > 1000)
+                {
+                    <span class="badge bg-info text-dark me-2">ℹ</span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary me-2">✓</span>
+                }
+                @((MarkupString)L["ApiCallPerf_TipTooManyCalls"].Value)
+            </li>
+        </ul>
+    </div>
+</div>
+
+<style>
+    [data-bs-theme="dark"] .table-light {
+        --bs-table-bg: rgba(255,255,255,0.06);
+        --bs-table-color: #c0c8d0;
+    }
+    [data-bs-theme="dark"] .table-light th { color: #c0c8d0; }
+    [data-bs-theme="dark"] .sticky-top { background: #232a3b !important; }
+    [data-bs-theme="dark"] .bg-body-tertiary { background: rgba(255,255,255,0.04) !important; }
+</style>
+
+@code {
+    [Parameter] public ApiCallMetricsSummary? ApiSummary { get; set; }
+    [Parameter] public List<ApiCallMetric>? ApiMetrics { get; set; }
+    [Parameter] public List<EndpointStats>? EndpointStats { get; set; }
+    private string GetBadgeClass(long elapsedMs)
+    {
+        if (elapsedMs > 2000) return "bg-danger";
+        if (elapsedMs > 1000) return "bg-warning text-dark";
+        if (elapsedMs > 500) return "bg-info";
+        return "bg-success";
+    }
+
+    private bool HasData => ApiMetrics?.Any() == true && ApiSummary?.TotalCalls > 0;
+
+    private string GetRowClass(long avgElapsedMs)
+    {
+        if (avgElapsedMs > 1000) return "table-danger";
+        if (avgElapsedMs > 500) return "table-warning";
+        return "";
+    }
+}

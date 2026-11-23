@@ -1,0 +1,457 @@
+@page "/leaderboard"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["Leaderboard_PageTitle"]</PageTitle>
+
+<div class="leaderboard-page">
+    <h1>🐲 @L["Leaderboard_Title"]</h1>
+
+    <!-- FAM-22：视图切换（默认选中第一个视图按钮） -->
+    <div class="view-switch">
+        <button class="view-tab @(activeView == "self" ? "active" : "")" @onclick='() => SwitchView("self")'>
+            👤 @L["Leaderboard_ViewSelf"]
+        </button>
+        <button class="view-tab @(activeView == "family" ? "active" : "")" @onclick='() => SwitchView("family")'>
+            👨‍👩‍👧 @L["Leaderboard_ViewFamily"]
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading">@L["Leaderboard_Loading"]</div>
+    }
+    else if (activeView == "self")
+    {
+        <!-- ========== 和自己比视图（AC1/AC2） ========== -->
+        <div class="self-compare">
+            <div class="compare-grid">
+                <div class="compare-card">
+                    <div class="cmp-label">@L["Leaderboard_TabWeekly"]</div>
+                    <div class="cmp-value">@compare.WeekTotal</div>
+                    <div class="cmp-unit">@L["Leaderboard_CardUnit"]</div>
+                </div>
+                <div class="compare-arrow">
+                    @if (compare.Arrow == "up")
+                    {
+                        <span class="arrow-up">↑</span>
+                    }
+                    else if (compare.Arrow == "down")
+                    {
+                        <span class="arrow-down">↓</span>
+                    }
+                    else if (compare.Arrow == "flat")
+                    {
+                        <span class="arrow-flat">→</span>
+                    }
+                    else
+                    {
+                        <span class="arrow-none">--</span>
+                    }
+                    <div class="cmp-delta">
+                        @if (compare.Arrow == "")
+                        {
+                            <span>--</span>
+                        }
+                        else
+                        {
+                            <span>@(compare.Delta >= 0 ? "+" : "")@compare.Delta</span>
+                            <span class="cmp-percent">(@compare.Percent.ToString("F1")%)</span>
+                        }
+                    </div>
+                </div>
+                <div class="compare-card">
+                    <div class="cmp-label">@L["Leaderboard_LastWeek"]</div>
+                    <div class="cmp-value">@compare.LastWeekTotal</div>
+                    <div class="cmp-unit">@L["Leaderboard_CardUnit"]</div>
+                </div>
+            </div>
+            <div class="compare-tip">@L["Leaderboard_CompareTip"]</div>
+        </div>
+    }
+    else
+    {
+        <!-- ========== 家庭排行视图（AC3/AC4/AC5） ========== -->
+        <div class="toolbar">
+            <div class="role-tabs">
+                <button class="tab @(activeRole == "kids" ? "active" : "")" @onclick='() => SwitchRole("kids")'>🧒 @L["Leaderboard_KidsTab"]</button>
+                <button class="tab @(activeRole == "adults" ? "active" : "")" @onclick='() => SwitchRole("adults")'>👩 @L["Leaderboard_AdultsTab"]</button>
+                @if (allFamilyEnabled)
+                {
+                    <button class="tab @(activeRole == "all" ? "active" : "")" @onclick='() => SwitchRole("all")'>👨‍👩‍👧 @L["Leaderboard_AllTab"]</button>
+                }
+            </div>
+            <div class="setting-toggle">
+                <label class="toggle-label">
+                    <input type="checkbox" checked="@allFamilyEnabled" @onchange="OnAllFamilyToggle" />
+                    @L["Leaderboard_ShowAllFamily"]
+                </label>
+            </div>
+            <div class="tab-group">
+                @foreach (var tab in tabs)
+                {
+                    <button class="tab @(activeTab == tab.Key ? "active" : "")" @onclick="() => SwitchTab(tab.Key)">
+                        @tab.Label
+                    </button>
+                }
+            </div>
+        </div>
+
+        @if (entries.Count == 0)
+        {
+            <div class="empty">@L["Leaderboard_EmptyHint"]</div>
+            <div class="solo-guide">@L["Leaderboard_InviteHint"]</div>
+        }
+        else
+        {
+            <div class="leaderboard-table">
+                @foreach (var entry in entries)
+                {
+                    <div class="leaderboard-row @(entry.Rank <= 3 ? "top-" + entry.Rank : "")">
+                        <div class="rank">
+                            @if (entry.Rank == 1)
+                            {
+                                <span class="rank-medal">🥇</span>
+                            }
+                            else if (entry.Rank == 2)
+                            {
+                                <span class="rank-medal">🥈</span>
+                            }
+                            else if (entry.Rank == 3)
+                            {
+                                <span class="rank-medal">🥉</span>
+                            }
+                            else
+                            {
+                                <span class="rank-num">@entry.Rank</span>
+                            }
+                        </div>
+                        <div class="avatar" style="background:@entry.Color">
+                            @entry.AvatarEmoji
+                        </div>
+                        <div class="name">@entry.LearnerName</div>
+                        <div class="stats">
+                            <div class="stat">
+                                <span class="stat-value">@entry.CardsStudied</span>
+                                <span class="stat-label">@L["Leaderboard_CardsStat"]</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-value">@entry.Accuracy.ToString("F0")%</span>
+                                <span class="stat-label">@L["Leaderboard_AccuracyStat"]</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-value">@entry.Streak</span>
+                                <span class="stat-label">🔥</span>
+                            </div>
+                        </div>
+                        <div class="score">
+                            <div class="score-bar-wrap">
+                                <div class="score-bar" style="width:@(maxScore > 0 ? (entry.Score * 100 / maxScore) : 0)%;background:@entry.Color"></div>
+                            </div>
+                            <span class="score-value" title="@L["Leaderboard_ScoreTitle"]">@entry.Score</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .leaderboard-page { max-width: 800px; margin: 0 auto; padding: 1rem; }
+    .leaderboard-page h1 { margin-bottom: 1rem; }
+
+    /* FAM-22 视图切换 */
+    .view-switch {
+        display: flex;
+        gap: 0.4rem;
+        margin-bottom: 1rem;
+        background: #e8eef2;
+        padding: 0.25rem;
+        border-radius: 8px;
+        width: fit-content;
+    }
+    .view-tab {
+        padding: 0.45rem 1.2rem;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        cursor: pointer;
+        font-size: 0.95rem;
+        color: #666;
+        transition: all 0.2s;
+    }
+    .view-tab.active {
+        background: white;
+        color: #333;
+        font-weight: 600;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    /* 和自己比 */
+    .self-compare {
+        background: #fff;
+        border: 1px solid #e8eef2;
+        border-radius: 12px;
+        padding: 1.5rem;
+        text-align: center;
+    }
+    .compare-grid {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1.5rem;
+    }
+    .compare-card {
+        background: #f8fafc;
+        border-radius: 10px;
+        padding: 1rem 1.5rem;
+        min-width: 110px;
+    }
+    .cmp-label { font-size: 0.85rem; color: #888; }
+    .cmp-value { font-size: 2.2rem; font-weight: 800; color: #333; }
+    .cmp-unit { font-size: 0.8rem; color: #aaa; }
+    .compare-arrow { text-align: center; min-width: 90px; }
+    .arrow-up { font-size: 2rem; color: #27ae60; font-weight: 800; }
+    .arrow-down { font-size: 2rem; color: #e74c3c; font-weight: 800; }
+    .arrow-flat { font-size: 2rem; color: #95a5a6; font-weight: 800; }
+    .arrow-none { font-size: 2rem; color: #bbb; font-weight: 800; }
+    .cmp-delta { font-size: 0.95rem; color: #555; font-weight: 600; }
+    .cmp-percent { color: #888; font-weight: 400; }
+    .compare-tip { margin-top: 1rem; color: #aaa; font-size: 0.85rem; }
+
+    .toolbar { margin-bottom: 1rem; }
+
+    /* FAM-22 角色 Tab */
+    .role-tabs {
+        display: flex;
+        gap: 0.25rem;
+        margin-bottom: 0.5rem;
+        background: #f0f4f7;
+        padding: 0.25rem;
+        border-radius: 8px;
+        width: fit-content;
+    }
+    .setting-toggle { margin: 0.5rem 0; font-size: 0.9rem; color: #666; }
+    .toggle-label { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+
+    .tab-group {
+        display: flex;
+        gap: 0.25rem;
+        background: #e8eef2;
+        padding: 0.25rem;
+        border-radius: 8px;
+        width: fit-content;
+    }
+
+    .tab {
+        padding: 0.4rem 1rem;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        cursor: pointer;
+        font-size: 0.9rem;
+        color: #666;
+        transition: all 0.2s;
+    }
+
+    .tab.active {
+        background: white;
+        color: #333;
+        font-weight: 600;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .leaderboard-table {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .leaderboard-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        background: white;
+        border: 1px solid #e8eef2;
+        border-radius: 10px;
+        transition: transform 0.15s;
+    }
+
+    .leaderboard-row:hover { transform: translateX(4px); }
+
+    .leaderboard-row.top-1 { border-color: #e0c860; background: #fffbea; }
+    .leaderboard-row.top-2 { border-color: #c0c0c0; background: #f5f8fa; }
+    .leaderboard-row.top-3 { border-color: #cd7f32; background: #fff8f0; }
+
+    .rank { width: 36px; text-align: center; }
+    .rank-medal { font-size: 1.3rem; }
+    .rank-num { font-size: 0.9rem; color: #888; font-weight: 600; }
+
+    .avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+
+    .name { flex: 1; font-weight: 500; min-width: 80px; }
+
+    .stats {
+        display: flex;
+        gap: 1rem;
+        min-width: 180px;
+    }
+
+    .stat { text-align: center; }
+    .stat-value { font-weight: 600; font-size: 0.95rem; display: block; }
+    .stat-label { font-size: 0.7rem; color: #888; }
+
+    .score {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 120px;
+    }
+
+    .score-bar-wrap {
+        flex: 1;
+        height: 8px;
+        background: #e8eef2;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .score-bar {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.5s ease;
+    }
+
+    .score-value {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #555;
+        min-width: 2.5rem;
+        text-align: right;
+    }
+
+    .loading { text-align: center; padding: 3rem; color: #888; }
+    .empty { text-align: center; padding: 2.5rem 1rem 0.5rem; color: #666; }
+    .solo-guide { text-align: center; padding: 0.5rem 1rem 2.5rem; color: #1d9c73; font-weight: 600; }
+
+    /* FAM-32 响应式：手机 ≤768px（Tab 横向不换行、文字缩小） */
+    @@media (max-width: 768px) {
+        .leaderboard-page { padding: 0.5rem; }
+        .view-switch { gap: 0.3rem; }
+        .view-tab { padding: 0.4rem 0.6rem; font-size: 0.85rem; white-space: nowrap; }
+        .compare-grid { gap: 0.5rem; }
+        .compare-card { padding: 0.75rem; }
+        .cmp-value { font-size: 1.6rem; }
+        .leaderboard-row { gap: 0.4rem; }
+        .role-tabs { gap: 0.3rem; }
+    }
+
+    /* FAM-32 响应式：平板 769-1024px */
+    @@media (min-width: 769px) and (max-width: 1024px) {
+        .leaderboard-page { max-width: 100%; }
+    }
+</style>
+
+@code {
+    private string activeView = "self"; // FAM-22：默认"和自己比"
+    private string activeRole = "kids"; // 家庭排行：默认孩子榜
+    private string activeTab = "weekly";
+    private List<LeaderboardEntryDto> entries = new();
+    private WeeklyCompareResultDto compare = new();
+    private bool allFamilyEnabled; // FAM-22：全家排行默认关闭（AC5）
+    private bool isLoading = true;
+    private int maxScore = 1;
+    private string? selectedVaultId;
+
+    private (string Key, string Label)[] tabs => new[]
+    {
+        ("weekly", L["Leaderboard_TabWeekly"].Value),
+        ("monthly", L["Leaderboard_TabMonthly"].Value),
+        ("alltime", L["Leaderboard_TabAllTime"].Value),
+        ("streak", L["Leaderboard_TabStreak"].Value),
+        ("accuracy", L["Leaderboard_TabAccuracy"].Value)
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        var vaults = await VaultsService.GetVaultsAsync();
+        selectedVaultId = vaults.Vaults.FirstOrDefault()?.Id;
+        var settings = await ApiService.GetAllFamilyTabSettingAsync();
+        allFamilyEnabled = settings.AllFamilyTabEnabled;
+        await LoadLeaderboardAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SwitchView(string view)
+    {
+        activeView = view;
+        isLoading = true;
+        await LoadLeaderboardAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SwitchRole(string role)
+    {
+        activeRole = role;
+        isLoading = true;
+        await LoadLeaderboardAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SwitchTab(string tab)
+    {
+        activeTab = tab;
+        isLoading = true;
+        await LoadLeaderboardAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnAllFamilyToggle(ChangeEventArgs e)
+    {
+        allFamilyEnabled = e.Value is bool b && b;
+        await ApiService.SetAllFamilyTabSettingAsync(allFamilyEnabled);
+        if (activeRole == "all" && !allFamilyEnabled)
+        {
+            activeRole = "kids";
+        }
+        await LoadLeaderboardAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadLeaderboardAsync()
+    {
+        if (activeView == "self")
+        {
+            compare = await ApiService.GetWeeklyCompareAsync(selectedVaultId, learnerId: null);
+        }
+        else
+        {
+            // 家庭排行：角色榜（本周卡片数）或原类型榜
+            if (activeRole != "all" && activeTab == "weekly")
+            {
+                entries = await ApiService.GetRoleLeaderboardAsync(activeRole, selectedVaultId);
+            }
+            else
+            {
+                entries = await ApiService.GetLeaderboardAsync(activeTab, selectedVaultId);
+            }
+            maxScore = entries.Count > 0 ? entries.Max(e => e.Score) : 1;
+            if (maxScore == 0) maxScore = 1;
+        }
+        isLoading = false;
+    }
+}

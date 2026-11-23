@@ -1,0 +1,364 @@
+@page "/family-budget"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Baihua.Contracts.Budget
+@using System.Globalization
+@inject Baihua.Web.Services.IApiService ApiService
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["FamilyBudget_PageTitle"]</PageTitle>
+
+<h1>💰 @L["FamilyBudget_Title"]</h1>
+<p class="text-muted">@L["FamilyBudget_Subtitle"]</p>
+
+@if (_loading)
+{
+    <div class="loading-spinner">@L["FamilyBudget_Loading"]</div>
+}
+else
+{
+    <div class="d-flex align-items-center gap-3 mb-3">
+        <button class="btn btn-outline-secondary btn-sm" @onclick='() => ChangeMonth(-1)'>◀ @L["FamilyBudget_PrevMonth"]</button>
+        <h4 class="mb-0">@L["FamilyBudget_MonthLabel", _year, _month]</h4>
+        <button class="btn btn-outline-secondary btn-sm" @onclick='() => ChangeMonth(1)'>@L["FamilyBudget_NextMonth"] ▶</button>
+        <button class="btn btn-outline-primary btn-sm ms-2" @onclick="LoadAsync">@L["FamilyBudget_Refresh"]</button>
+    </div>
+
+    <!-- 月度概览 -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card border-success">
+                <div class="card-body text-center">
+                    <div class="text-muted small">@L["FamilyBudget_MonthIncome"]</div>
+                    <div class="fs-4 text-success fw-bold">+@_summary.MonthIncome.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-danger">
+                <div class="card-body text-center">
+                    <div class="text-muted small">@L["FamilyBudget_MonthExpense"]</div>
+                    <div class="fs-4 text-danger fw-bold">-@_summary.MonthExpense.ToString("N2")</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card @(_summary.MonthBalance >= 0 ? "border-primary" : "border-warning")">
+                <div class="card-body text-center">
+                    <div class="text-muted small">@L["FamilyBudget_MonthBalance"]</div>
+                    <div class="fs-4 fw-bold @(_summary.MonthBalance >= 0 ? "text-primary" : "text-warning")">
+                        @(_summary.MonthBalance >= 0 ? "+" : "")@_summary.MonthBalance.ToString("N2")
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- 新增记录 -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">✏️ @L["FamilyBudget_AddHeader"]</div>
+                <div class="card-body">
+                    <div class="btn-group w-100 mb-3" role="group">
+                        <button class="btn btn-sm @(_newType == "expense" ? "btn-danger" : "btn-outline-danger")" @onclick='() => SetType("expense")'>@L["FamilyBudget_ExpenseType"]</button>
+                        <button class="btn btn-sm @(_newType == "income" ? "btn-success" : "btn-outline-success")" @onclick='() => SetType("income")'>@L["FamilyBudget_IncomeType"]</button>
+                    </div>
+                    <div class="mb-2">
+                        <input class="form-control" type="number" step="0.01" min="0.01" placeholder="@L["FamilyBudget_AmountPlaceholder"]"
+                               @bind="_newAmount" />
+                    </div>
+                    <div class="mb-2">
+                        <select class="form-select" @bind="_newCategory">
+                            <option value="">@L["FamilyBudget_SelectCategory"]</option>
+                            @foreach (var c in Categories)
+                            {
+                                <option value="@c">@c</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <input class="form-control" type="date" @bind="_newDate" />
+                    </div>
+                    <div class="mb-3">
+                        <input class="form-control" placeholder="@L["FamilyBudget_NotePlaceholder"]" @bind="_newNote" />
+                    </div>
+                    <button class="btn btn-primary w-100" disabled="@_saving" @onclick="AddAsync">
+                        @(_saving ? L["FamilyBudget_Saving"] : L["FamilyBudget_Save"])
+                    </button>
+                    @if (!string.IsNullOrEmpty(_formError))
+                    {
+                        <div class="text-danger small mt-2">@_formError</div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- 分类统计 -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">📊 @L["FamilyBudget_CategoryStatsTitle"]</div>
+                <div class="card-body">
+                    @if (_summary.CategoryStats.Count == 0)
+                    {
+                        <div class="text-muted small">@L["FamilyBudget_NoExpenseRecords"]</div>
+                    }
+                    else
+                    {
+                        var max = _summary.CategoryStats.Max(s => s.Amount);
+                        @foreach (var s in _summary.CategoryStats)
+                        {
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between small">
+                                    <span>@s.Category <span class="text-muted">×@s.Count</span></span>
+                                    <span class="fw-bold">@s.Amount.ToString("N2")</span>
+                                </div>
+                                <div class="progress" style="height:8px">
+                                    <div class="progress-bar bg-danger" style="width:@(max > 0 ? s.Amount / max * 100 : 0)%"></div>
+                                </div>
+                            </div>
+                        }
+                    }
+                    <hr />
+                    <div class="small text-muted">
+                        @L["FamilyBudget_TotalIncome"] <b class="text-success">@_summary.TotalIncome.ToString("N2")</b> ｜
+                        @L["FamilyBudget_TotalExpense"] <b class="text-danger">@_summary.TotalExpense.ToString("N2")</b>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 明细列表 -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>📋 @L["FamilyBudget_DetailHeader", _transactions.Count]</span>
+                </div>
+                <div class="card-body p-0" style="max-height:520px;overflow-y:auto">
+                    @if (_transactions.Count == 0)
+                    {
+                        <div class="text-muted small p-3">@L["FamilyBudget_NoRecords"]</div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var t in _transactions)
+                            {
+                                var income = t.Type == "income";
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div>
+                                            <span class="badge @(income ? "bg-success" : "bg-danger") me-1">@t.Category</span>
+                                            <span class="small text-muted">@t.Date.ToString("MM-dd")</span>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(t.Note))
+                                        {
+                                            <div class="small text-muted">@t.Note</div>
+                                        }
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="fw-bold @(income ? "text-success" : "text-danger")">
+                                            @(income ? "+" : "-")@t.Amount.ToString("N2")
+                                        </span>
+                                        <button class="btn btn-sm btn-outline-danger" title="@L["FamilyBudget_Delete"]" @onclick='() => _pendingDelete = t'>×</button>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_pendingDelete != null)
+    {
+        <div class="modal-overlay" @onclick="CancelDelete">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <h3>@L["FamilyBudget_ConfirmDeleteTitle"]</h3>
+                <p class="mb-1">
+                    @L["FamilyBudget_ConfirmDeleteMessage"]
+                    <br />
+                    <span class="text-muted small">
+                        [@_pendingDelete.Category] @(_pendingDelete.Type == "income" ? "+" : "-")@_pendingDelete.Amount.ToString("N2") · @_pendingDelete.Date.ToString("yyyy-MM-dd")@(!string.IsNullOrEmpty(_pendingDelete.Note) ? $" · {_pendingDelete.Note}" : "")
+                    </span>
+                </p>
+                <p class="text-danger small">@L["FamilyBudget_DeleteIrreversible"]</p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" @onclick="CancelDelete">@L["FamilyBudget_Cancel"]</button>
+                    <button class="btn btn-danger" @onclick="ConfirmDelete">@L["FamilyBudget_ConfirmDelete"]</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+<style>
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        padding: 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        max-width: 400px;
+        width: 90%;
+        text-align: center;
+    }
+
+    .modal-content h3 {
+        margin-top: 0;
+        margin-bottom: 12px;
+        color: #c94c4c;
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        margin-top: 8px;
+    }
+
+    .btn-secondary {
+        background-color: #5a6a72;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .btn-danger {
+        background-color: #c94c4c;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+</style>
+
+@code {
+    private List<BudgetTransaction> _transactions = new();
+    private BudgetSummary _summary = new();
+    private bool _loading = true;
+    private bool _saving;
+
+    private BudgetTransaction? _pendingDelete;
+
+    private void CancelDelete() => _pendingDelete = null;
+
+    private async Task ConfirmDelete()
+    {
+        if (_pendingDelete == null) return;
+        var id = _pendingDelete.Id;
+        _pendingDelete = null;
+        await ApiService.DeleteBudgetTransactionAsync(id);
+        await LoadAsync();
+    }
+
+    private int _year = DateTime.Now.Year;
+    private int _month = DateTime.Now.Month;
+
+    private string _newType = "expense";
+    private decimal _newAmount;
+    private string _newCategory = "";
+    private DateTime? _newDate = DateTime.Today;
+    private string _newNote = "";
+    private string? _formError;
+
+    private string[] Categories => _newType == "income" ? BudgetCategories.Income : BudgetCategories.Expense;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private void SetType(string type)
+    {
+        _newType = type;
+        _newCategory = "";
+    }
+
+    private async Task ChangeMonth(int delta)
+    {
+        var d = new DateTime(_year, _month, 1).AddMonths(delta);
+        _year = d.Year;
+        _month = d.Month;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            var txTask = ApiService.GetBudgetTransactionsAsync(_year, _month);
+            var sumTask = ApiService.GetBudgetSummaryAsync(_year, _month);
+            await Task.WhenAll(txTask, sumTask);
+            _transactions = await txTask;
+            _summary = await sumTask;
+        }
+        catch (Exception ex)
+        {
+            _formError = L["FamilyBudget_LoadFailed", ex.Message];
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        _formError = null;
+        if (_newAmount <= 0) { _formError = L["FamilyBudget_AmountRequired"]; return; }
+        if (string.IsNullOrEmpty(_newCategory)) { _formError = L["FamilyBudget_CategoryRequired"]; return; }
+
+        _saving = true;
+        StateHasChanged();
+        try
+        {
+            await ApiService.AddBudgetTransactionAsync(new BudgetCreateRequest
+            {
+                Type = _newType,
+                Amount = _newAmount,
+                Category = _newCategory,
+                Note = string.IsNullOrWhiteSpace(_newNote) ? null : _newNote,
+                Date = _newDate ?? DateTime.Today
+            });
+            _newAmount = 0;
+            _newCategory = "";
+            _newNote = "";
+            _newDate = DateTime.Today;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _formError = L["FamilyBudget_SaveFailed", ex.Message];
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        await ApiService.DeleteBudgetTransactionAsync(id);
+        await LoadAsync();
+    }
+}

@@ -1,0 +1,51 @@
+@if (IsConfigured)
+{
+    <div class="status-badge @ConfiguredClass" title="@ConfiguredTitle">
+        <span class="status-icon">@Icon</span>
+        <span class="status-info">
+            <span class="status-title">@Title</span>
+            <span class="status-detail">@Detail</span>
+        </span>
+        <span class="status-indicator online">●</span>
+    </div>
+}
+else
+{
+    <div class="status-badge @NotConfiguredClass" title="@NotConfiguredTitle">
+        <span class="status-icon">@Icon</span>
+        <span class="status-info">
+            <span class="status-title">@NotConfiguredText</span>
+            <span class="status-detail">@Detail</span>
+        </span>
+        <span class="status-indicator offline">●</span>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsConfigured { get; set; }
+    
+    [Parameter]
+    public string Icon { get; set; } = "";
+    
+    [Parameter]
+    public string Title { get; set; } = "";
+    
+    [Parameter]
+    public string Detail { get; set; } = "";
+    
+    [Parameter]
+    public string ConfiguredClass { get; set; } = "";
+    
+    [Parameter]
+    public string NotConfiguredClass { get; set; } = "";
+    
+    [Parameter]
+    public string ConfiguredTitle { get; set; } = "";
+    
+    [Parameter]
+    public string NotConfiguredTitle { get; set; } = "";
+    
+    [Parameter]
+    public string NotConfiguredText { get; set; } = "未配置";
+}

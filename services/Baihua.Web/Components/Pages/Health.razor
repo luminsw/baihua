@@ -1,0 +1,879 @@
+@page "/health"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inherits Baihua.Web.Components.PerformanceComponentBase
+@using Baihua.Contracts.Health
+@using Baihua.Web.Services
+@using Microsoft.Extensions.Localization
+@inject IApiService ApiService
+@inject RequestMetricsService MetricsService
+@inject ErrorLogService ErrorLogService
+@inject ComponentPerformanceService ComponentPerformanceService
+@inject ApiCallMetricsService ApiMetricsService
+@inject ILogger<Health> Logger
+@inject NavigationManager Navigation
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["Health_PageTitle"]</PageTitle>
+
+<div class="container-fluid mt-4">
+    <!-- 主标签页 -->
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <a class="nav-link @(activeTab == "health" ? "active" : "")" @onclick='() => activeTab = "health"' href="javascript:void(0)">❤️ @L["Health_TabHealth"]</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(activeTab == "performance" ? "active" : "")" @onclick='() => activeTab = "performance"' href="javascript:void(0)">🔍 @L["Health_TabPerformance"]</a>
+        </li>
+    </ul>
+
+    @if (activeTab == "health")
+    {
+    <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <h2 class="mb-0">@L["Health_SystemHealthCheck"]</h2>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-success" @onclick="FixIssuesAsync" disabled="@isFixing">
+                    @if (isFixing)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    else
+                    {
+                        <span>🔧</span>
+                    }
+                    @L["Health_OneClickFix"]
+                </button>
+                <button class="btn btn-sm btn-outline-info" @onclick="SetupOpenClawAsync" disabled="@isSettingUpOpenClaw">
+                    @if (isSettingUpOpenClaw)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    else
+                    {
+                        <span>🦞</span>
+                    }
+                    @L["Health_SetupOpenClaw"]
+                </button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="ReloadAsync" disabled="@isLoading">@L["Health_Refresh"]</button>
+            </div>
+        </div>
+
+        <div class="card-body">
+            @if (isLoading)
+            {
+                <div>
+                    <div class="text-muted small mb-2">@L["Health_CheckingServices"]</div>
+                    <div class="progress" style="height: 10px;" role="progressbar" aria-label="检测进行中">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated w-100"></div>
+                    </div>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <div class="alert alert-danger">@errorMessage</div>
+            }
+            else if (report is not null)
+            {
+                <div class="mb-4">
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <h3 class="mb-0">@L["Health_HealthScoreLabel"] @report.HealthScore%</h3>
+                        <span class="@GetBadgeClass(report.Status)">@report.Status</span>
+                    </div>
+
+                    <div class="progress mt-2" style="height: 18px;">
+                        <div class="progress-bar @GetProgressBarClass(report.Status)"
+                             role="progressbar"
+                             style="width: @report.HealthScore%">
+                            @report.HealthScore%
+                        </div>
+                    </div>
+
+                    <div class="small text-muted mt-2">
+                        @L["Health_CheckTimeLabel"] @report.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                        <span class="ms-2" title="各分项并行执行时，从发起到全部结束的墙钟时间">@L["Health_ParallelWallClockLabel"] @report.TotalWallClockMs ms</span>
+                    </div>
+                </div>
+
+                <div class="row g-2">
+                    @foreach (var c in report.Components)
+                    {
+                        <div class="col-12 col-md-6 col-lg-4">
+                            <div class="p-3 rounded border h-100">
+                                <div class="d-flex align-items-center mb-2 flex-wrap">
+                                    <span class="@GetBadgeClass(c.Status)">@c.Status</span>
+                                    <strong class="ms-2">@c.Name</strong>
+                                    <span class="ms-2 badge text-bg-light border text-dark" title="该项检测耗时">@c.CheckDurationMs ms</span>
+                                    @if (!string.IsNullOrWhiteSpace(c.Version))
+                                    {
+                                        <span class="ms-auto text-muted small">@c.Version</span>
+                                    }
+                                </div>
+                                <div class="small text-muted" style="white-space: pre-wrap; word-break: break-word;">
+                                    @c.Message
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(openClawSetupMessage))
+                {
+                    <div class="mt-4">
+                        <h5 class="h6 mb-3">🦞 @L["Health_OpenClawSetupResult"]</h5>
+                        <div class="alert alert-info">
+                            @openClawSetupMessage
+                        </div>
+                    </div>
+                }
+
+                @if (fixResult != null)
+                {
+                    <div class="mt-4">
+                        <h5 class="h6 mb-3">🔧 @L["Health_FixResults"]</h5>
+                        <div class="alert @(fixResult.Success ? "alert-success" : "alert-info")">
+                            @fixResult.Message
+                        </div>
+                        @if (fixResult.Fixes?.Any() == true)
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>@L["Health_Component"]</th>
+                                            <th>@L["Health_Status"]</th>
+                                            <th>@L["Health_Message"]</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var fix in fixResult.Fixes)
+                                        {
+                                            <tr>
+                                                <td class="small">@fix.Component</td>
+                                                <td>
+                                                    <span class="badge @GetFixStatusBadgeClass(fix.Status)">
+                                                        @GetFixStatusLabel(fix.Status)
+                                                    </span>
+                                                </td>
+                                                <td class="small">@fix.Message</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="alert alert-warning">@L["Health_NoHealthReport"]</div>
+            }
+        </div>
+    </div>
+
+    <!-- 请求性能指标 -->
+    <div class="card mt-4">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <h2 class="h5 mb-0">📊 @L["Health_RequestMetricsTitle"]</h2>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-danger" @onclick="ClearMetricsAsync" disabled="@metricsLoading">
+                    @L["Health_ClearMetrics"]
+                </button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="LoadMetricsAsync" disabled="@metricsLoading">
+                    @L["Health_Refresh"]
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            @if (metricsLoading)
+            {
+                <div class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span class="ms-2 text-muted">@L["Health_Loading"]</span>
+                </div>
+            }
+            else if (metricsSummary != null)
+            {
+                <!-- 总体统计 -->
+                <div class="row g-3 mb-4">
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="text-muted small">@L["Health_TotalRequests"]</div>
+                            <div class="h4 mb-0">@metricsSummary.TotalRequests</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="text-muted small">@L["Health_AvgElapsed"]</div>
+                            <div class="h4 mb-0">@metricsSummary.AvgElapsedMs<span class="small text-muted">ms</span></div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="text-muted small">@L["Health_MaxElapsed"]</div>
+                            <div class="h4 mb-0">@metricsSummary.MaxElapsedMs<span class="small text-muted">ms</span></div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="text-muted small">@L["Health_ErrorCount"]</div>
+                            <div class="h4 mb-0 @(metricsSummary.ErrorCount > 0 ? "text-danger" : "")">@metricsSummary.ErrorCount</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-4">
+                    <!-- 慢请求列表 -->
+                    <div class="col-12 col-lg-6">
+                        <h5 class="h6 mb-3">🐌 @L["Health_SlowestRequests"]</h5>
+                        @if (slowestRequests?.Any() == true)
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>@L["Health_Path"]</th>
+                                            <th class="text-end">@L["Health_Elapsed"]</th>
+                                            <th class="text-center">@L["Health_Status"]</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var req in slowestRequests)
+                                        {
+                                            <tr>
+                                                <td class="small text-truncate" style="max-width: 200px;" title="@req.Path">
+                                                    <span class="badge bg-secondary">@req.Method</span>
+                                                    @GetShortPath(req.Path)
+                                                </td>
+                                                <td class="text-end font-monospace">@req.ElapsedMilliseconds ms</td>
+                                                <td class="text-center">
+                                                    <span class="badge @GetStatusBadgeClass(req.StatusCode)">@req.StatusCode</span>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-muted small">@L["Health_NoData"]</div>
+                        }
+                    </div>
+
+                    <!-- 高频请求路径 -->
+                    <div class="col-12 col-lg-6">
+                        <h5 class="h6 mb-3">🚀 @L["Health_FrequentPaths"]</h5>
+                        @if (frequentPaths?.Any() == true)
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>@L["Health_Path"]</th>
+                                            <th class="text-end">@L["Health_Count"]</th>
+                                            <th class="text-end">@L["Health_AvgElapsed"]</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var path in frequentPaths)
+                                        {
+                                            <tr>
+                                                <td class="small text-truncate" style="max-width: 200px;" title="@path.Path">
+                                                    <span class="badge bg-secondary">@path.Method</span>
+                                                    @GetShortPath(path.Path)
+                                                </td>
+                                                <td class="text-end font-monospace">@path.Count</td>
+                                                <td class="text-end font-monospace">@path.AvgElapsedMs ms</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-muted small">@L["Health_NoData"]</div>
+                        }
+                    </div>
+                </div>
+
+            }
+            else
+            {
+                <div class="alert alert-info">@L["Health_ClickRefreshToLoadMetrics"]</div>
+            }
+        </div>
+    </div>
+
+    <!-- 错误日志 -->
+    <div class="card mt-4">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <h2 class="h5 mb-0">🐛 @L["Health_ErrorLogsTitle"]</h2>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-danger" @onclick="ClearErrorLogsAsync" disabled="@errorLogsLoading">
+                    @L["Health_ClearLogs"]
+                </button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="LoadErrorLogsAsync" disabled="@errorLogsLoading">
+                    @L["Health_Refresh"]
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            @if (errorLogsLoading)
+            {
+                <div class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span class="ms-2 text-muted">@L["Health_Loading"]</span>
+                </div>
+            }
+            else if (errorLogSummary != null)
+            {
+                <!-- 统计摘要 -->
+                <div class="row g-3 mb-4">
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="text-muted small">@L["Health_TotalErrors"]</div>
+                            <div class="h4 mb-0 @(errorLogSummary.TotalErrors > 0 ? "text-danger" : "")">@errorLogSummary.TotalErrors</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="text-muted small">Critical</div>
+                            <div class="h4 mb-0 @(errorLogSummary.CriticalCount > 0 ? "text-danger" : "")">@errorLogSummary.CriticalCount</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="text-muted small">Error</div>
+                            <div class="h4 mb-0 @(errorLogSummary.ErrorCount > 0 ? "text-warning" : "")">@errorLogSummary.ErrorCount</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="text-muted small">Warning</div>
+                            <div class="h4 mb-0">@errorLogSummary.WarningCount</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 最近的错误日志 -->
+                <h5 class="h6 mb-3">@L["Health_RecentLogs"]</h5>
+                @if (recentErrorLogs?.Any() == true)
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>@L["Health_Timestamp"]</th>
+                                    <th>@L["Health_Level"]</th>
+                                    <th>@L["Health_Source"]</th>
+                                    <th>@L["Health_Message"]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var log in recentErrorLogs)
+                                {
+                                    <tr>
+                                        <td class="small text-nowrap">@log.Timestamp.ToLocalTime().ToString("MM-dd HH:mm:ss")</td>
+                                        <td><span class="badge @GetLogLevelBadgeClass(log.Level)">@log.Level</span></td>
+                                        <td class="small text-truncate" style="max-width: 200px;" title="@log.Category">@GetShortCategory(log.Category)</td>
+                                        <td class="small">
+                                            <div class="text-truncate" style="max-width: 400px;" title="@log.Message">@log.Message</div>
+                                            @if (!string.IsNullOrEmpty(log.Exception))
+                                            {
+                                                <div class="text-danger small mt-1">
+                                                    <span class="font-monospace">[@log.Exception]</span>
+                                                </div>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-muted small">@L["Health_NoErrorLogs"]</div>
+                }
+            }
+            else
+            {
+                <div class="alert alert-info">@L["Health_ClickRefreshToLoadLogs"]</div>
+            }
+        </div>
+    </div>
+
+    <div class="card mt-4 border-0 shadow-sm">
+        <div class="card-header bg-body-secondary border-bottom-0">
+            <h2 class="h5 mb-0">@L["Health_ArchitectureTitle"]</h2>
+            <p class="small text-muted mb-0 mt-2">
+                @L["Health_ArchDesc1_Pre"]<code class="mx-1">/api/health/full</code>@L["Health_ArchDesc1_Mid"]<strong>@L["Health_ArchDesc1_Strong"]</strong>@L["Health_ArchDesc1_Post"]
+                @L["Health_ArchitectureDesc2"]
+            </p>
+        </div>
+        <div class="card-body pt-0">
+            <div class="health-arch-diagram rounded border bg-light overflow-auto px-2 py-3">
+                <img src="/images/health-architecture.svg"
+                     class="w-100 d-block"
+                     style="min-height: 320px; max-height: 480px;"
+                     alt="架构示意：本页 Baihua.Web 调用 Baihua.Server 的 /api/health/full，并行检测 Git、Ollama、Python、Node.js、PIP、API Key 与 Vault，用于在跑同步与任务前发现依赖问题"
+                     width="920"
+                     height="460" />
+            </div>
+        </div>
+    </div>
+    }
+    else
+    {
+        <!-- 性能监控标签页 -->
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <a class="nav-link @(perfTab == "e2e" ? "active" : "")" @onclick='() => perfTab = "e2e"' href="javascript:void(0)">🔗 @L["Health_TabE2E"]</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(perfTab == "api" ? "active" : "")" @onclick='() => perfTab = "api"' href="javascript:void(0)">📡 @L["Health_TabApi"]</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(perfTab == "component" ? "active" : "")" @onclick='() => perfTab = "component"' href="javascript:void(0)">🧩 @L["Health_TabComponent"]</a>
+            </li>
+        </ul>
+
+        @if (perfTab == "e2e")
+        {
+            <E2EPerformanceTab Summary="e2eSummary" Records="e2eRecords" SlowestOperations="e2eSlowest" />
+        }
+        else if (perfTab == "api")
+        {
+            <ApiCallPerformanceTab ApiMetrics="apiMetrics" ApiSummary="apiSummary" EndpointStats="endpointStats" />
+        }
+        else
+        {
+            <ComponentPerformanceTab ComponentPerformanceService="ComponentPerformanceService" />
+        }
+
+        <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-outline-primary" @onclick="RefreshPerfData">🔄 @L["Health_RefreshPerfData"]</button>
+            <button class="btn btn-outline-danger" @onclick="ClearAllPerfData">🗑️ @L["Health_ClearAll"]</button>
+        </div>
+    }
+</div>
+
+<style>
+    /* 暗色模式 — 健康检查页专属覆盖 */
+    [data-bs-theme="dark"] {
+        /* 请求指标/错误日志的摘要卡片 */
+        .p-3.bg-light.rounded.text-center {
+            background: rgba(255,255,255,0.05) !important;
+        }
+        .p-3.bg-light.rounded.text-center .text-muted,
+        .p-3.bg-light.rounded.text-center .h4,
+        .p-3.bg-light.rounded.text-center .h4 span {
+            color: #c0c8d0 !important;
+        }
+        /* 表格头部 */
+        .table-light {
+            --bs-table-bg: rgba(255,255,255,0.06);
+            --bs-table-color: #c0c8d0;
+        }
+        .table-light th {
+            color: #c0c8d0;
+        }
+        /* 架构图容器 */
+        .health-arch-diagram {
+            background: rgba(255,255,255,0.05) !important;
+            border-color: #2d3548 !important;
+        }
+        /* 组件状态卡片 */
+        .rounded.border.h-100 {
+            border-color: #2d3548 !important;
+        }
+        /* text-bg-light border text-dark 标签 */
+        .text-bg-light.border.text-dark {
+            background: rgba(255,255,255,0.08) !important;
+            color: #c0c8d0 !important;
+            border-color: #3d4558 !important;
+        }
+        /* 进度条 */
+        .progress {
+            background: #2d3548;
+        }
+        /* sticky-top 表头在暗色模式下对齐 */
+        .sticky-top {
+            background: #232a3b !important;
+        }
+        /* 架构区块头部 */
+        .card-header.bg-body-secondary {
+            background: rgba(255,255,255,0.04) !important;
+        }
+    }
+</style>
+
+@code
+{
+    private string activeTab = "health";
+    private string perfTab = "e2e";
+
+    protected override void OnInitialized()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        var tabParam = query.Get("tab");
+        if (tabParam == "performance")
+        {
+            activeTab = "performance";
+        }
+    }
+
+    private SystemHealthReportDto? report;
+    private bool isLoading = true;
+    private string? errorMessage;
+    private bool loadKickoffStarted;
+
+    // 一键修复
+    private bool isFixing = false;
+    private bool isSettingUpOpenClaw = false;
+    private string? openClawSetupMessage;
+    private HealthFixResultDto? fixResult;
+
+    // 请求指标
+    private MetricsSummary? metricsSummary;
+    private List<RequestMetric>? slowestRequests;
+    private List<PathFrequency>? frequentPaths;
+    private bool metricsLoading = false;
+
+    // 错误日志
+    private ErrorLogSummary? errorLogSummary;
+    private List<ErrorLogEntry>? recentErrorLogs;
+    private bool errorLogsLoading = false;
+
+    // 性能监控数据
+    private E2EPerformanceSummary? e2eSummary;
+    private List<E2EPerformanceRecord>? e2eRecords;
+    private List<E2EPerformanceRecord>? e2eSlowest;
+    private ApiCallMetricsSummary? apiSummary;
+    private List<ApiCallMetric>? apiMetrics;
+    private List<EndpointStats>? endpointStats;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || loadKickoffStarted)
+            return;
+
+        loadKickoffStarted = true;
+        
+        // 预渲染阶段不执行耗时加载，避免阻塞首屏 HTML 输出。
+        // 客户端交互建立后会再次触发 OnAfterRenderAsync，此时才加载数据。
+        if (!RendererInfo.IsInteractive)
+        {
+            Logger.LogDebug("预渲染阶段，跳过数据加载以避免阻塞");
+            return;
+        }
+        
+        Logger.LogDebug("客户端交互已建立，开始加载数据");
+        
+        // 并行加载三个数据源，加速页面初始化
+        var healthTask = ReloadAsync();
+        var metricsTask = LoadMetricsAsync();
+        var errorLogsTask = LoadErrorLogsAsync();
+        
+        await Task.WhenAll(healthTask, metricsTask, errorLogsTask);
+    }
+
+    private async Task ReloadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        StateHasChanged();
+
+        var connectivityCheckSw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            report = await ApiService.GetFullHealthAsync();
+            connectivityCheckSw.Stop();
+            
+            // 插入 WebUI→Baihua 连通性检查结果到报告开头
+            if (report?.Components != null)
+            {
+                var connectivityStatus = new Baihua.Contracts.Health.ComponentStatusDto
+                {
+                    Name = "WebUI→Baihua",
+                    Status = "healthy",
+                    Message = string.Format(L["Health_WebuiConnectivityOk"], connectivityCheckSw.ElapsedMilliseconds),
+                    CheckDurationMs = connectivityCheckSw.ElapsedMilliseconds
+                };
+                report.Components.Insert(0, connectivityStatus);
+            }
+        }
+        catch (Exception ex)
+        {
+            connectivityCheckSw.Stop();
+            errorMessage = ex.Message;
+            
+            // 如果连健康报告都获取失败，创建一个包含连通性错误的报告
+            report = new Baihua.Contracts.Health.SystemHealthReportDto
+            {
+                Timestamp = DateTime.UtcNow,
+                Status = "critical",
+                HealthScore = 0,
+                Components = new List<Baihua.Contracts.Health.ComponentStatusDto>
+                {
+                    new Baihua.Contracts.Health.ComponentStatusDto
+                    {
+                        Name = "WebUI→Baihua",
+                        Status = "critical",
+                        Message = string.Format(L["Health_WebuiConnectivityFailed"], ex.Message),
+                        CheckDurationMs = connectivityCheckSw.ElapsedMilliseconds
+                    }
+                }
+            };
+        }
+        isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task FixIssuesAsync()
+    {
+        isFixing = true;
+        fixResult = null;
+        StateHasChanged();
+
+        try
+        {
+            fixResult = await ApiService.FixHealthIssuesAsync();
+            if (fixResult.NewReport != null)
+            {
+                report = fixResult.NewReport;
+            }
+        }
+        catch (Exception ex)
+        {
+            fixResult = new HealthFixResultDto
+            {
+                Success = false,
+                Message = string.Format(L["Health_FixRequestFailed"], ex.Message)
+            };
+        }
+        finally
+        {
+            isFixing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SetupOpenClawAsync()
+    {
+        isSettingUpOpenClaw = true;
+        openClawSetupMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await ApiService.SetupOpenClawAsync();
+            var success = result.TryGetProperty("success", out var successProp) && successProp.GetBoolean();
+            var message = result.TryGetProperty("message", out var msgProp) ? msgProp.GetString() : "";
+            openClawSetupMessage = $"{(success ? "✅" : "⚠️")} {message}";
+        }
+        catch (Exception ex)
+        {
+            openClawSetupMessage = $"❌ {string.Format(L["Health_SetupFailed"], ex.Message)}";
+        }
+        finally
+        {
+            isSettingUpOpenClaw = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadMetricsAsync()
+    {
+        metricsLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            // 直接从内存中的 RequestMetricsService 获取数据
+            metricsSummary = MetricsService.GetSummary();
+            slowestRequests = MetricsService.GetSlowestRequests(10).ToList();
+            frequentPaths = MetricsService.GetMostFrequentPaths(10).ToList();
+        }
+        catch (Exception ex)
+        {
+            // 指标加载失败不影响健康检查显示
+            Logger.LogWarning(ex, "加载请求指标失败");
+        }
+        finally
+        {
+            metricsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ClearMetricsAsync()
+    {
+        metricsLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            MetricsService.Clear();
+            metricsSummary = new MetricsSummary();
+            slowestRequests = new List<RequestMetric>();
+            frequentPaths = new List<PathFrequency>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "清空请求指标失败");
+        }
+        finally
+        {
+            metricsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private string GetBadgeClass(string status)
+    {
+        var s = (status ?? string.Empty).ToLower();
+        return s switch
+        {
+            "healthy" => "badge text-bg-success",
+            "warning" => "badge text-bg-warning",
+            "critical" => "badge text-bg-danger",
+            "skipped" => "badge text-bg-secondary",
+            _ => "badge text-bg-secondary"
+        };
+    }
+
+    private string GetProgressBarClass(string status)
+    {
+        var s = (status ?? string.Empty).ToLower();
+        return s switch
+        {
+            "healthy" => "bg-success",
+            "warning" => "bg-warning",
+            "critical" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetStatusBadgeClass(int statusCode)
+    {
+        if (statusCode >= 500) return "bg-danger";
+        if (statusCode >= 400) return "bg-warning";
+        if (statusCode >= 200 && statusCode < 300) return "bg-success";
+        return "bg-secondary";
+    }
+
+    private string GetShortPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return "";
+        if (path.Length <= 30) return path;
+        return "..." + path.Substring(path.Length - 27);
+    }
+
+    private async Task LoadErrorLogsAsync()
+    {
+        errorLogsLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            errorLogSummary = ErrorLogService.GetSummary();
+            recentErrorLogs = ErrorLogService.GetRecentErrors(10).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "加载错误日志失败");
+        }
+        finally
+        {
+            errorLogsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ClearErrorLogsAsync()
+    {
+        errorLogsLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            ErrorLogService.Clear();
+            errorLogSummary = new ErrorLogSummary();
+            recentErrorLogs = new List<ErrorLogEntry>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "清空错误日志失败");
+        }
+        finally
+        {
+            errorLogsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private string GetLogLevelBadgeClass(LogLevel level)
+    {
+        return level switch
+        {
+            LogLevel.Critical => "bg-dark",
+            LogLevel.Error => "bg-danger",
+            LogLevel.Warning => "bg-warning text-dark",
+            LogLevel.Information => "bg-info text-dark",
+            _ => "bg-secondary"
+        };
+    }
+
+    private static string GetFixStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "fixed" => "bg-success",
+            "manual_required" => "bg-warning text-dark",
+            "failed" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetFixStatusLabel(string status)
+    {
+        return status switch
+        {
+            "fixed" => L["Health_FixStatus_Fixed"],
+            "manual_required" => L["Health_FixStatus_ManualRequired"],
+            "failed" => L["Health_FixStatus_Failed"],
+            "skipped" => L["Health_FixStatus_Skipped"],
+            _ => status
+        };
+    }
+
+    private string GetShortCategory(string category)
+    {
+        if (string.IsNullOrEmpty(category)) return "";
+        // 取最后一个点后面的部分
+        var parts = category.Split('.');
+        return parts.Length > 0 ? parts[^1] : category;
+    }
+
+    private void RefreshPerfData()
+    {
+        e2eSummary = E2EPerformanceService?.GetSummary();
+        e2eRecords = E2EPerformanceService?.GetRecords().ToList() ?? new();
+        e2eSlowest = E2EPerformanceService?.GetSlowestOperations(10).ToList() ?? new();
+        apiSummary = ApiMetricsService.GetSummary();
+        apiMetrics = ApiMetricsService.GetSlowestCalls(20).ToList();
+        endpointStats = ApiMetricsService.GetEndpointStats().ToList();
+    }
+
+    private void ClearAllPerfData()
+    {
+        E2EPerformanceService?.Clear();
+        ApiMetricsService.Clear();
+        ComponentPerformanceService.Clear();
+        RefreshPerfData();
+    }
+}

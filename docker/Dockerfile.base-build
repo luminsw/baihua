@@ -1,0 +1,29 @@
+# 基础镜像 - Build 阶段（离线 SDK：dotnet SDK + nuget-local 包源）
+# 用于加速 Baihua 服务构建和 WebUI 的编译
+#
+# 构建命令：
+#   docker buildx build --build-context "nuget=../nuget-local" -f Dockerfile.sdk-offline -t bh/sdk-offline:latest ..
+#   docker build -f Dockerfile.base-build -t bh/base-build:latest ..
+#   docker build -f Dockerfile.base-runtime -t bh/base-runtime:latest ..
+#
+# 更新频率：
+#   - 仅当 .NET SDK 版本更新时需要重建
+#   - 应用代码变更无需重建此镜像
+
+FROM bh/sdk-offline:latest
+WORKDIR /src
+
+# 使用华为云镜像源（解决容器内无法访问 archive.ubuntu.com 的问题）
+RUN sed -i 's|http://archive.ubuntu.com|https://mirrors.huaweicloud.com|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null; \
+    sed -i 's|http://security.ubuntu.com|https://mirrors.huaweicloud.com|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null; \
+    sed -i 's|http://archive.ubuntu.com|https://mirrors.huaweicloud.com|g' /etc/apt/sources.list 2>/dev/null; \
+    sed -i 's|http://security.ubuntu.com|https://mirrors.huaweicloud.com|g' /etc/apt/sources.list 2>/dev/null; \
+    true
+
+# 预安装常用工具
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        git \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*

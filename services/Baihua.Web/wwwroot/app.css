@@ -1,0 +1,2443 @@
+/* Blazor 全局错误条：默认隐藏，仅在运行时出错时由框架显示 */
+#blazor-error-ui {
+    background: #f5eee0;
+    border-top: 1px solid #d4a574;
+    bottom: 0;
+    box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.15);
+    display: none;
+    left: 0;
+    padding: 0.75rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+html, body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+a, .btn-link {
+    color: #2e8baf;
+}
+
+.btn-primary {
+    color: #fff;
+    background-color: #2e8baf;
+    border-color: #1861ac;
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #2e8baf;
+}
+
+.content {
+    padding-top: 1.1rem;
+}
+
+h1:focus {
+    outline: none;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid #26b050;
+}
+
+.invalid {
+    outline: 1px solid #c94c4c;
+}
+
+.validation-message {
+    color: #c94c4c;
+}
+
+.blazor-error-boundary {
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, #b32121;
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: white;
+}
+
+    .blazor-error-boundary::after {
+        content: "An error has occurred."
+    }
+
+.darker-border-checkbox.form-check-input {
+    border-color: #929292;
+}
+
+.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
+    color: var(--bs-secondary-color);
+    text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
+    text-align: start;
+}
+
+/* Dashboard */
+.dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.section-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.note-title {
+    font-weight: 500;
+    color: #1e3a4c;
+}
+
+.card {
+    background: #fff;
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card h2 {
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.card p {
+    color: #5a6a72;
+    margin-bottom: 1rem;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.action-buttons .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Task Styles */
+.task-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.task-item {
+    background: #fff;
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.task-type {
+    font-weight: 600;
+    color: #1e3a4c;
+}
+
+.task-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-running { background: #e0ecf4; color: #2a6a8a; }
+.status-failed { background: #e0ecf4; color: #4a2a30; }
+
+.task-progress {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 0.5rem 0;
+}
+
+.progress-bar {
+    flex: 1;
+    height: 8px;
+    background: #d8e2e8;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #2e8baf;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 0.875rem;
+    color: #5a6a72;
+    min-width: 80px;
+}
+
+.task-message {
+    font-size: 0.875rem;
+    color: #5a6a72;
+    margin: 0.5rem 0;
+}
+
+.task-time {
+    font-size: 0.75rem;
+    color: #8a96a0;
+}
+
+.no-tasks {
+    text-align: center;
+    padding: 3rem;
+    color: #5a6a72;
+}
+
+.no-tasks span {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 1rem;
+}
+
+/* Search */
+.search-box {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.search-box input {
+    flex: 1;
+}
+
+.results {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.result-item {
+    background: #fff;
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.result-item h3 {
+    margin: 0 0 0.5rem 0;
+    color: #2e8baf;
+}
+
+.result-item .preview {
+    color: #5a6a72;
+    margin: 0.5rem 0;
+}
+
+.result-item .meta {
+    font-size: 0.875rem;
+    color: #8a96a0;
+}
+
+.no-results {
+    text-align: center;
+    padding: 3rem;
+    color: #5a6a72;
+}
+
+.no-results span {
+    font-size: 3rem;
+    display: block;
+    margin-bottom: 1rem;
+}
+
+/* Chat */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 200px);
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.message {
+    display: flex;
+    gap: 1rem;
+    max-width: 80%;
+}
+
+.message.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.message.ai {
+    align-self: flex-start;
+}
+
+.message-avatar {
+    font-size: 1.5rem;
+}
+
+.message-content {
+    background: #e8eef2;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    min-width: 0;            /* flex 子项允许收缩，防止长内容把气泡撑出容器 */
+    max-width: 100%;         /* 不超出 .message 的 80% 上限 */
+    overflow-wrap: anywhere; /* 长 URL/长单词强制换行，避免文字溢出背景 */
+}
+
+.message.user .message-content {
+    background: #2e8baf;
+    color: #fff;
+}
+
+.message-text {
+    margin-bottom: 0.25rem;
+    min-width: 0;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.message-time {
+    font-size: 0.75rem;
+    color: #8a96a0;
+    text-align: right;
+}
+
+.message.user .message-time {
+    color: rgba(255,255,255,0.8);
+}
+
+.chat-input {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-top: 1px solid #d8e2e8;
+    background: #fff;
+}
+
+.typing-indicator {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.typing-indicator span {
+    width: 8px;
+    height: 8px;
+    background: #8a96a0;
+    border-radius: 50%;
+    animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-4px); }
+}
+
+/* Settings */
+.settings-form {
+    max-width: 600px;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.form-group .required {
+    color: #c94c4c;
+}
+
+.form-group small {
+    color: #5a6a72;
+    font-size: 0.875rem;
+}
+
+.form-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.form-check-input {
+    margin-top: 0.25rem;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.status-message {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.status-message.success {
+    background: #e0f0e5;
+    color: #3d6b45;
+    border: 1px solid #a8d4b0;
+}
+
+.status-message.error {
+    background: #e0ecf4;
+    color: #4a2a30;
+    border: 1px solid #f0d0d8;
+}
+
+/* Task Detail */
+.task-detail {
+    max-width: 800px;
+}
+
+.task-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.info-row {
+    display: flex;
+    gap: 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #d8e2e8;
+}
+
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-row .label {
+    font-weight: 600;
+    color: #5a6a72;
+    min-width: 100px;
+}
+
+.progress-section {
+    background: #fff;
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+}
+
+/* Loading */
+.loading {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 2rem;
+    justify-content: center;
+}
+
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #d8e2e8;
+    border-top-color: #2e8baf;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Error */
+.error-message {
+    text-align: center;
+    padding: 3rem;
+}
+
+.error-message h1 {
+    color: #c94c4c;
+    margin-bottom: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .dashboard {
+        grid-template-columns: 1fr;
+    }
+    
+    .task-controls, .form-actions, .action-buttons {
+        flex-direction: column;
+    }
+    
+    .search-box {
+        flex-direction: column;
+    }
+    
+    .message {
+        max-width: 90%;
+    }
+}
+
+/* Note Detail */
+.note-detail {
+    max-width: 900px;
+}
+
+/* Markdown Content */
+.markdown-content {
+    line-height: 1.8;
+    color: #1e3a4c;
+}
+
+.markdown-content h1 {
+    font-size: 2rem;
+    margin: 1.5rem 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #d8e2e8;
+}
+
+.markdown-content h2 {
+    font-size: 1.5rem;
+    margin: 1.25rem 0 0.75rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid #d8e2e8;
+}
+
+.markdown-content h3 {
+    font-size: 1.25rem;
+    margin: 1rem 0 0.5rem;
+}
+
+.markdown-content h4 {
+    font-size: 1rem;
+    margin: 0.75rem 0 0.5rem;
+}
+
+.markdown-content h5 {
+    font-size: 0.875rem;
+    margin: 0.5rem 0 0.25rem;
+}
+
+.markdown-content h6 {
+    font-size: 0.75rem;
+    margin: 0.5rem 0 0.25rem;
+    color: #5a6a72;
+}
+
+.markdown-content p {
+    margin: 0.75rem 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin: 0.75rem 0;
+    padding-left: 2rem;
+}
+
+.markdown-content li {
+    margin: 0.25rem 0;
+}
+
+.markdown-content code {
+    background: #f5f8fa;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.875em;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.markdown-content pre {
+    background: #f5f8fa;
+    padding: 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 1rem 0;
+}
+
+.markdown-content pre code {
+    background: transparent;
+    padding: 0;
+}
+
+.markdown-content blockquote {
+    border-left: 4px solid #2e8baf;
+    padding-left: 1rem;
+    margin: 1rem 0;
+    color: #5a6a72;
+}
+
+.markdown-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+}
+
+.markdown-content th,
+.markdown-content td {
+    border: 1px solid #d8e2e8;
+    padding: 0.5rem 1rem;
+    text-align: left;
+}
+
+.markdown-content th {
+    background: #f5f8fa;
+    font-weight: 600;
+}
+
+.markdown-content tr:nth-child(even) {
+    background: #f5f8fa;
+}
+
+.markdown-content a {
+    color: #2e8baf;
+    text-decoration: none;
+}
+
+.markdown-content a:hover {
+    text-decoration: underline;
+}
+
+/* Wiki 双向链接样式 */
+.markdown-content a.wiki-link {
+    color: #2e85ff;
+    font-weight: 500;
+    padding: 0.1rem 0.3rem;
+    background: rgba(46, 133, 255, 0.1);
+    border-radius: 3px;
+    transition: all 0.2s;
+}
+
+.markdown-content a.wiki-link:hover {
+    background: rgba(46, 133, 255, 0.2);
+    text-decoration: none;
+    color: #1559c0;
+}
+
+.markdown-content a.wiki-link::before {
+    content: "📎 ";
+    font-size: 0.8em;
+}
+
+/* Note Actions */
+.note-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.note-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* Settings */
+/* Breadcrumb */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 0;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+}
+
+.breadcrumb-item {
+    color: #2e8baf;
+    text-decoration: none;
+}
+
+.breadcrumb-item:hover {
+    text-decoration: underline;
+}
+
+.breadcrumb-separator {
+    color: #8a96a0;
+}
+
+.breadcrumb-current {
+    color: #5a6a72;
+    font-weight: 500;
+}
+
+.markdown-content hr {
+    border: none;
+    border-top: 1px solid #d8e2e8;
+    margin: 1.5rem 0;
+}
+
+.markdown-content img {
+    max-width: 100%;
+    height: auto;
+}
+
+.note-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.note-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.note-content-card {
+    background: #fff;
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    padding: 2rem;
+}
+
+.note-title {
+    font-size: 1.75rem;
+    margin-bottom: 1rem;
+    color: #1e3a4c;
+}
+
+.note-meta {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: #5a6a72;
+    font-size: 0.875rem;
+}
+
+.note-body {
+    line-height: 1.8;
+    color: var(--master-text, #1e3a4c);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* 笔记 markdown 内容元素（暗色模式由下方 [data-bs-theme=dark] 覆盖） */
+.note-body p {
+    margin: 0 0 0.85rem 0;
+    color: inherit;
+}
+
+.note-body h1, .note-body h2, .note-body h3, .note-body h4 {
+    color: var(--master-text, #1e3a4c);
+    margin: 1.2rem 0 0.6rem 0;
+    line-height: 1.4;
+}
+
+.note-body ul, .note-body ol {
+    padding-left: 1.5rem;
+    margin: 0 0 0.85rem 0;
+    color: inherit;
+}
+
+.note-body li {
+    margin-bottom: 0.3rem;
+    color: inherit;
+}
+
+.note-body strong { color: var(--master-text, #1e3a4c); }
+.note-body em { color: inherit; }
+.note-body blockquote {
+    border-left: 3px solid var(--master-border, #d8e2e8);
+    padding: 0.25rem 0.75rem;
+    margin: 0 0 0.85rem 0;
+    color: var(--master-text-secondary, #555);
+    background: var(--master-surface-subtle, #f0f5f8);
+}
+.note-body code {
+    background: var(--master-surface-subtle, #f0f5f8);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    color: var(--master-text, #1e3a4c);
+    font-size: 0.9em;
+}
+.note-body pre {
+    background: var(--master-surface-subtle, #f0f5f8);
+    padding: 0.75rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0 0 0.85rem 0;
+}
+.note-body pre code { background: transparent; padding: 0; }
+.note-body table {
+    border-collapse: collapse;
+    margin: 0 0 0.85rem 0;
+    color: inherit;
+}
+.note-body th, .note-body td {
+    border: 1px solid var(--master-border, #d8e2e8);
+    padding: 0.4rem 0.7rem;
+}
+.note-body a { color: var(--master-accent, #2e8baf); }
+.note-body hr { border-color: var(--master-border, #d8e2e8); }
+
+.note-tags {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #d8e2e8;
+}
+
+.tag {
+    background: #e8eef2;
+    color: #4a5860;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.875rem;
+}
+
+/* Search Results */
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+}
+
+.result-header h3 {
+    margin: 0;
+    color: #2e8baf;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.search-tips {
+    background: #f5f8fa;
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+}
+
+.search-tips h3 {
+    margin-bottom: 1rem;
+}
+
+.search-tips ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.search-tips li {
+    margin-bottom: 0.5rem;
+    color: #5a6a72;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+
+.empty-state h1 {
+    margin-bottom: 1rem;
+}
+
+.empty-state p {
+    color: #5a6a72;
+    margin-bottom: 1.5rem;
+}
+
+/* Recent Searches */
+.recent-searches {
+    margin: 1.5rem 0;
+}
+
+.search-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.search-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.4rem 0.75rem;
+    background: #e8eef2;
+    border-radius: 999px;
+    font-size: 0.875rem;
+    color: #4a5860;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.search-chip:hover {
+    background: #2e8baf;
+    color: #fff;
+}
+
+.search-chip .chip-remove {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 0 0 0.25rem;
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+.search-chip:hover .chip-remove {
+    opacity: 1;
+}
+
+.search-chip .chip-remove:hover {
+    color: #fff;
+}
+
+/* Search Result Groups */
+.result-group {
+    margin-bottom: 1.5rem;
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.group-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: #f5f8fa;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.group-header:hover {
+    background: #e8eef2;
+}
+
+.group-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #1e3a4c;
+}
+
+.group-icon {
+    font-size: 1.2rem;
+}
+
+.group-items {
+    padding: 0;
+}
+
+.group-items .result-item {
+    border: none;
+    border-bottom: 1px solid #d8e2e8;
+    border-radius: 0;
+}
+
+.group-items .result-item:last-child {
+    border-bottom: none;
+}
+
+/* AI Search */
+.ai-input-section {
+    background: #f5f8fa;
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.ai-input-section textarea {
+    font-family: inherit;
+    resize: vertical;
+}
+
+.search-tips {
+    background: #f5f8fa;
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+}
+
+.search-tips h3 {
+    margin-bottom: 1rem;
+}
+
+.search-tips ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.search-tips li {
+    margin-bottom: 0.5rem;
+    color: #5a6a72;
+}
+
+.status-message.info {
+    background: #e0ecf4;
+    color: #2a6a8a;
+    border: 1px solid #b6d4fe;
+}
+
+/* Local Search */
+.local-search {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+/* Task List Improvements */
+.task-title-section {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+}
+
+.task-error {
+    background: #e0ecf4;
+    color: #4a2a30;
+    padding: 0.5rem;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.task-item {
+    background: #fff;
+    border: 1px solid #d8e2e8;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.task-message {
+    color: #5a6a72;
+    font-size: 0.875rem;
+    margin: 0.5rem 0;
+}
+
+.task-time {
+    color: #8a96a0;
+    font-size: 0.75rem;
+    text-align: right;
+}
+
+/* Task Title Badge */
+.task-title-badge {
+    font-size: 0.875rem;
+    color: #2e8baf;
+    background: #e0ecf4;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+.task-vault-badge {
+    font-size: 0.8rem;
+    color: #6f42c1;
+    background: #f0e6ff;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+/* Task Notes List */
+.task-notes-list {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background: #e0ecf4;
+    border: 1px solid #c8dde8;
+    border-radius: 4px;
+}
+
+.task-notes-list strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #2e8baf;
+}
+
+.task-notes-list ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.task-notes-list li {
+    margin: 0.25rem 0;
+}
+
+/* ============================================
+   Enhanced Select - 下拉框增强样式
+   ============================================ */
+.enhanced-select-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+.enhanced-select-wrapper select {
+    display: none !important;
+}
+
+/* ---------- Chip 模式（选项少，平铺显示） ---------- */
+.enhanced-select-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.enhanced-select-chips.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.enhanced-select-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.9rem;
+    background: #f5f8fa;
+    border: 1px solid #d8e2e8;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    color: #4a5860;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.enhanced-select-chip:hover {
+    background: #e8eef2;
+    border-color: #a0aeb6;
+}
+
+.enhanced-select-chip.selected {
+    background: #2e8baf;
+    border-color: #2e8baf;
+    color: white;
+    box-shadow: 0 2px 6px rgba(13, 110, 253, 0.3);
+}
+
+.enhanced-select-chip.selected:hover {
+    background: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+.enhanced-select-chip:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ---------- 下拉框模式（选项多） ---------- */
+.enhanced-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.375rem 0.75rem;
+    background: white;
+    border: 1px solid #c8d4dc;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    min-height: calc(1.5em + 0.75rem + 2px);
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #1e3a4c;
+    user-select: none;
+}
+
+.enhanced-select-trigger:hover {
+    border-color: #a0aeb6;
+}
+
+.enhanced-select-wrapper.open .enhanced-select-trigger {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.enhanced-select-trigger.disabled {
+    background-color: #e8eef2;
+    opacity: 1;
+    cursor: not-allowed;
+}
+
+.enhanced-select-trigger::after {
+    content: '\25BC';
+    font-size: 0.65rem;
+    color: #5a6a72;
+    margin-left: 0.5rem;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.enhanced-select-wrapper.open .enhanced-select-trigger::after {
+    transform: rotate(180deg);
+}
+
+.enhanced-select-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #d8e2e8;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    z-index: 1060;
+    max-height: 320px;
+    overflow: hidden;
+    animation: enhancedDropdownIn 0.15s ease;
+}
+
+.enhanced-select-search {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    border-bottom: 1px solid #e8eef2;
+    outline: none;
+    font-size: 0.9rem;
+    background: #f5f8fa;
+    border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.enhanced-select-search:focus {
+    background: #fff;
+}
+
+.enhanced-select-options {
+    overflow-y: auto;
+    max-height: 240px;
+    padding: 0.25rem 0;
+}
+
+.enhanced-select-option {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+    font-size: 0.95rem;
+    color: #1e3a4c;
+}
+
+.enhanced-select-option:hover {
+    background-color: #e7f1ff;
+}
+
+.enhanced-select-option.selected {
+    background-color: #2e8baf;
+    color: white;
+}
+
+.enhanced-select-empty {
+    padding: 1rem;
+    text-align: center;
+    color: #5a6a72;
+    font-size: 0.875rem;
+}
+
+/* 适配 form-select-sm */
+.enhanced-select-wrapper:has(+ .form-select-sm),
+.enhanced-select-wrapper:has(.form-select-sm) .enhanced-select-trigger,
+select.form-select-sm + .enhanced-select-wrapper .enhanced-select-trigger {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    min-height: calc(1.5em + 0.5rem + 2px);
+}
+
+/* 内联显示的 select */
+.enhanced-select-wrapper[style*="inline"] {
+    width: auto;
+    min-width: 200px;
+}
+
+/* =============================================
+   暗色模式 — Master（拜师系统）CSS 变量
+   亮色/暗色两套主题，通过 data-bs-theme 切换
+   ============================================= */
+:root {
+    /* === 布局框架颜色 === */
+    --layout-main-bg: #f5f8fa;
+    --layout-toprow-bg: #ffffff;
+    --layout-toprow-border: #d8e2e8;
+    --layout-toprow-text: #1e3a4c;
+    --layout-sidebar-gradient: linear-gradient(180deg, #1e3a4c 0%, #2a4a60 100%);
+    --layout-fab-bg: #1e3a4c;
+    --layout-fab-menu-bg: #ffffff;
+    --layout-fab-menu-border: #d8e2e8;
+    --layout-fab-item-color: #333333;
+    --layout-fab-item-hover-bg: #f0f5f8;
+    --layout-fab-item-hover-color: #1e3a4c;
+    --layout-fab-item-icon-color: #6b8a9e;
+    --layout-ai-status-bg: linear-gradient(135deg, #e0ecf4 0%, #c8dde8 100%);
+    --layout-ai-status-border: #2e8baf;
+    --layout-ai-provider-color: #333333;
+    --layout-ai-model-color: #666666;
+    --layout-mobile-menu-bg: #1e3a4c;
+    /* === Master 页面顏色 === */
+    /* 主背景色 */
+    --master-bg: #f5f8fa;
+    /* 表面/卡片背景 */
+    --master-surface: #ffffff;
+    --master-surface-subtle: #f0f5f8;
+    /* 边框 */
+    --master-border: #d8e2e8;
+    --master-border-light: #e8eef2;
+    /* 文字色 */
+    --master-text: #333333;
+    --master-text-secondary: #555555;
+    --master-text-muted: #888888;
+    --master-text-dim: #aaaaaa;
+    /* 主色（蓝绿） */
+    --master-accent: #2e8baf;
+    --master-accent-rgb: 46, 139, 175;
+    /* 用户消息气泡 */
+    --master-user-bubble: #2e8baf;
+    --master-user-text: #ffffff;
+    /* AI 消息气泡 */
+    --master-ai-bubble: #f0f5f8;
+    --master-ai-text: #333333;
+    --master-ai-text-secondary: #666666;
+    /* 模态对话框 */
+    --master-modal-overlay: rgba(0,0,0,0.4);
+    --master-modal-bg: #ffffff;
+    /* 输入框 */
+    --master-input-bg: #ffffff;
+    --master-input-border: #d8e2e8;
+    --master-input-text: #333333;
+    /* 关键纠正区 */
+    --master-correction-bg: rgba(255,152,0,0.06);
+    --master-correction-border: rgba(255,152,0,0.15);
+    --master-correction-label: #e65100;
+    --master-correction-text: #804000;
+    /* 阶段完成祝福框 */
+    --master-blessing-bg: linear-gradient(135deg, rgba(46,139,175,0.06), rgba(46,125,50,0.06));
+    --master-blessing-border: rgba(46,139,175,0.15);
+    --master-blessing-text: #333333;
+    /* 时间线圆点 */
+    --master-stage-dot-completed: #2e7d32;
+    --master-stage-dot-current: #2e8baf;
+    --master-stage-dot-pending: #d8e2e8;
+}
+
+[data-bs-theme="dark"] {
+    --master-bg: #1a2634;
+    --master-surface: rgba(255,255,255,0.05);
+    --master-surface-subtle: rgba(255,255,255,0.03);
+    --master-border: rgba(255,255,255,0.1);
+    --master-border-light: rgba(255,255,255,0.06);
+    --master-text: #ffffff;
+    --master-text-secondary: rgba(255,255,255,0.75);
+    --master-text-muted: rgba(255,255,255,0.5);
+    --master-text-dim: rgba(255,255,255,0.35);
+    --master-accent: #2e8baf;
+    --master-accent-rgb: 46, 139, 175;
+    --master-user-bubble: #2e8baf;
+    --master-user-text: #ffffff;
+    --master-ai-bubble: rgba(255,255,255,0.08);
+    --master-ai-text: rgba(255,255,255,0.9);
+    --master-ai-text-secondary: rgba(255,255,255,0.7);
+    --master-modal-overlay: rgba(0,0,0,0.5);
+    --master-modal-bg: #1e2a3a;
+    --master-input-bg: rgba(255,255,255,0.08);
+    --master-input-border: rgba(255,255,255,0.15);
+    --master-input-text: #ffffff;
+    --master-correction-bg: rgba(255,152,0,0.08);
+    --master-correction-border: rgba(255,152,0,0.2);
+    --master-correction-label: #ff9800;
+    --master-correction-text: rgba(255,200,100,0.9);
+    --master-blessing-bg: linear-gradient(135deg, rgba(46,139,175,0.1), rgba(46,125,50,0.1));
+    --master-blessing-border: rgba(46,139,175,0.2);
+    --master-blessing-text: rgba(255,255,255,0.85);
+    --master-stage-dot-completed: #2e7d32;
+    --master-stage-dot-current: #2e8baf;
+    --master-stage-dot-pending: rgba(255,255,255,0.1);
+    /* === 布局框架暗色 === */
+    --layout-main-bg: #1a1f2e;
+    --layout-toprow-bg: #232a3b;
+    --layout-toprow-border: #2d3548;
+    --layout-toprow-text: #d4d8dd;
+    --layout-fab-menu-bg: #2a3040;
+    --layout-fab-menu-border: #3d4558;
+    --layout-fab-item-color: #c0c8d0;
+    --layout-fab-item-hover-bg: #363d52;
+    --layout-fab-item-hover-color: #e0e4ea;
+    --layout-fab-item-icon-color: #8090a0;
+    --layout-ai-status-bg: linear-gradient(135deg, rgba(46,139,175,0.2), rgba(46,139,175,0.1));
+    --layout-ai-status-border: rgba(46,139,175,0.5);
+    --layout-ai-provider-color: #d4d8dd;
+    --layout-ai-model-color: #91a0b0;
+}
+
+/* =============================================
+   暗色模式 — 布局框架 & 全局样式覆盖
+   覆盖 MainLayout 框架 + 所有页面通用组件
+   ============================================= */
+[data-bs-theme="dark"] {
+    /* ---- 页面最外层 ---- */
+    body {
+        background: #1a1f2e;
+        color: #d4d8dd;
+    }
+
+    /* ---- 通用卡片 ---- */
+    .card {
+        background: #232a3b;
+        border-color: #2d3548;
+        color: #c0c8d0;
+    }
+    .card p {
+        color: #91a0b0;
+    }
+
+    /* ---- Dashboard ---- */
+    .section-header h2 {
+        color: #d4d8dd;
+    }
+    .note-title {
+        color: #91b8d0;
+    }
+
+    /* ---- 笔记详情正文（暗色适配）---- */
+    .note-body {
+        color: #d4d8dd;
+    }
+    .note-body p,
+    .note-body li,
+    .note-body em {
+        color: #d4d8dd;
+    }
+    .note-body h1, .note-body h2, .note-body h3, .note-body h4,
+    .note-body strong {
+        color: #eef2f6;
+    }
+    .note-body blockquote {
+        background: rgba(255,255,255,0.04);
+        border-left-color: #2d3548;
+        color: #a8b0b8;
+    }
+    .note-body code {
+        background: #2d3548;
+        color: #c8d4dc;
+    }
+    .note-body pre {
+        background: #1a1f2e;
+        border: 1px solid #2d3548;
+    }
+    .note-body table th,
+    .note-body table td {
+        border-color: #2d3548;
+    }
+    .note-body hr {
+        border-color: #2d3548;
+    }
+
+    /* ---- 任务列表 ---- */
+    .task-item {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+    .task-type {
+        color: #91b8d0;
+    }
+    .status-running {
+        background: rgba(46,139,175,0.15);
+        color: #7ab8d0;
+    }
+    .status-failed {
+        background: rgba(200,60,60,0.1);
+        color: #e08080;
+    }
+    .progress-bar {
+        background: #2d3548;
+    }
+
+    /* ---- 搜索 ---- */
+    .search-box {
+        background: #232a3b;
+        border-color: #2d3548;
+        color: #c0c8d0;
+    }
+    .result-item {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+    .result-item:hover {
+        background: #2a3040;
+    }
+    .no-results {
+        color: #8090a0;
+    }
+
+    /* ---- 设置/表单 ---- */
+    .settings-form, .form-group select, .form-group input,
+    .form-control, .form-select {
+        background-color: #1e2433;
+        border-color: #3d4558;
+        color: #c0c8d0;
+    }
+    .form-floating > label, label.form-label {
+        color: #91a0b0;
+    }
+    .text-muted {
+        color: #708090 !important;
+    }
+
+    /* ---- 页面通用背景 ---- */
+    .card-body, .note-content-card, .result-group {
+        background: #232a3b;
+        border-color: #2d3548;
+        color: #c0c8d0;
+    }
+
+    /* ---- 标签 ---- */
+    .tag, .task-status, .stage-badge {
+        opacity: 0.9;
+    }
+
+    /* ---- 表格 ---- */
+    table, .table {
+        color: #c0c8d0;
+    }
+    .table-striped tbody tr:nth-of-type(odd) {
+        background-color: rgba(255,255,255,0.03);
+    }
+
+    /* ---- Alert ---- */
+    .alert-info {
+        background: rgba(46,139,175,0.15);
+        border-color: rgba(46,139,175,0.3);
+        color: #91c0d8;
+    }
+    .alert-warning {
+        background: rgba(255,152,0,0.1);
+        border-color: rgba(255,152,0,0.3);
+        color: #e0a050;
+    }
+
+    /* ---- 侧边栏已内建暗色，微调 ---- */
+    .sidebar {
+        background: linear-gradient(180deg, #141d28 0%, #1a2735 100%);
+    }
+
+    /* ---- 通用文字增强 ---- */
+    strong, b, .fw-bold {
+        color: #e0e4ea;
+    }
+    a:not(.btn):not(.nav-link):not(.quick-link) {
+        color: #5aacd0;
+    }
+
+    /* ---- 代码块 ---- */
+    code, pre {
+        background: #1a1f2e;
+        color: #c0c8d0;
+        border-color: #2d3548;
+    }
+
+    /* ---- 模态框 ---- */
+    .modal-content {
+        background: #232a3b;
+        border-color: #3d4558;
+        color: #c0c8d0;
+    }
+
+    /* ---- 面包屑 ---- */
+    .breadcrumb {
+        background: transparent;
+    }
+    .breadcrumb-item {
+        color: #91a0b0;
+    }
+
+    /* ---- Chat / Messages ---- */
+    .message-bubble {
+        background: #2d3548;
+    }
+
+    /* ---- 分页 ---- */
+    .page-link {
+        background-color: #232a3b;
+        border-color: #3d4558;
+        color: #91b8d0;
+    }
+    .page-item.active .page-link {
+        background-color: #2e8baf;
+        border-color: #2e8baf;
+    }
+    .page-item.disabled .page-link {
+        background-color: #1a1f2e;
+        color: #556;
+    }
+
+    /* ---- 下拉选择 ---- */
+    .enhanced-select-trigger {
+        background: #1e2433;
+        border-color: #3d4558;
+        color: #c0c8d0;
+    }
+    .enhanced-select-dropdown {
+        background: #232a3b;
+        border-color: #3d4558;
+    }
+    .enhanced-select-option {
+        color: #c0c8d0;
+    }
+    .enhanced-select-option:hover {
+        background: #363d52;
+    }
+
+    /* ---- 各页面高频卡片/区块 ---- */
+    .model-card, .hw-card, .machine-card, .ai-provider-card,
+    .daily-card-page, .daily-card-front, .daily-card-back,
+    .log-block, .log-entry, .log-section, .log-area,
+    .leaderboard-row, .player-row, .benchmark-row,
+    .knowledge-section, .knowledge-block, .knowledge-area,
+    .vault-item, .vault-card, .note-card, .note-item,
+    .chat-message, .chat-bubble,
+    .settings-section, .settings-panel, .settings-block,
+    .metric-card, .stat-card, .info-card, .detail-card,
+    .result-item, .result-group, .group-items,
+    .section-body, .panel-body, .card-body:not(.bg-*),
+    .chart-container, .chart-area, .progress-section,
+    .family-card, .family-section, .family-panel {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+
+    /* ---- 标题文字 ---- */
+    h1, h2, h3, h4, h5, h6,
+    .section-title, .panel-title, .block-title, .page-title,
+    .model-name, .provider-name, .benchmark-title, .card-title,
+    .machine-name, .log-title, .metric-label, .stat-label,
+    strong, b, .fw-bold, .fw-semibold {
+        color: #d4d8dd;
+    }
+
+    /* ---- 描述/次要文字 ---- */
+    .text-secondary, .text-muted, .small-text,
+    .model-desc, .provider-desc, .benchmark-desc,
+    .card-desc, .item-desc, .log-desc, .stat-desc,
+    .card-meta, .item-meta, .log-meta,
+    .section-desc, .panel-desc, .block-desc,
+    .note-title, .task-type {
+        color: #91a0b0;
+    }
+
+    /* ---- 标签/徽章/芯片（保持语义色但降低亮度） ---- */
+    .tag, .chip, .badge, .badge-pill:not(.badge-light),
+    [class*="-chip"]:not(.btn), [class*="-badge"]:not(.badge-light) {
+        filter: brightness(0.85);
+    }
+
+    /* ---- 代码块 ---- */
+    .code-block, .code-area, .code-box, .code-section,
+    .markdown-body pre, .markdown-body code {
+        background: #1a1f2e;
+        border-color: #2d3548;
+        color: #b8c8d8;
+    }
+
+    /* ---- 加载/空状态 ---- */
+    .skeleton, .skeleton-text, .skeleton-block,
+    .loading-state, .empty-state, .placeholder {
+        background: #232a3b;
+        color: #708090;
+    }
+    .loading-state p, .empty-state p {
+        color: #91a0b0;
+    }
+
+    /* ---- 消息/AI 对话 ---- */
+    .message-user .message-text {
+        background: #2e8baf;
+        color: #fff;
+    }
+    .message-assistant .message-text,
+    .message-ai .message-text {
+        background: #2d3548;
+        color: #d4d8dd;
+    }
+    .message-time {
+        color: #708090;
+    }
+
+    /* ---- 内联代码 ---- */
+    code:not(pre code), kbd {
+        background: rgba(46,139,175,0.15);
+        color: #91c8e0;
+    }
+
+    /* ---- 提示框 ---- */
+    .alert:not(.alert-info):not(.alert-warning) {
+        background: #232a3b;
+        border-color: #3d4558;
+        color: #c0c8d0;
+    }
+    .alert-success {
+        background: rgba(46,139,175,0.12);
+        border-color: rgba(46,139,175,0.3);
+        color: #91c8d0;
+    }
+    .alert-danger {
+        background: rgba(200,60,60,0.1);
+        border-color: rgba(200,60,60,0.3);
+        color: #e0a0a0;
+    }
+
+    /* ---- 进度条 ---- */
+    .progress-track, .progress-bg {
+        background: #2d3548;
+    }
+    .progress-fill, .progress-bar-fill {
+        filter: brightness(0.9);
+    }
+
+    /* ---- Tab/导航 ---- */
+    .tab-group, .tab-bar, .tab-row,
+    .nav-tabs:not(.nav), .nav-pills:not(.nav) {
+        border-color: #2d3548;
+    }
+    .tab-item:not(.active), .tab-btn:not(.active) {
+        color: #708090;
+    }
+
+    /* ---- Settings 页面 ---- */
+    .ai-providers-list, .ai-edit-form, .config-note,
+    .api-key-status, .quota-status, .quota-info {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+    .ai-provider-card { background: #232a3b; border-color: #2d3548; }
+    .provider-name { color: #d4d8dd; }
+    .provider-id { color: #91a0b0; background: #2d3548; }
+    .provider-url { color: #708090; }
+    .model-item { background: #1e2433; border-color: #3d4558; }
+    .model-name { color: #c0c8d0; }
+    .form-group label, .form-text { color: #91a0b0; }
+    .embedding-config-section, .local-model-settings { border-color: #2d3548 !important; }
+    .embedding-config-section p, .local-model-settings p { color: #91a0b0; }
+
+    /* ---- DailyCard 页面 ---- */
+    .card-back, .card-front, .card-inner, .card-content, .card-deck, .card-face {
+        background: #232a3b;
+    }
+    .card-hint { color: #91a0b0; }
+    .achievement-overlay, .achievement-popup {
+        background: #232a3b;
+    }
+    .answer-buttons button {
+        border-color: #3d4558;
+        color: #c0c8d0;
+    }
+    .answer-buttons button:hover:not(.active) {
+        background: #363d52;
+    }
+
+    /* ---- LocalModels 页面 ---- */
+    .deploy-card, .deploy-section, .deploy-header, .deploy-step,
+    .deploy-progress, .deploy-logs,
+    .downloaded-section, .downloaded-table-header,
+    .details-sections, .model-item, .model-row {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+    .digest-text { color: #91a0b0; }
+
+    /* ---- HardwareBenchmark 页面 ---- */
+    .data-source-note, .machine-detail, .comparison-note { color: #91a0b0; }
+    .level-excellent { background: rgba(46,139,175,0.15); color: #91c8d0; }
+    .level-good { background: rgba(107,158,117,0.15); color: #91c090; }
+    .level-ok { background: rgba(200,160,60,0.1); color: #d0a040; }
+    .level-bad { background: rgba(200,80,60,0.1); color: #d08060; }
+    /* section/spec/table 卡片 */
+    .section { background: #232a3b; }
+    .section h2 { color: #d4d8dd; }
+    .section-desc { color: #91a0b0; }
+    .machine-card { background: #232a3b; border-color: #3d4558; }
+    .machine-card .card-header { border-color: #3d4558; }
+    .spec-item { background: #232a3b; border-color: #2d3548; }
+    .spec-grid { background: #1e2433; }
+    .comparison-table thead th { background: #232a3b; color: #91a0b0; border-color: #3d4558; }
+    .comparison-table tbody td { border-color: #3d4558; }
+    .comparison-table tbody tr:hover { background: #2a3040; }
+    .current-row { background: rgba(46,139,175,0.1); }
+    .comparison-table tbody tr.current-row { background: rgba(46,139,175,0.1); }
+    .recommendation-item, .recommendation-list { background: #232a3b; border-color: #2d3548; }
+    .rec-icon, .rec-title { color: #d4d8dd; }
+    .data-source-note { background: #232a3b; }
+    .data-source-note h5 { color: #d4d8dd; }
+    .data-source-note code { background: #1e2433; }
+    .tier-badge { background: #2d3548; color: #91a0b0; }
+    .platform-badge.nvidia { background: rgba(107,158,117,0.2); color: #91c090; }
+    .platform-badge.intel { background: rgba(91,120,165,0.2); color: #91a8c0; }
+    .platform-badge.amd { background: rgba(200,80,60,0.2); color: #d08060; }
+    .platform-badge.apple { background: rgba(160,160,160,0.2); color: #a0a0b0; }
+
+    /* ---- ModelBenchmark 页面 ---- */
+    .benchmark-tabs, .result-summary, .summary-card,
+    .prompt-list, .prompt-item, .prompt-text {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+    .prompt-text { color: #c0c8d0; }
+    .kw-match { color: #91c090; }
+    .kw-miss { color: #d08060; }
+
+    /* ---- Achievements / Leaderboard ---- */
+    .learner-chip { background: #2d3548; border-color: #3d4558; }
+    .learner-chip.active { border-color: #2e8baf; }
+    .leaderboard-tab { color: #708090; }
+    .leaderboard-tab.active { color: #d4d8dd; }
+    .rank-gold { background: rgba(224,200,96,0.1); }
+    .rank-silver { background: rgba(192,192,192,0.08); }
+    .rank-bronze { background: rgba(205,127,50,0.08); }
+
+    /* ---- Dashboard (通用 metric/stat) ---- */
+    .metric-value, .stat-number { color: #d4d8dd; }
+    .metric-label, .stat-label { color: #91a0b0; }
+
+    /* ---- Dashboard 家长看板 ---- */
+    .dashboard-page { background: transparent; }
+    .dashboard-page .section h2 { color: #d4d8dd; }
+    .dashboard-page .member-card { background: #232a3b; }
+    .dashboard-page .m-value { color: #d4d8dd; }
+    .dashboard-page .m-label { color: #91a0b0; }
+    .dashboard-page .trend-chart { background: #1e2433; }
+    .dashboard-page .trend-label { color: #91a0b0; }
+    .dashboard-page .trend-value { color: #c0c8d0; }
+    .dist-item { background: #232a3b; border-color: #2d3548; }
+    .dist-label, .dist-value { color: #c0c8d0; }
+    .dist-bar { filter: brightness(0.85); }
+    .recent-ach { background: #232a3b; border-color: #2d3548; }
+    .ra-learner { color: #91a0b0; }
+    .ra-time { color: #708090; }
+    .dashboard-page .loading { color: #91a0b0; }
+
+    /* ---- FamilyHome ---- */
+    .family-hero, .feature-card, .feature-item {
+        background: #232a3b;
+    }
+    .family-hero h1, .family-hero h2 { color: #d4d8dd; }
+    .family-hero p { color: #91a0b0; }
+
+    /* ---- Achievements ---- */
+    .achievement-card, .achievement-grid {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+    .achievement-desc, .achievement-date { color: #91a0b0; }
+
+    /* ---- Leaderboard ---- */
+    .leaderboard-page, .leaderboard-table, .rank-medal {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+    .rank-num { color: #d4d8dd; }
+
+    /* ---- BrowseVault ---- */
+    .playlist-item {
+        background: #232a3b;
+        color: #d4d8dd;
+        border-color: #2d3548;
+    }
+    .playlist-item:hover {
+        background: #2d3548;
+    }
+    .playlist-active {
+        background: #2e8baf;
+        color: #ffffff;
+    }
+    .vault-note-card {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+    .listen-current-card {
+        border-color: #2d3548;
+    }
+    .listen-current-content {
+        color: #91a0b0;
+    }
+    .listen-playlist-container {
+        border-color: #2d3548;
+    }
+    .listen-playlist-header {
+        color: #91a0b0;
+        border-bottom-color: #2d3548;
+        background: #1e2a3a;
+    }
+    .listen-category-header {
+        background: #2a3040;
+        color: #91a0b0;
+        border-bottom-color: #2d3548;
+    }
+    .listen-played-check {
+        color: #5a6575;
+    }
+
+    /* ---- KnowledgeGenerate ---- */
+    .generate-section, .model-option, .model-options {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+    .ai-model-selector { background: #1e2433; border-color: #3d4558; }
+    .model-option.selected { background: rgba(46,139,175,0.2); border-color: rgba(46,139,175,0.5); }
+    .tag-default { background: #2d3548; color: #91a0b0; }
+    .tag-paid { background: rgba(107,158,117,0.15); color: #91c090; }
+    .new-vault-hint { color: #91a0b0; }
+
+    /* ---- LogSettings ---- */
+    .deploy-hint, .hint-content, .port-table,
+    .save-message, .loading-spinner {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+
+    /* ---- Messages ---- */
+    .ai-info-bar, .ai-info-sep, .chat-controls,
+    .ai-not-ready {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+
+    /* ---- Login ---- */
+    .login-page {
+        background: linear-gradient(135deg, #1a2634 0%, #162030 100%);
+    }
+    .login-card {
+        background: #232a3b;
+    }
+    .login-header h1 { color: #d4d8dd; }
+    .login-footer p { color: #708090; }
+
+    /* ---- Tasks ---- */
+    .connection-status { background: #232a3b; color: #c0c8d0; }
+
+    /* ==== 最终批量覆盖 ==== */
+    /* 表格行列 */
+    .downloaded-table-row, .running-table-row, .running-table-header,
+    .downloaded-table-header, .history-table,
+    .comparison-table, .leaderboard-table, .port-table {
+        background: #232a3b;
+    }
+    .downloaded-table-row:nth-child(even), .running-table-row:nth-child(even) {
+        background: rgba(255,255,255,0.03);
+    }
+
+    /* 所有tier/speed/level/platform类 → 降低亮度 */
+    [class*="tier-"]:not(.tier-desc):not(.tier-title):not(.tier-label):not(.tier-recommended),
+    [class*="speed-"], [class*="level-"],
+    [class*="-badge"], .score-badge, .rec-badge, .vram-badge,
+    .platform-badge, .streak-badge {
+        filter: brightness(0.85);
+    }
+
+    /* tier/level 文字色 */
+    .tier-desc, .tier-title, .tier-label, .rec-desc,
+    .platform-model, .platform-name, .spec-label, .spec-value,
+    .sub-text, .tier-review, .tier-cpu, .tier-cpu-only,
+    .tier-range, .tops-value {
+        color: #91a0b0;
+    }
+
+    /* section/group 头 */
+    .tier-group-header, .tier-header, .tier-group,
+    .tier-card, .tier-cards, .tier-model,
+    .tier-recommended, .tier-table-wrapper,
+    .llamacpp-section, .llamacpp-config-form,
+    .load-model-section, .custom-card-form,
+    .config-row, .model-edit-row {
+        background: #232a3b;
+        border-color: #2d3548;
+    }
+
+    /* 平台色暗化 */
+    .amd, .intel, .apple, .nvidia,
+    .tool-llamacpp, .tool-lmstudio, .tool-ollama,
+    .speed-fast, .speed-medium, .speed-slow, .speed-very-slow,
+    .suitability-good, .suitability-ok, .suitability-slow,
+    .btn-forgot, .btn-hard, .btn-remember {
+        filter: brightness(0.7);
+    }
+
+    /* 成就弹窗按钮保色 */
+    .btn-achievement-close, .btn-achievement-next { filter: brightness(0.85); }
+
+    /* 部件状态 */
+    .tool-item, .model-requirements, .model-size,
+    .hw-title, .hw-value, .hw-detail,
+    .memory-summary, .llamacpp-section-title,
+    .preset-label, .preset-checkbox,
+    .card-loading, .no-card, .no-card-icon {
+        color: #91a0b0;
+    }
+
+    /* 表单辅助 */
+    .form-text, .provider-id, .provider-url, .provider-header {
+        color: #91a0b0;
+    }
+
+    /* model tier 文字 */
+    .tier-gb, .tier-model-name, .tier-model-meta, .tier-model-params {
+        color: #c0c8d0;
+    }
+
+    /* ---- Tasks 任务页 ---- */
+    .task-notes-list { background: #1e2433; border-color: #3d4558; }
+    .task-notes-list strong { color: #d4d8dd; }
+    .task-notes-list li, .task-notes-list p { color: #91a0b0; }
+    .btn-secondary { background-color: #3d4558; color: #c0c8d0; border-color: #4a5268; }
+    .btn-secondary:hover { background-color: #4a5268; color: #d4d8dd; }
+    .btn-danger { background-color: #7a2028; color: #e0a0a0; border-color: #8a3038; }
+    .btn-danger:hover { background-color: #8a3038; }
+    .btn-outline-danger { color: #e08080; border-color: rgba(220,53,69,0.3); }
+    .btn-outline-danger:hover { background-color: #7a2028; color: #e0a0a0; border-color: #c94c4c; }
+
+    /* ---- HardwareBenchmark 补充 ---- */
+    .machine-card.tier-cpu-only .tier-badge { background: rgba(160,174,182,0.15); color: #a0aeb6; }
+    .machine-card.tier-low-end .tier-badge { background: rgba(212,165,116,0.15); color: #d4a574; }
+    .machine-card.tier-mid-range .tier-badge { background: rgba(90,184,196,0.15); color: #5ab8c4; }
+    .machine-card.tier-high-end .tier-badge { background: rgba(107,158,117,0.15); color: #6b9e75; }
+    .machine-card.tier-top-tier .tier-badge { background: rgba(90,122,181,0.15); color: #91a8d0; }
+
+    /* ---- Messages/AI对话 ---- */
+    .message.user .message-content { background: #2e8baf; color: #fff; }
+    .message.ai .message-content { background: #2d3548; color: #d4d8dd; }
+    .message.user .message-text { background: #2e8baf; color: #fff; }
+    .message.ai .message-text { background: #2d3548; color: #d4d8dd; }
+    .chat-container { border-color: #3d4558; }
+    .chat-input { background: #232a3b; border-color: #3d4558; }
+    .typing-indicator span { background: #5a6a72; }
+    .message-time { color: #708090 !important; }
+    .msg-action-btn { color: #91a0b0; background: #2d3548; border-color: #3d4558; }
+    .msg-action-btn:hover { background: #363d52; color: #c0c8d0; }
+    .tool-call-badge { background: #2d3548; color: #91a0b0; border-color: #3d4558; }
+    .selector-group { background: #1e2433; border-color: #3d4558; }
+    .selector-group label { color: #91a0b0; }
+    .selector-group select { background: #1e2433; border-color: #3d4558; color: #c0c8d0; }
+    .model-selector-bar { background: #232a3b; border-color: #2d3548; }
+    .local-model-item { background: #1e2433; border-color: #3d4558; }
+    .local-model-item:hover { background: #2a3040; }
+    .local-model-item.active { background: #1a3038; color: #91c8d0; border-color: #2d4558; }
+    .local-model-item.active .local-model-type { background: #2e8baf; }
+    .local-model-size, .local-model-type { color: #91a0b0; }
+    .ai-info-badge { background: linear-gradient(135deg, #1e3040 0%, #1a2a38 100%); color: #91c8d0; border-color: #2d4558; }
+    .ai-info-badge.ai-not-ready { background: linear-gradient(135deg, #302820 0%, #382a20 100%); color: #d0a070; border-color: #4a3a28; }
+    /* Markdown 渲染元素 */
+    .message-text h1, .message-text h2, .message-text h3, .message-text h4 { color: #d4d8dd; }
+    .message-text blockquote { background: #1e2433; color: #91a0b0; }
+    .message-text code { background: #232a3b; color: #91c8d0; }
+    .message-text th { background: #232a3b; }
+    .message-text td { border-color: #3d4558; }
+    .message-text strong { color: #d4d8dd; }
+    .message-text hr { border-color: #3d4558; }
+    .message-text a { color: #91c8d0; }
+
+    /* ---- AiMetrics ---- */
+    .metrics-cards .metric-card { background: #232a3b; }
+    .metrics-section .trend-chart { background: #232a3b; }
+    .metric-value, .metric-trend { color: #d4d8dd; }
+    .metric-unit, .metric-period { color: #91a0b0; }
+    .metric-label { color: #91a0b0; }
+
+    /* ---- Search 搜索页 ---- */
+    .search-result-item { background: #232a3b; border-color: #2d3548; }
+    .search-result-item:hover { background: #2a3040; }
+    .search-highlight { color: #d4d8dd; }
+    .search-meta { color: #708090; }
+    .search-empty { color: #91a0b0; }
+    .ai-answer-box { background: #1e2433; border-color: #3d4558; color: #c0c8d0; }
+
+    /* ---- 搜索页补充 ---- */
+    .result-group { background: #232a3b; border-color: #2d3548; }
+    .group-items { background: #232a3b; }
+    .group-items .result-item { background: #1e2433; border-color: #3d4558; }
+    .group-items .result-item:hover { background: #2a3040; }
+    .result-header h3 { color: #d4d8dd; }
+    .result-item h3 { color: #d4d8dd; }
+    .result-item .preview { color: #91a0b0; }
+    .result-item .meta { color: #708090; }
+    .search-tips { background: #232a3b; border-color: #2d3548; }
+    .search-tips h3 { color: #d4d8dd; }
+    .search-tips ul, .search-tips li { color: #91a0b0; border-color: #2d3548; }
+    .search-chips { background: #232a3b; }
+    .search-chip { background: #2d3548; border-color: #3d4558; color: #91a0b0; }
+    .search-chip:hover { background: #363d52; color: #c0c8d0; }
+    .chip-remove { color: #708090; }
+    .chip-remove:hover { color: #d4d8dd; background: #3d4558; }
+
+    /* ---- 搜索结果分类条 ---- */
+    .group-header { background: #2d3548; border-color: #3d4558; }
+    .group-header:hover { background: #363d52; }
+    .group-header h3 { color: #d4d8dd; }
+
+    /* ---- FamilyHome 最近浏览/搜索 ---- */
+    .note-card { background: #232a3b; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .note-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    .section-loading { color: #91a0b0; }
+    .section-empty { color: #708090; }
+
+    /* ---- Devices 设备管理 ---- */
+    .device-card { background: #232a3b; border-color: #2d3548; }
+    .device-name { color: #d4d8dd; }
+    .device-meta, .device-status { color: #91a0b0; }
+    .device-tag { background: #2d3548; color: #91a0b0; }
+    .device-actions { border-color: #2d3548; }
+    .device-pairing { background: #1e2433; border-color: #3d4558; }
+
+    /* ---- FamilyHome 卡片文字 ---- */
+    .card h3, .card-title { color: #d4d8dd; }
+}
+
+/* =============================================
+   暗色模式 — 家庭系列页面（FamilyLanding/Checkin/DailyCard/
+   Achievements/Leaderboard/Dashboard/Quiz）
+   ============================================= */
+[data-bs-theme="dark"] {
+    /* ---- FamilyLanding 家庭首页 ---- */
+    .family-landing .landing-header h1 { color: #e0e8ee; }
+    .family-landing .landing-subtitle { color: #91a0b0; }
+    .family-landing .loading { color: #91a0b0; }
+    .family-landing .empty-guide { background: #1e2433; border-color: #3d4558; }
+    .family-landing .empty-guide h2 { color: #d4d8dd; }
+    .family-landing .empty-guide p { color: #91a0b0; }
+    .family-landing .guide-button { background: #2e8baf; color: #fff; }
+    .family-landing .summary-card { background: #232a3b; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .family-landing .summary-value { color: #e0e8ee; }
+    .family-landing .summary-label { color: #91a0b0; }
+    .family-landing .section-header h2 { color: #d4d8dd; }
+    .family-landing .section-link { color: #5ab0d4; }
+    .family-landing .member-card { background: #232a3b; border-color: #3d4558; }
+    .family-landing .member-name { color: #e0e8ee; }
+    .family-landing .m-label { color: #91a0b0; }
+    .family-landing .m-value { color: #d4d8dd; }
+    .family-landing .daily-card-shortcut { background: #232a3b; border-color: #3d4558; }
+    .family-landing .shortcut-title { color: #d4d8dd; }
+    .family-landing .shortcut-desc { color: #91a0b0; }
+    .family-landing .leaderboard-preview { background: #232a3b; border-color: #3d4558; }
+    .family-landing .leaderboard-row { border-color: #2d3548; }
+    .family-landing .lb-name { color: #d4d8dd; }
+    .family-landing .lb-score { color: #91a0b0; }
+    .family-landing .section-empty { background: #1e2433; border-color: #3d4558; }
+    .family-landing .section-empty p { color: #91a0b0; }
+
+    /* ---- Onboarding 向导 ---- */
+    .onboarding-wizard .onboarding-header { background: #1e2433; }
+    .onboarding-wizard .onboarding-card { background: #232a3b; border-color: #3d4558; }
+    .onboarding-wizard .onboarding-card h2 { color: #e0e8ee; }
+    .onboarding-wizard .onboarding-card p { color: #91a0b0; }
+    .onboarding-wizard .onboarding-form input { background: #1e2433; border-color: #3d4558; color: #d4d8dd; }
+    .onboarding-wizard .ob-step { background: #2d3548; color: #91a0b0; }
+    .onboarding-wizard .ob-step.active { background: #2e8baf; color: #fff; }
+
+    /* ---- Checkin 学习打卡 ---- */
+    .checkin-page .streak-banner { background: linear-gradient(135deg, rgba(46,139,175,0.25), rgba(46,125,50,0.2)); }
+    .checkin-page .streak-section { background: #232a3b; border-color: #3d4558; }
+    .checkin-page .streak-num { color: #ffb74d; }
+    .checkin-page .streak-label { color: #c0c8d0; }
+    .checkin-page .streak-motivation { color: #91a0b0; }
+    .checkin-page .today-section h2 { color: #d4d8dd; }
+    .checkin-page .today-section h3 { color: #d4d8dd; }
+    .checkin-page .cal-cell { background: #232a3b; border-color: #2d3548; }
+    .checkin-page .cal-date { color: #c0c8d0; }
+    .checkin-page .cal-cell.today { border-color: #2e8baf; }
+    .checkin-page .cal-mark { background: #2e8baf; }
+    .checkin-page .cal-makeup-hint { color: #91a0b0; }
+    .checkin-page .record-item { background: #232a3b; border-color: #2d3548; }
+    .checkin-page .record-item:hover { background: #2d3548; }
+    .checkin-page .rec-content { color: #d4d8dd; }
+    .checkin-page .rec-time, .checkin-page .rec-source { color: #91a0b0; }
+    .checkin-page .rec-source { background: rgba(46,125,50,0.2); color: #81c784; }
+    .checkin-page .record-detail { background: #1e2433; border-radius: 6px; }
+    .checkin-page .detail-row { color: #c0c8d0; }
+    .checkin-page .empty-state { background: #1e2433; border-color: #3d4558; }
+    .checkin-page .empty-text { color: #91a0b0; }
+    .checkin-page .learner-group { background: #232a3b; border-color: #3d4558; }
+    .checkin-page .learner-group h3 { color: #d4d8dd; }
+    .checkin-page .group-count { color: #91a0b0; }
+    .checkin-page .makeup-dialog { background: #232a3b; border-color: #3d4558; }
+    .checkin-page .makeup-dialog h3 { color: #e0e8ee; }
+    .checkin-page .makeup-quota { color: #91a0b0; }
+    .checkin-page .checkin-error { background: rgba(244,67,54,0.12); color: #ff8a80; border-color: rgba(244,67,54,0.3); }
+
+    /* ---- DailyCard 每日卡片 ---- */
+    .daily-card-page .progress-section { background: #232a3b; border-color: #3d4558; }
+    .daily-card-page .progress-text { color: #d4d8dd; }
+    .daily-card-page .progress-fill { background: #2e8baf; }
+    .daily-card-page .card-container .card-content { background: #232a3b; border-color: #3d4558; }
+    .daily-card-page .card-face { background: #232a3b; border-color: #3d4558; }
+    .daily-card-page .card-back { background: #1e2433; border-color: #3d4558; }
+    .daily-card-page .card-content h3, .daily-card-page .card-content h4 { color: #e0e8ee; }
+    .daily-card-page .card-content p { color: #c0c8d0; }
+    .daily-card-page .card-deck { color: #91a0b0; }
+    .daily-card-page .card-tags .tag { background: #2d3548; color: #5ab0d4; }
+    .daily-card-page .no-card { background: #1e2433; border-color: #3d4558; }
+    .daily-card-page .no-card-icon, .daily-card-page .no-card p { color: #91a0b0; }
+    .daily-card-page .vault-selector { background: #232a3b; border-color: #3d4558; color: #d4d8dd; }
+    .daily-card-page .card-hint, .daily-card-page .flip-hint { color: #91a0b0; }
+    .daily-card-page .streak-badge { background: rgba(46,139,175,0.2); color: #5ab0d4; }
+    .daily-card-page .streak-count { color: #ffb74d; }
+    .daily-card-page .custom-card-form { background: #1e2433; border-color: #3d4558; }
+    .daily-card-page .custom-card-form label { color: #c0c8d0; }
+    .daily-card-page .custom-card-form input, .daily-card-page .custom-card-form textarea { background: #232a3b; border-color: #3d4558; color: #d4d8dd; }
+    .daily-card-page .btn-hard, .daily-card-page .btn-forgot, .daily-card-page .btn-remember { color: #fff; }
+    .daily-card-page .btn-remember { background: #2e7d32; }
+    .daily-card-page .btn-hard { background: #d84315; }
+    .daily-card-page .btn-forgot { background: #5d4037; }
+    .daily-card-page .tier-bronze { background: #4a3826; color: #e0c080; }
+    .daily-card-page .tier-silver { background: #3a3f4a; color: #c0c8d0; }
+    .daily-card-page .tier-gold { background: #4a3d1e; color: #e0c860; }
+    .daily-card-page .tier-platinum { background: #1e3a44; color: #7fd4e8; }
+
+    /* ---- Achievements 成就 ---- */
+    .achievements-page .toolbar { background: #232a3b; border-color: #3d4558; }
+    .achievements-page .achievement-card { background: #232a3b; border-color: #3d4558; }
+    .achievements-page .achievement-title { color: #e0e8ee; }
+    .achievements-page .achievement-desc { color: #91a0b0; }
+    .achievements-page .achievement-tier { color: #5ab0d4; }
+    .achievements-page .achievement-progress-bar { background: #2d3548; }
+    .achievements-page .achievement-progress-fill { background: #2e8baf; }
+    .achievements-page .stat-card { background: #232a3b; border-color: #3d4558; }
+    .achievements-page .reward-section { background: #232a3b; border-color: #3d4558; }
+    .achievements-page .add-learner-form { background: #1e2433; border-color: #3d4558; }
+    .achievements-page .achievement-card.tier-gold { background: #4a3d1e; border-color: #e0c860; }
+    .achievements-page .achievement-card.tier-diamond { background: #1e3a44; border-color: #b9f2ff; }
+    .achievements-page .learner-chip { background: #232a3b; border-color: #3d4558; color: #d4d8dd; }
+    .achievements-page .achievement-date { color: #91a0b0; }
+    .achievements-page .reward-empty, .achievements-page .reward-icon { color: #91a0b0; }
+
+    /* ---- Leaderboard 排行榜 ---- */
+    .leaderboard-page .toolbar, .leaderboard-page .view-switch { background: #232a3b; border-color: #3d4558; }
+    .leaderboard-page .leaderboard-table { background: #232a3b; border-color: #3d4558; }
+    .leaderboard-page .leaderboard-row { background: #232a3b; border-color: #2d3548; }
+    .leaderboard-page .leaderboard-row.top-1, .leaderboard-page .leaderboard-row.top-2, .leaderboard-page .leaderboard-row.top-3 { background: rgba(46,139,175,0.08); }
+    .leaderboard-page .leaderboard-row.top-1 { border-color: #e0c860; }
+    .leaderboard-page .leaderboard-row.top-2 { border-color: #a0a8b0; }
+    .leaderboard-page .leaderboard-row.top-3 { border-color: #cd7f32; }
+    .leaderboard-page .role-tabs { background: #1e2433; border-color: #3d4558; }
+    .leaderboard-page .leaderboard-row .name, .leaderboard-page .leaderboard-row .stat-value { color: #d4d8dd; }
+    .leaderboard-page .leaderboard-row .stat-label { color: #91a0b0; }
+    .leaderboard-page .rank-num { color: #91a0b0; }
+    .leaderboard-page .self-compare { background: #232a3b; border-color: #3d4558; }
+    .leaderboard-page .compare-card { background: #232a3b; border-color: #3d4558; }
+    .leaderboard-page .cmp-label { color: #91a0b0; }
+    .leaderboard-page .cmp-value { color: #e0e8ee; }
+    .leaderboard-page .cmp-delta { color: #91a0b0; }
+    .leaderboard-page .solo-guide { background: #1e2433; border-color: #3d4558; }
+    .leaderboard-page .solo-guide p { color: #91a0b0; }
+    .leaderboard-page .stats .stat { background: #232a3b; border-color: #3d4558; }
+    .leaderboard-page .stat-label { color: #91a0b0; }
+    .leaderboard-page .stat-value { color: #e0e8ee; }
+    .leaderboard-page .tab { background: #2d3548; color: #91a0b0; }
+    .leaderboard-page .tab.active { background: #2e8baf; color: #fff; }
+    .leaderboard-page .view-tab { background: #2d3548; color: #91a0b0; }
+    .leaderboard-page .view-tab.active { background: #2e8baf; color: #fff; }
+
+    /* ---- Dashboard 家长看板 ---- */
+    .dashboard-page .dashboard-first-screen { background: #1e2433; border-color: #3d4558; }
+    .dashboard-page .family-summary-card { background: #232a3b; border-color: #3d4558; }
+    .dashboard-page .dashboard-card { background: #232a3b; border-color: #3d4558; }
+    .dashboard-page .dashboard-card h3 { color: #d4d8dd; }
+    .dashboard-page .section { background: #232a3b; border-color: #3d4558; }
+    .dashboard-page .dashboard-stat-value { color: #e0e8ee; }
+    .dashboard-page .dashboard-stat-label { color: #91a0b0; }
+    .dashboard-page .trend-arrow-up { color: #4caf50; }
+    .dashboard-page .trend-arrow-down { color: #f44336; }
+    .dashboard-page .activity-item { background: #232a3b; border-color: #2d3548; }
+    .dashboard-page .activity-text { color: #d4d8dd; }
+    .dashboard-page .activity-time { color: #91a0b0; }
+    .dashboard-page .timeline-item { background: #1e2433; border-color: #2d3548; }
+    .dashboard-page .timeline-title { color: #d4d8dd; }
+    .dashboard-page .timeline-desc { color: #91a0b0; }
+    .dashboard-page .section h2 { color: #d4d8dd; }
+    .dashboard-page .empty-state { background: #1e2433; border-color: #3d4558; }
+    .dashboard-page .empty-text { color: #91a0b0; }
+    .dashboard-page .dashboard-error { background: rgba(244,67,54,0.12); color: #ff8a80; border-color: rgba(244,67,54,0.3); }
+    .dashboard-page .member-chip { background: #232a3b; border-color: #3d4558; color: #d4d8dd; }
+    .dashboard-page .selector-label { color: #91a0b0; }
+    .dashboard-page .skeleton-card, .dashboard-page .skeleton-header, .dashboard-page .skeleton-line { background: #2d3548; }
+
+    /* ---- Quiz 家庭测验 ---- */
+    .quiz-page .quiz-setup, .quiz-page .quiz-round, .quiz-page .quiz-settlement { background: #232a3b; border-color: #3d4558; }
+    .quiz-page .question-card { background: #232a3b; border-color: #3d4558; }
+    .quiz-page .q-front, .quiz-page .q-asker { color: #e0e8ee; }
+    .quiz-page .q-front { background: #1e2433; }
+    .quiz-page .quiz-question { color: #e0e8ee; }
+    .quiz-page .quiz-option { background: #2d3548; border-color: #3d4558; color: #c0c8d0; }
+    .quiz-page .quiz-option:hover { background: #363d52; }
+    .quiz-page .quiz-option.selected { border-color: #2e8baf; background: rgba(46,139,175,0.2); }
+    .quiz-page .answer-feedback { color: #91a0b0; }
+    .quiz-page .answer-feedback.correct { background: rgba(46,125,50,0.2); color: #81c784; }
+    .quiz-page .answer-feedback.wrong { background: rgba(244,67,54,0.15); color: #ff8a80; }
+    .quiz-page .correct, .quiz-page .quiz-correct { color: #4caf50; }
+    .quiz-page .quiz-wrong { color: #f44336; }
+    .quiz-page .scoreboard { background: #1e2433; border-color: #3d4558; }
+    .quiz-page .sp-name { color: #d4d8dd; }
+    .quiz-page .sp-score { color: #e0e8ee; }
+    .quiz-page .round-num { color: #91a0b0; }
+    .quiz-page .quiz-empty { background: #1e2433; border-color: #3d4558; }
+    .quiz-page .quiz-empty p { color: #91a0b0; }
+    .quiz-page .settle-winner { color: #ffb74d; }
+    .quiz-page .correct-answer { color: #91a0b0; }
+
+    /* ---- 全局 cta-btn CTA 按钮（Dashboard/Checkin/GrowthTimeline/DashboardFirstScreen） ---- */
+    /* 注：用 !important 确保覆盖 Dashboard.razor / Checkin.razor scoped 样式的亮色默认值 */
+    .cta-btn { background: #1e8f6f !important; color: #fff !important; }
+
+    /* ---- Dashboard 空提示 + GrowthTimeline 空态 ---- */
+    .empty-hint { color: #91a0b0; }
+    .empty-hint p { color: #91a0b0; }
+
+    /* ---- Onboarding 向导 guide-button ---- */
+    .onboarding-wizard .guide-button { background: #2e8baf !important; color: #fff !important; }
+
+    /* ---- KnowledgeGenerate 灵感主题卡片网格 ---- */
+    /* 注：用 !important 确保覆盖 KnowledgeGenerate.razor scoped 样式亮色默认值 */
+    .topic-card { background: #232a3b !important; border-color: #3d4558 !important; }
+    .topic-card:hover { border-color: #5ab0d4 !important; box-shadow: 0 0 0 2px rgba(90,176,212,0.15) !important; }
+    .topic-cat { color: #5ab0d4 !important; background: rgba(46,139,175,0.15) !important; }
+    .topic-title { color: #d4d8dd !important; }
+    .topic-desc { color: #91a0b0 !important; }
+}
+
+/* 移动端 AI 状态徽章越界修复（审计 P3：375px 下左边缘被切） */
+@media (max-width: 575px) {
+    .ai-status-container,
+    .ai-status-badge {
+        left: auto !important;
+        right: auto !important;
+        position: static !important;
+        margin-left: 0 !important;
+        min-width: 0 !important;
+    }
+}
+
+/* =============================================
+   二维码全屏放大（点击二维码触发，见 wwwroot/js/qr-tool.js）
+   覆盖层直接挂在 body 上，所以样式必须放全局 app.css
+   ============================================= */
+body.baihua-qr-fullscreen-open {
+    overflow: hidden;
+}
+
+.baihua-qr-fullscreen {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.85);
+    cursor: zoom-out;
+    overflow: auto;
+    animation: baihuaQrFullscreenIn 0.12s ease-out;
+}
+
+@keyframes baihuaQrFullscreenIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* 白底卡片同时充当二维码静默区：内边距由 JS 按二维码边长计算 */
+.baihua-qr-fullscreen-box {
+    flex-shrink: 0;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.baihua-qr-fullscreen-code canvas,
+.baihua-qr-fullscreen-code img {
+    display: block;
+    max-width: 100%;
+}
+
+.baihua-qr-fullscreen-hint {
+    color: #d8dee6;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.baihua-qr-fullscreen-close {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.baihua-qr-fullscreen-close:hover,
+.baihua-qr-fullscreen-close:focus-visible {
+    background: rgba(255, 255, 255, 0.32);
+    outline: none;
+}

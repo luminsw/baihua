@@ -1,0 +1,291 @@
+@using Baihua.Web.Services
+@using Microsoft.AspNetCore.Components.Web
+@inject AuthService AuthService
+@inject CapabilityService CapabilityService
+@inject GlobalStateService GlobalStateService
+@inject NavigationManager NavigationManager
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@implements IDisposable
+
+@* ============================================================
+   菜单数据模型：每个菜单项必须声明所属分类（Scene），
+   漏填会编译报错；场景推断也从同一份数据查表生成，
+   避免“新增页面忘记同步分类”导致跳错分类。
+   ============================================================ *@
+@{
+    var visibleItems = AllItems.Where(i => !string.IsNullOrEmpty(i.RequiredFeature)
+        ? _featureVisibility.TryGetValue(i.RequiredFeature, out var v) && v
+        : true).ToList();
+    var sceneItems = visibleItems.Where(i => i.Scene == _activeScene).ToList();
+}
+
+<!-- FAM-32 移动端汉堡菜单（≤768px 显示，点击展开导航） -->
+<button class="family-menu-toggle" @onclick="ToggleMobileMenu">☰</button>
+
+<!-- 场景选择器 -->
+<div class="scene-selector">
+    @foreach (var scene in Scenes)
+    {
+        <button class="scene-btn @(_activeScene == scene.Id ? "active" : "")" @onclick="() => SetScene(scene.Id)">
+            <span class="scene-icon">@scene.Icon</span>
+            <span class="scene-label">@L[scene.LabelKey]</span>
+        </button>
+    }
+</div>
+
+<!-- 当前场景的菜单分组 -->
+@if (sceneItems.Count > 0)
+{
+    foreach (var group in sceneItems.GroupBy(i => i.Group))
+    {
+        <div class="nav-group">
+            @if (!string.IsNullOrEmpty(group.Key))
+            {
+                <div class="nav-group-label">@L[group.Key!]</div>
+            }
+            @foreach (var item in group)
+            {
+                @if (item.External)
+                {
+                    @* 外部应用（如 Open WebUI）：新窗口直接打开，不嵌 iframe *@
+                    <a class="nav-link" href="@item.Href" target="_blank" rel="noopener">
+                        <span class="nav-icon @item.Icon"></span>
+                        <span>@L[item.LabelKey]</span>
+                    </a>
+                }
+                else
+                {
+                    <NavLink href="@item.Href" Match="@(item.MatchAll ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                        <span class="nav-icon @item.Icon"></span>
+                        <span>@L[item.LabelKey]</span>
+                    </NavLink>
+                }
+            }
+        </div>
+    }
+}
+else if (_activeScene == 0)
+{
+    <div class="nav-group">
+        <NavLink href="" Match="NavLinkMatch.All">
+            <span class="nav-icon bi bi-house-door"></span>
+            <span>@L["Nav_Home"]</span>
+        </NavLink>
+    </div>
+}
+
+<hr class="nav-divider" />
+
+@code {
+    private int _activeScene = 0;
+    private readonly Dictionary<string, bool> _featureVisibility = new();
+
+    /// <summary>场景定义（Id 用于分类与推断）</summary>
+    private sealed record SceneDef(int Id, string Icon, string LabelKey);
+
+    private static readonly SceneDef[] Scenes =
+    [
+        new(0, "📚", "Nav_KnowledgeBase"),
+        new(1, "👨‍👩‍👧", "Nav_Family"),
+        new(2, "🤖", "Nav_AiLab")
+    ];
+
+    /// <summary>
+    /// 菜单项定义。Scene 为必填参数——新增菜单漏填分类会编译报错。
+    /// RequiredFeature 非空时需能力检测通过才显示。
+    /// </summary>
+    // External=true：指向独立应用（新窗口打开，不走 Blazor 客户端路由 / 不嵌 iframe）
+    private sealed record NavMenuItem(string Href, string LabelKey, string Icon, int Scene, string? Group = null, string? RequiredFeature = null, bool MatchAll = false, bool External = false);
+
+    private static readonly NavMenuItem[] AllItems =
+    [
+        // 📚 知识库（场景 0）
+        new("", "Nav_Home", "bi bi-house-door", 0, MatchAll: true),
+        new("browse", "Nav_BrowseKnowledge", "bi bi-folder2-open", 0),
+        new("vaults", "Nav_ManageVaults", "bi bi-folder2-open", 0),
+        new("cards", "Nav_MemoryCards", "bi bi-layers", 0),
+        new("search", "Nav_Search", "bi bi-search", 0),
+        new("tasks", "Nav_Tasks", "bi bi-list-check", 0),
+
+
+        // 👨‍👩‍👧 家庭（场景 1）
+        new("family", "Nav_FamilyHome", "bi bi-house-heart", 1),
+        new("medical-records", "Nav_MedicalRecords", "bi bi-journal-medical", 1),
+        new("family-budget", "Nav_FamilyBudget", "bi bi-wallet2", 1),
+        new("todo", "Nav_TodoList", "bi bi-check2-square", 1),
+        new("checkin", "Nav_Checkin", "bi bi-check2-circle", 1),
+        new("daily-card", "Nav_DailyCard", "bi bi-journal-bookmark", 1),
+        new("learn", "Nav_QuizLearning", "bi bi-journal-check", 1),
+        new("achievements", "Nav_Achievements", "bi bi-trophy", 1),
+        new("leaderboard", "Nav_Leaderboard", "bi bi-joystick", 1),
+        new("dashboard", "Nav_ParentDashboard", "bi bi-bar-chart-line", 1),
+
+        // 🤖 AI 实验室（场景 2）
+        new("open-webui", "Nav_OpenWebUi", "bi bi-chat-dots", 2, Group: "Nav_ChatLabel", External: true),
+        new("master-chat", "Nav_VirtualMaster", "bi bi-mortarboard", 2, Group: "Nav_ChatLabel"),
+        new("local-models", "Nav_LocalModels", "bi bi-cpu", 2, Group: "Nav_ResearchLabel", RequiredFeature: "LocalModelsPage"),
+        new("stock-advisor", "Nav_StockAdvisor", "bi bi-graph-up", 2, Group: "Nav_ResearchLabel"),
+        new("ai-metrics", "Nav_AiMetrics", "bi bi-graph-up-arrow", 2, Group: "Nav_ResearchLabel"),
+        new("settings", "Nav_AiSettings", "bi bi-gear", 2, Group: "Nav_ConfigLabel"),
+        new("prompt-templates", "Nav_PromptTemplates", "bi bi-chat-square-text", 2, Group: "Nav_ConfigLabel"),
+
+        // 不显示但参与场景推断的内部路由
+        new("master-stage", "Nav_VirtualMaster", "bi bi-mortarboard", 2, RequiredFeature: "__hidden__"),
+        new("generate", "Nav_AiChat", "bi bi-chat-dots", 2, RequiredFeature: "__hidden__"),
+        new("log-settings", "Nav_AiSettings", "bi bi-gear", 0, RequiredFeature: "__hidden__"),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 根据当前路由推断场景（查表）
+        _activeScene = InferScene(NavigationManager.ToBaseRelativePath(NavigationManager.Uri));
+
+        // 能力检测（只查被引用的特性）
+        var features = AllItems.Select(i => i.RequiredFeature)
+            .Where(f => !string.IsNullOrEmpty(f) && f != "__hidden__")
+            .Distinct();
+        foreach (var feature in features)
+        {
+            try { _featureVisibility[feature!] = await CapabilityService.CanShowAsync(feature!); }
+            catch { _featureVisibility[feature!] = true; }
+        }
+
+        // 订阅路由变化
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void SetScene(int scene)
+    {
+        _activeScene = scene;
+        // 场景切换要真正“到达”该场景：若当前页面不属于目标场景，跳到场景首页
+        // （0=知识库/首页，1=家庭，2=AI 实验室）
+        var currentPath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/');
+        if (InferScene(currentPath) != scene)
+        {
+            var home = scene switch
+            {
+                1 => "family",
+                2 => "master-chat",
+                _ => ""
+            };
+            NavigationManager.NavigateTo(home);
+        }
+    }
+
+    private bool _mobileMenuOpen;
+
+    private void ToggleMobileMenu()
+    {
+        _mobileMenuOpen = !_mobileMenuOpen;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        var inferred = InferScene(NavigationManager.ToBaseRelativePath(e.Location));
+        if (inferred != _activeScene)
+        {
+            _activeScene = inferred;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// 从菜单注册表推断场景：命中 Href 前缀的菜单项即返回其 Scene。
+    /// 与菜单显示共用同一数据源，不存在“菜单有但推断漏了”的情况。
+    /// </summary>
+    private static int InferScene(string relativePath)
+    {
+        // 按 Href 长度降序匹配，避免 "search" 误配 "search-xxx" 之类的短前缀
+        foreach (var item in AllItems
+                     .Where(i => i.Href.Length > 0)
+                     .OrderByDescending(i => i.Href.Length))
+        {
+            if (relativePath.StartsWith(item.Href, StringComparison.OrdinalIgnoreCase))
+                return item.Scene;
+        }
+        return 0; // 默认知识库
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}
+
+<style>
+    .scene-selector {
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        margin-bottom: 1rem;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 8px;
+    }
+
+    .scene-btn {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 8px 4px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: rgba(180, 200, 215, 0.6);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 0.75rem;
+    }
+
+    .scene-btn:hover {
+        background: rgba(46, 139, 175, 0.2);
+        color: rgba(220, 235, 245, 0.95);
+    }
+
+    .scene-btn.active {
+        background: rgba(46, 139, 175, 0.35);
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .scene-icon {
+        font-size: 1.2rem;
+        line-height: 1;
+    }
+
+    .scene-label {
+        font-size: 0.7rem;
+        letter-spacing: 0.02em;
+    }
+
+    .nav-divider {
+        border: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        margin: 1rem 0.5rem;
+        opacity: 0.5;
+    }
+
+    /* FAM-32 响应式：移动端汉堡菜单（≤768px 折叠侧边栏，点击展开） */
+    .family-menu-toggle {
+        display: none;
+        background: none;
+        border: none;
+        color: rgba(220, 235, 245, 0.9);
+        font-size: 1.4rem;
+        cursor: pointer;
+        padding: 0.5rem 0.75rem;
+    }
+
+    @@media (max-width: 768px) {
+        .family-menu-toggle {
+            display: block;
+        }
+        .nav-menu-mobile {
+            display: none;
+        }
+        .nav-menu-mobile.open {
+            display: block;
+        }
+    }
+</style>

@@ -1,0 +1,20 @@
+@using Baihua.Contracts.Achievements
+
+<div class="member-selector">
+    <span class="selector-label">成员：</span>
+    <button class="member-chip @(SelectedLearnerId is null ? "active" : "")"
+            @onclick="() => OnSelected.InvokeAsync(null)">全部成员</button>
+    @foreach (var learner in Learners)
+    {
+        <button class="member-chip @(SelectedLearnerId == learner.Id ? "active" : "")"
+                @onclick="() => OnSelected.InvokeAsync(learner.Id)">
+            @learner.AvatarEmoji @learner.Name
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public List<LearnerDto> Learners { get; set; } = new();
+    [Parameter] public int? SelectedLearnerId { get; set; }
+    [Parameter] public EventCallback<int?> OnSelected { get; set; }
+}

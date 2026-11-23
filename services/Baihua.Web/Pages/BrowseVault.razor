@@ -1,0 +1,1072 @@
+@page "/browse"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject IApiService ApiService
+@inject VaultsService VaultsService
+@inject DevicesService DevicesService
+@inject NavigationManager Navigation
+@inject ILogger<BrowseVault> Logger
+@inject IJSRuntime JSRuntime
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@inject Baihua.Web.Services.IRecentNotesService RecentNotesService
+@using Markdig
+@using Microsoft.JSInterop
+@using Baihua.Contracts.Vaults
+@using Baihua.Contracts.Ai
+@using Baihua.Web.Services
+@implements IAsyncDisposable
+
+<PageTitle>@L["BrowseVault_PageTitle"]</PageTitle>
+
+<div class="container mt-4">
+    <h2 class="mb-4">@L["BrowseVault_Title"]</h2>
+
+    <!-- 最近浏览 -->
+    @if (!isLoadingRecentNotes && recentNotes?.Any() == true)
+    {
+        <div class="mb-4">
+            <h5 class="mb-2 text-muted">@L["FamilyHome_RecentNotes"]</h5>
+            <div class="recent-notes-inline">
+                @foreach (var note in recentNotes.Take(6))
+                {
+                    <div class="note-chip" @onclick="() => NavigateToNote(note.Path)">
+                        <span class="chip-title">@note.Title</span>
+                        <span class="chip-meta">📁 @note.Path</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (isLoadingVaults)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">@L["Common_Loading"]</p>
+        </div>
+    }
+    else if (vaults.Count == 0)
+    {
+        <div class="alert alert-info">
+            @L["BrowseVault_NoVaultsPrefix"]<a href="vaults" class="alert-link">@L["BrowseVault_CreateOrImportVault"]</a>。
+        </div>
+    }
+    else if (string.IsNullOrEmpty(selectedVaultId))
+    {
+        <!-- 行业过滤栏 -->
+        @if (allIndustries.Count > 0)
+        {
+            <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+                <span class="text-muted small">@L["BrowseVault_IndustryLabel"]</span>
+                <button class="btn btn-sm @(selectedIndustries.Count == 0 ? "btn-primary" : "btn-outline-secondary")" @onclick="ClearIndustryFilter">
+                    @L["BrowseVault_AllIndustries"]
+                </button>
+                @foreach (var industry in allIndustries)
+                {
+                    <button class="btn btn-sm @(selectedIndustries.Contains(industry) ? "btn-success" : "btn-outline-success")" @onclick="() => ToggleIndustryFilter(industry)"
+                    style="font-size: 0.8em; padding: 0.2em 0.6em;">
+                        @industry
+                    </button>
+                }
+            </div>
+        }
+
+        <!-- 标签过滤栏 -->
+        @if (allTags.Count > 0)
+        {
+            <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+                <span class="text-muted small">@L["BrowseVault_TagLabel"]</span>
+                <button class="btn btn-sm @(selectedTags.Count == 0 ? "btn-primary" : "btn-outline-secondary")" @onclick="ClearTagFilter">
+                    @L["BrowseVault_AllTags"]
+                </button>
+                @foreach (var tag in allTags)
+                {
+                    <button class="btn btn-sm @(selectedTags.Contains(tag) ? "btn-info text-dark" : "btn-outline-info")" @onclick="() => ToggleTagFilter(tag)"
+                    style="font-size: 0.8em; padding: 0.2em 0.6em;"
+                    >
+                        @tag
+                    </button>
+                }
+            </div>
+        }
+
+        <!-- 来源过滤栏 -->
+        @if (allSources.Count > 0)
+        {
+            <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+                <span class="text-muted small">@L["BrowseVault_SourceLabel"]</span>
+                <button class="btn btn-sm @(selectedSources.Count == 0 ? "btn-primary" : "btn-outline-secondary")" @onclick="ClearSourceFilter">
+                    @L["BrowseVault_AllSources"]
+                </button>
+                @foreach (var source in allSources)
+                {
+                    <button class="btn btn-sm @(selectedSources.Contains(source) ? "btn-success" : "btn-outline-success")" @onclick="() => ToggleSourceFilter(source)"
+                    style="font-size: 0.8em; padding: 0.2em 0.6em;">
+                        @(source == "mobile" ? L["BrowseVault_MobilePush"] : L["BrowseVault_Local"])
+                    </button>
+                }
+            </div>
+        }
+
+        <!-- 知识库列表（文件夹卡片形式） -->
+        <div class="row g-3">
+            @foreach (var v in FilteredVaults)
+            {
+                <div class="col-md-3 col-sm-4 col-6">
+                    <div class="card h-100 vault-folder-card">
+                        <div class="card-body text-center py-4">
+                            <div class="fs-1 mb-2" @onclick="() => SelectVault(v.Id)" style="cursor:pointer;">📚</div>
+                            <div class="fw-bold text-truncate" @onclick="() => SelectVault(v.Id)" style="cursor:pointer;">@v.Name</div>
+                            <div class="mt-1 d-flex flex-wrap justify-content-center gap-1">
+                                @if (v.Source == "mobile")
+                                {
+                                    <span class="badge bg-info" style="font-size: 0.6em;">@L["BrowseVault_MobilePush"]</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-light text-dark border" style="font-size: 0.6em;">@L["BrowseVault_Local"]</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(v.Industry))
+                                {
+                                    <span class="badge bg-secondary" style="font-size: 0.6em;">@v.Industry</span>
+                                }
+                            </div>
+                            @if (v.Tags?.Any() == true)
+                            {
+                                <div class="mt-1 d-flex flex-wrap justify-content-center gap-1">
+                                    @foreach (var tag in v.Tags)
+                                    {
+                                        <span class="badge bg-secondary" style="font-size: 0.65em;">@tag</span>
+                                    }
+                                </div>
+                            }
+                            <div class="mt-2">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => StartListening(v.Id, v.Name)" title="@L["BrowseVault_ListenTitle"]">
+                                    @L["BrowseVault_Listen"]
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- 已选择知识库，显示面包屑 + 目录内容 -->
+        <div class="d-flex align-items-center mb-3 gap-2">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="BackToVaultList">
+                @L["BrowseVault_BackToList"]
+            </button>
+            <span class="text-muted">|</span>
+            <strong>@currentVaultName</strong>
+        </div>
+
+        <!-- 面包屑 -->
+        <nav aria-label="breadcrumb" class="mb-3">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="javascript:void(0)" @onclick="GoToRoot">📁 @currentVaultName</a>
+                </li>
+                @if (!string.IsNullOrEmpty(currentPath))
+                {
+                    var parts = currentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                    var acc = "";
+                    for (int i = 0; i < parts.Length; i++)
+                    {
+                        acc = string.IsNullOrEmpty(acc) ? parts[i] : $"{acc}/{parts[i]}";
+                        var localAcc = acc;
+                        <li class="breadcrumb-item">
+                            <a href="javascript:void(0)" @onclick="@(() => NavigateTo(localAcc))">@parts[i]</a>
+                        </li>
+                    }
+                }
+            </ol>
+        </nav>
+
+        @if (isLoading)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2 text-muted">@L["Common_Loading"]</p>
+            </div>
+        }
+        else if (browseItems.Count == 0)
+        {
+            <div class="alert alert-light border">@L["BrowseVault_DirectoryEmpty"]</div>
+        }
+        else
+        {
+            <div class="row g-3">
+                @foreach (var item in browseItems)
+                {
+                    <div class="col-md-3 col-sm-4 col-6">
+                        @if (item.IsDirectory)
+                        {
+                            <div class="card h-100 vault-folder-card" @onclick="() => NavigateTo(item.Path)">
+                                <div class="card-body text-center py-4">
+                                    <div class="fs-1 mb-2">📁</div>
+                                    <div class="fw-bold text-truncate">@item.Name</div>
+                                    <small class="text-muted">@L["BrowseVault_Folder"]</small>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="card h-100 vault-note-card" @onclick="() => OpenNote(item)">
+                                <div class="card-body text-center py-4">
+                                    <div class="fs-1 mb-2">📝</div>
+                                    <div class="fw-bold text-truncate">@item.Name</div>
+                                    <small class="text-muted">@item.Modified?.ToString("yyyy-MM-dd")</small>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+<!-- 笔记详情弹窗 -->
+@if (showNoteModal && selectedNoteItem != null)
+{
+    <div class="modal fade show" style="display:block; background:rgba(0,0,0,0.5);" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">📝 @selectedNoteItem.Name</h5>
+                    <button type="button" class="btn-close" @onclick="CloseNote"></button>
+                </div>
+                <div class="modal-body">
+                    @if (noteContent == null)
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary"></div>
+                        </div>
+                    }
+                    else
+                    {
+                        @if (noteContent.AiGenerated)
+                        {
+                            <div class="mb-3 d-flex flex-wrap gap-1 align-items-center">
+                                <span class="badge bg-info">@L["BrowseVault_AiGenerated"]</span>
+                                @if (!string.IsNullOrEmpty(noteContent.AiProvider))
+                                {
+                                    <span class="badge bg-light text-dark border">@noteContent.AiProvider</span>
+                                }
+                                @if (!string.IsNullOrEmpty(noteContent.AiModel))
+                                {
+                                    <span class="badge bg-light text-dark border">@noteContent.AiModel</span>
+                                }
+                                @if (noteContent.GeneratedAt.HasValue)
+                                {
+                                    <span class="badge bg-light text-dark border">@noteContent.GeneratedAt.Value.ToString("yyyy-MM-dd HH:mm")</span>
+                                }
+                            </div>
+                        }
+                        @if (noteContent.Tags?.Any() == true)
+                        {
+                            <div class="mb-3">
+                                @foreach (var tag in noteContent.Tags)
+                                {
+                                    <span class="badge bg-secondary me-1">@tag</span>
+                                }
+                            </div>
+                        }
+                        <div class="note-markdown-content">
+                            @((MarkupString)RenderMarkdown(noteContent.Content))
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseNote">@L["Common_Close"]</button>
+                    <button class="btn btn-primary" @onclick="OpenInDetailPage">@L["BrowseVault_OpenInDetailPage"]</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+}
+
+<!-- 听知识库弹窗 -->
+@if (showListeningModal)
+{
+    <div class="modal fade show" style="display:block; background:rgba(0,0,0,0.5);" tabindex="-1" @onkeydown="OnListeningKeyDown" @onkeydown:preventDefault>
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@L["BrowseVault_ListenVaultTitle", listeningVaultName]</h5>
+                    <button type="button" class="btn-close" @onclick="CloseListening" aria-label="@L["Common_Close"]"></button>
+                </div>
+                <div class="modal-body">
+                    @if (listeningPlaylist.Count == 0)
+                    {
+                        <div class="text-center py-4">
+                            <p class="text-muted">@L["BrowseVault_VaultNoNotes"]</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mb-4 listen-current-card">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="text-muted small">@(listeningCurrentIndex + 1) / @listeningPlaylist.Count</span>
+                                <span class="badge @(isPlaying ? "bg-primary" : "bg-secondary")">@(isPlaying ? L["BrowseVault_Playing"] : L["BrowseVault_Paused"])</span>
+                            </div>
+                            <h4 style="margin-top:0;">@listeningPlaylist[listeningCurrentIndex].Title</h4>
+                            <div class="listen-current-content">
+                                @StripMarkdown(StripFrontmatter(listeningPlaylist[listeningCurrentIndex].Content ?? ""))
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(listeningError))
+                        {
+                            <div class="alert alert-warning py-2 small">⚠️ @listeningError</div>
+                        }
+
+                        @if (ttsVoices.Count > 0)
+                        {
+                            <div class="mb-3 d-flex align-items-center gap-2">
+                                <label class="form-label mb-0 text-muted small">@L["BrowseVault_Voice"]</label>
+                                <select class="form-select form-select-sm" style="width:auto;flex:1;" @bind="selectedVoice">
+                                    @foreach (var v in ttsVoices)
+                                    {
+                                        <option value="@v.Id">@v.Name（@(v.Language == "zh" ? "中文" : "英文")・@(v.Gender == "female" ? "女" : "男")）</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+
+                        <div class="mb-3 d-flex justify-content-center gap-2">
+                            <button class="btn btn-outline-secondary" @onclick="PlayPrev" disabled="@(listeningCurrentIndex == 0)">
+                                @L["BrowseVault_Previous"]
+                            </button>
+                            <button class="btn btn-primary" @onclick="TogglePlayPause">
+                                @(isPlaying ? L["BrowseVault_Pause"] : L["BrowseVault_Play"])
+                            </button>
+                            <button class="btn btn-outline-secondary" @onclick="PlayNext" disabled="@(listeningCurrentIndex >= listeningPlaylist.Count - 1)">
+                                @L["BrowseVault_Next"]
+                            </button>
+                        </div>
+
+                        <div class="listen-playlist-container">
+                            <div class="listen-playlist-header">@L["BrowseVault_Playlist"]</div>
+                            @{
+                                string? lastCategory = null;
+                            }
+                            @foreach (var (index, item) in listeningPlaylist.Select((item, index) => (index, item)))
+                            {
+                                @if (!string.IsNullOrEmpty(item.Category) && item.Category != lastCategory)
+                                {
+                                    lastCategory = item.Category;
+                                    <div class="listen-category-header">📁 @item.Category</div>
+                                }
+                                <button @onclick="() => JumpToNote(index)" 
+                                        class="playlist-item @(index == listeningCurrentIndex ? "playlist-active" : "")">
+                                    <span style="display:flex;align-items:center;gap:6px;">
+                                        @if (playedIndices.Contains(index) && index != listeningCurrentIndex)
+                                        {
+                                            <span class="listen-played-check">✓</span>
+                                        }
+                                        <span>@(index + 1).</span>
+                                        <span>@item.Title</span>
+                                    </span>
+                                    @if (index == listeningCurrentIndex && isPlaying)
+                                    {
+                                        <span>▶</span>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseListening">@L["Common_Close"]</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+<style>
+    .vault-folder-card, .vault-note-card {
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        border: 1px solid rgba(0,0,0,0.08);
+    }
+    .vault-folder-card:hover, .vault-note-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .vault-note-card {
+        background: #f5f8fa;
+    }
+    .note-markdown-content img {
+        max-width: 100%;
+        height: auto;
+    }
+    .note-markdown-content pre {
+        background: #f5f5f5;
+        padding: 1rem;
+        border-radius: 6px;
+        overflow-x: auto;
+    }
+    .note-markdown-content code {
+        background: #e8eef2;
+        padding: 0.15rem 0.35rem;
+        border-radius: 3px;
+        font-size: 0.9em;
+    }
+    .note-markdown-content blockquote {
+        border-left: 4px solid #d8e2e8;
+        padding-left: 1rem;
+        color: #5a6a72;
+        margin-left: 0;
+    }
+    .note-markdown-content table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+    }
+    .note-markdown-content th, .note-markdown-content td {
+        border: 1px solid #d8e2e8;
+        padding: 0.5rem;
+    }
+    .note-markdown-content th {
+        background: #f5f8fa;
+    }
+    .playlist-item {
+        width: 100%;
+        padding: 10px 16px;
+        border: none;
+        background: white;
+        color: #333;
+        cursor: pointer;
+        text-align: left;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .playlist-item:hover {
+        background: #f5f8fa;
+    }
+    .playlist-active {
+        background: #0d6efd;
+        color: white;
+    }
+
+    .listen-current-card {
+        border: 1px solid #eee;
+        border-radius: 6px;
+        padding: 16px;
+    }
+    .listen-current-content {
+        color: #666;
+        font-size: 14px;
+        max-height: 200px;
+        overflow-y: auto;
+        line-height: 1.7;
+        white-space: pre-wrap;
+    }
+    .listen-playlist-container {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #eee;
+        border-radius: 6px;
+    }
+    .listen-playlist-header {
+        padding: 8px 16px;
+        color: #666;
+        font-size: 14px;
+        border-bottom: 1px solid #eee;
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 1;
+    }
+    .listen-category-header {
+        padding: 6px 16px;
+        background: #f0f2f5;
+        color: #555;
+        font-size: 12px;
+        font-weight: 600;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    .listen-played-check {
+        color: #999;
+        font-size: 12px;
+    }
+
+    .recent-notes-inline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .note-chip {
+        background: #e8eef2;
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        max-width: 220px;
+    }
+
+    .note-chip:hover {
+        background: #2e8baf;
+        color: white;
+    }
+
+    .note-chip .chip-title {
+        font-weight: 500;
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .note-chip .chip-meta {
+        font-size: 0.75rem;
+        color: #5a6a72;
+        display: block;
+        margin-top: 0.15rem;
+    }
+
+    [data-bs-theme="dark"] .note-chip {
+        background: #2d3548;
+        color: #c0c8d0;
+    }
+
+    [data-bs-theme="dark"] .note-chip:hover {
+        background: #2e8baf;
+        color: white;
+    }
+
+    [data-bs-theme="dark"] .note-chip .chip-meta {
+        color: #708090;
+    }
+</style>
+
+@code {
+    public void Dispose()
+    {
+        // 释放 JS 回调引用的 DotNetObjectReference，避免页面关闭后 JS 回调悬空
+        _dotNetRef?.Dispose();
+        _dotNetRef = null;
+    }
+
+    private List<VaultConfig> vaults = new();
+    private string selectedVaultId = "";
+    private string currentPath = "";
+    private List<VaultBrowseItem> browseItems = new();
+    private bool isLoading = false;
+    private bool isLoadingVaults = false;
+    private HashSet<string> selectedTags = new();
+    private HashSet<string> selectedIndustries = new();
+    private HashSet<string> selectedSources = new();
+
+    private List<string> allSources => vaults
+        .Select(v => string.IsNullOrWhiteSpace(v.Source) ? "local" : v.Source)
+        .Distinct()
+        .OrderBy(s => s)
+        .ToList();
+
+    private List<string> allTags => vaults
+        .SelectMany(v => v.Tags ?? new List<string>())
+        .Distinct()
+        .OrderBy(t => t)
+        .ToList();
+
+    private List<string> allIndustries => vaults
+        .Select(v => v.Industry)
+        .Where(i => !string.IsNullOrWhiteSpace(i))
+        .Distinct()
+        .OrderBy(i => i)
+        .ToList();
+
+    private List<VaultConfig> FilteredVaults => vaults
+        .Where(v => selectedIndustries.Count == 0 || selectedIndustries.Contains(v.Industry ?? ""))
+        .Where(v => selectedTags.Count == 0 || (v.Tags != null && selectedTags.All(tag => v.Tags.Contains(tag))))
+        .Where(v => selectedSources.Count == 0 || selectedSources.Contains(string.IsNullOrWhiteSpace(v.Source) ? "local" : v.Source))
+        .ToList();
+
+    private string currentVaultName => vaults.FirstOrDefault(v => v.Id == selectedVaultId)?.Name ?? "";
+
+    private bool showNoteModal = false;
+    private VaultBrowseItem? selectedNoteItem = null;
+    private VaultNoteResponse? noteContent = null;
+
+    private bool showListeningModal = false;
+    private string listeningVaultId = "";
+    private string listeningVaultName = "";
+    private List<(string Path, string Title, string? Content, string Category)> listeningPlaylist = new();
+    private int listeningCurrentIndex = 0;
+    private bool isPlaying = false;
+    private HashSet<int> playedIndices = new();
+
+
+    private bool isLoadingRecentNotes = true;
+    private List<RecentNoteItem>? recentNotes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoadingVaults = true;
+        isLoadingRecentNotes = true;
+        try
+        {
+            var response = await VaultsService.GetVaultsAsync(forceRefresh: true);
+            vaults = response.Vaults;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "加载知识库列表失败");
+        }
+        isLoadingVaults = false;
+
+        try
+        {
+            recentNotes = await RecentNotesService.GetRecentNotes();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "加载最近浏览失败");
+            recentNotes = new List<RecentNoteItem>();
+        }
+        finally
+        {
+            isLoadingRecentNotes = false;
+        }
+    }
+
+    private void SelectVault(string vaultId)
+    {
+        selectedVaultId = vaultId;
+        currentPath = "";
+        browseItems.Clear();
+        _ = LoadBrowseItems();
+    }
+
+    private void BackToVaultList()
+    {
+        selectedVaultId = "";
+        currentPath = "";
+        browseItems.Clear();
+        selectedTags.Clear();
+        selectedIndustries.Clear();
+        selectedSources.Clear();
+    }
+
+    private void ToggleTagFilter(string tag)
+    {
+        if (selectedTags.Contains(tag))
+            selectedTags.Remove(tag);
+        else
+            selectedTags.Add(tag);
+    }
+
+    private void ClearTagFilter()
+    {
+        selectedTags.Clear();
+    }
+
+    private void ToggleIndustryFilter(string industry)
+    {
+        if (selectedIndustries.Contains(industry))
+            selectedIndustries.Remove(industry);
+        else
+            selectedIndustries.Add(industry);
+    }
+
+    private void ClearIndustryFilter()
+    {
+        selectedIndustries.Clear();
+    }
+
+    private void ToggleSourceFilter(string source)
+    {
+        if (selectedSources.Contains(source))
+            selectedSources.Remove(source);
+        else
+            selectedSources.Add(source);
+    }
+
+    private void ClearSourceFilter()
+    {
+        selectedSources.Clear();
+    }
+
+    private async Task LoadBrowseItems()
+    {
+        if (string.IsNullOrEmpty(selectedVaultId)) return;
+        isLoading = true;
+        try
+        {
+            var response = await ApiService.GetVaultBrowseAsync(selectedVaultId, currentPath);
+            if (response != null)
+            {
+                browseItems = response.Items;
+            }
+            else
+            {
+                browseItems = new List<VaultBrowseItem>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "浏览知识库失败");
+            browseItems = new List<VaultBrowseItem>();
+        }
+        isLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task GoToRoot()
+    {
+        await NavigateTo("");
+    }
+
+    private async Task NavigateTo(string path)
+    {
+        currentPath = path;
+        await LoadBrowseItems();
+    }
+
+    private void NavigateToNote(string path)
+    {
+        Navigation.NavigateTo($"note?id={Uri.EscapeDataString(path)}");
+    }
+
+    private async Task OpenNote(VaultBrowseItem note)
+    {
+        selectedNoteItem = note;
+        noteContent = null;
+        showNoteModal = true;
+        try
+        {
+            noteContent = await ApiService.ReadVaultNoteAsync(note.Path, selectedVaultId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "读取笔记失败: {Path}", note.Path);
+        }
+    }
+
+    private void CloseNote()
+    {
+        showNoteModal = false;
+        selectedNoteItem = null;
+        noteContent = null;
+    }
+
+
+    private async Task StartListening(string vaultId, string vaultName)
+    {
+        try
+        {
+            listeningVaultId = vaultId;
+            listeningVaultName = vaultName;
+            listeningPlaylist = new List<(string Path, string Title, string? Content, string Category)>();
+            listeningCurrentIndex = 0;
+            isPlaying = false;
+            playedIndices.Clear();
+            listeningError = "";
+
+            var batch = await ApiService.GetVaultNotesBatchAsync(vaultId);
+            if (batch?.Notes != null)
+            {
+                foreach (var note in batch.Notes)
+                {
+                    var category = ExtractCategory(note.Path);
+                    listeningPlaylist.Add((note.Path, note.Title, note.Content, category));
+                }
+            }
+
+            if (listeningPlaylist.Count > 0)
+            {
+                if (ttsVoices.Count == 0)
+                {
+                    ttsVoices = await ApiService.GetTtsVoicesAsync() ?? new();
+                }
+                showListeningModal = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "StartListening failed");
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private DotNetObjectReference<BrowseVault>? _dotNetRef = null;
+    private int _speakSeq = 0; // 递增序号，防止过快的 onend 回调导致无限循环
+    private bool _isPlayingSpeech = false; // 防止 OnSpeechEnded 重入
+    private string listeningError = "";
+    private List<TtsVoice> ttsVoices = new();
+    private string selectedVoice = "zf_xiaoxiao";
+
+    /// <summary>剥离 YAML frontmatter（AI 生成的笔记含 ai_provider/ai_model 等元数据，朗读/展示不应出现）</summary>
+    private static string StripFrontmatter(string content)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(content)) return content ?? "";
+            var trimmed = content.TrimStart();
+            if (!trimmed.StartsWith("---", StringComparison.Ordinal)) return content;
+            var end = trimmed.IndexOf("\n---", StringComparison.Ordinal);
+            if (end < 0) return content;
+            var after = trimmed[(end + 4)..];
+            return after.TrimStart('\r', '\n');
+        }
+        catch
+        {
+            // 极端输入兜底：剥离失败就原样返回，绝不影响朗读/展示
+            return content;
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnSpeechFailed(int seq, string message)
+    {
+        if (seq != _speakSeq) return;
+        // 防重入：只有正在播放时才处理失败（避免与 OnSpeechEnded 双重回调竞争）
+        if (!_isPlayingSpeech) return;
+        _speakSeq++; // 使后续回调失效
+        _isPlayingSpeech = false;
+        isPlaying = false;
+        listeningError = message;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task TogglePlayPause()
+    {
+        if (isPlaying)
+        {
+            await StopPlaying();
+        }
+        else
+        {
+            await PlayCurrentNote();
+        }
+    }
+
+    private async Task JumpToNote(int index)
+    {
+        listeningCurrentIndex = index;
+        playedIndices.Add(index);
+        await PlayCurrentNote();
+    }
+
+    private async Task PlayCurrentNote()
+    {
+        if (listeningCurrentIndex >= listeningPlaylist.Count)
+        {
+            isPlaying = false;
+            _isPlayingSpeech = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _speakSeq++;
+        var currentSeq = _speakSeq;
+        _isPlayingSpeech = true;
+        playedIndices.Add(listeningCurrentIndex);
+
+        var item = listeningPlaylist[listeningCurrentIndex];
+        _dotNetRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            var textToSpeak = $"{item.Title}. {StripMarkdown(StripFrontmatter(item.Content ?? ""))}";
+
+            var audioBytes = await ApiService.SynthesizeSpeechAsync(textToSpeak, selectedVoice);
+            if (audioBytes != null && audioBytes.Length > 44)
+            {
+                var base64 = Convert.ToBase64String(audioBytes);
+                await JSRuntime.InvokeVoidAsync("playAudioFromBase64", base64, _dotNetRef, currentSeq);
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("speakText", textToSpeak, _dotNetRef, currentSeq);
+            }
+        }
+        catch (Exception ex)
+        {
+            // 语音异常不允许打崩 Blazor circuit：记录日志、停止播放并提示
+            Logger.LogWarning(ex, "TTS/speakText 调用失败");
+            _speakSeq++;
+            _isPlayingSpeech = false;
+            isPlaying = false;
+            listeningError = "语音播放失败：" + ex.Message;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        isPlaying = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnSpeechEnded(int seq)
+    {
+        // 序号不匹配说明是旧的回调（用户已点击下一篇/暂停等），忽略
+        if (seq != _speakSeq) return;
+        
+        // 防止重入
+        if (!_isPlayingSpeech) return;
+        _isPlayingSpeech = false;
+
+        isPlaying = false;
+        if (listeningCurrentIndex < listeningPlaylist.Count - 1)
+        {
+            listeningCurrentIndex++;
+            await PlayCurrentNote();
+        }
+        else
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PlayNext()
+    {
+        if (listeningCurrentIndex < listeningPlaylist.Count - 1)
+        {
+            listeningCurrentIndex++;
+            await PlayCurrentNote();
+        }
+        else
+        {
+            isPlaying = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PlayPrev()
+    {
+        if (listeningCurrentIndex > 0)
+        {
+            listeningCurrentIndex--;
+            await PlayCurrentNote();
+        }
+    }
+
+    private async Task StopPlaying()
+    {
+        _speakSeq++; // 使正在进行的 OnSpeechEnded 回调失效
+        _isPlayingSpeech = false;
+        await JSRuntime.InvokeVoidAsync("stopSpeaking");
+        isPlaying = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CloseListening()
+    {
+        await StopPlaying();
+        showListeningModal = false;
+        listeningPlaylist.Clear();
+        playedIndices.Clear();
+        _dotNetRef?.Dispose();
+        _dotNetRef = null;
+    }
+
+    private async Task OnListeningKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await CloseListening();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (isPlaying)
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("stopSpeaking");
+            }
+            catch { }
+        }
+        _dotNetRef?.Dispose();
+        _dotNetRef = null;
+    }
+
+    private static string ExtractCategory(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "";
+        var normalized = path.Replace('\\', '/');
+        var lastSlash = normalized.LastIndexOf('/');
+        if (lastSlash <= 0) return "";
+        var dir = normalized.Substring(0, lastSlash);
+        var parts = dir.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 0 ? string.Join(" / ", parts) : "";
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex _reCodeBlock = new(@"```[\s\S]*?```", System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reInlineCode = new(@"`[^`]+`", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reTableSep = new(@"^\|[\s:|-]+\|$", System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reTableRow = new(@"^\|(.+)\|$", System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reWikiLink = new(@"\[\[([^\]]*\/)?([^\]]+)\]\]", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reMdLink = new(@"\[([^\]]+)\]\([^)]+\)", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reUrl = new(@"https?://\S+", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reImage = new(@"!\[[^\]]*\]\([^)]+\)", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reHeading = new(@"^#{1,6}\s+", System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reBlockquote = new(@"^>\s*", System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reBold1 = new(@"\*\*(.+?)\*\*", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reBold2 = new(@"__(.+?)__", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reItalic1 = new(@"\*(.+?)\*", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reItalic2 = new(@"_(.+?)_", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reStrike = new(@"~~(.+?)~~", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reHtml = new(@"<[^>]+>", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reHr = new(@"^[-*_]{3,}\s*$", System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex _reMultiNewline = new(@"\n{3,}", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string StripMarkdown(string markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown)) return "";
+
+        var result = markdown;
+
+        result = _reCodeBlock.Replace(result, "");
+        result = _reInlineCode.Replace(result, m => m.Value.Trim('`'));
+        result = _reTableSep.Replace(result, "");
+        result = _reTableRow.Replace(result, m =>
+        {
+            var cells = m.Groups[1].Value.Split('|');
+            return string.Join("，", cells.Select(c => c.Trim()).Where(c => !string.IsNullOrWhiteSpace(c)));
+        });
+        result = _reWikiLink.Replace(result, "$2");
+        result = _reMdLink.Replace(result, "$1");
+        result = _reUrl.Replace(result, "");
+        result = _reImage.Replace(result, "");
+        result = _reHeading.Replace(result, "");
+        result = _reBlockquote.Replace(result, "");
+        result = _reBold1.Replace(result, "$1");
+        result = _reBold2.Replace(result, "$1");
+        result = _reItalic1.Replace(result, "$1");
+        result = _reItalic2.Replace(result, "$1");
+        result = _reStrike.Replace(result, "$1");
+        result = _reHtml.Replace(result, "");
+        result = _reHr.Replace(result, "");
+        result = _reMultiNewline.Replace(result, "\n\n");
+        result = result.Trim();
+
+        return result;
+    }
+
+    private void OpenInDetailPage()
+    {
+        if (selectedNoteItem == null) return;
+        var vaultParam = string.IsNullOrEmpty(selectedVaultId) ? "" : $"&vaultId={Uri.EscapeDataString(selectedVaultId)}";
+        Navigation.NavigateTo($"note?id={Uri.EscapeDataString(selectedNoteItem.Path)}{vaultParam}");
+    }
+
+
+    private static string RenderMarkdown(string markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown)) return "";
+        var pipeline = new MarkdownPipelineBuilder()
+            .UseAdvancedExtensions()
+            .Build();
+        return Markdown.ToHtml(markdown, pipeline);
+    }
+}

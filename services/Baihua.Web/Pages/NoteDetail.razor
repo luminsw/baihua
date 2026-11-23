@@ -1,0 +1,584 @@
+@page "/note"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject NavigationManager Navigation
+@inject Microsoft.Extensions.Logging.ILogger<NoteDetail> Logger
+@inject Baihua.Web.Services.IRecentNotesService RecentNotesService
+@inject Baihua.Web.Services.IFavoritesService FavoritesService
+@inject Baihua.Web.Services.IUserPreferencesService UserPreferencesService
+@inject Baihua.Web.Services.SearchStateService SearchStateService
+@using Baihua.Web.Services
+@inject IApiService ApiService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+@using Markdig
+@using Microsoft.JSInterop
+
+<PageTitle>@L["NoteDetail_PageTitle"]</PageTitle>
+
+@if (isLoading)
+{
+    <div class="loading">
+        <div class="spinner"></div>
+        <span>@L["Common_Loading"]</span>
+    </div>
+}
+else if (note == null && !string.IsNullOrEmpty(noteId))
+{
+    <div class="error-message">
+        <h1>❌ @L["NoteDetail_NoteNotFound"]</h1>
+        <p>@L["NoteDetail_NoteNotFoundPath", noteId]</p>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem;">
+            <button @onclick="GoBack" class="btn btn-secondary">@L["NoteDetail_BackToSearch"]</button>
+            @if (isGeneratingMissingNote)
+            {
+                <button disabled class="btn btn-primary">
+                    <span class="spinner" style="display:inline-block; width:16px; height:16px; border-width:2px; vertical-align:middle;"></span>
+                    @L["NoteDetail_AiGenerating"]
+                </button>
+                <p style="color: #888; font-size: 0.85rem; margin-top: 0.5rem; width: 100%;">
+                    @L["NoteDetail_AiGeneratingHint"]
+                </p>
+            }
+            else
+            {
+                <button @onclick="GenerateMissingNote" class="btn btn-primary">✨ @L["NoteDetail_AiGenerateNote"]</button>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(generateMessage))
+        {
+            <div class="alert @(generateSuccess ? "alert-success" : "alert-danger")" style="margin-top: 1rem; padding: 0.75rem; border-radius: 4px;">
+                @generateMessage
+            </div>
+        }
+    </div>
+}
+else if (note != null)
+{
+    <div class="note-detail">
+        @* 面包屑导航 *@
+        <div class="breadcrumb">
+            <a href="" @onclick:preventDefault @onclick="GoHome" class="breadcrumb-item">🏠 @L["Nav_Home"]</a>
+            <span class="breadcrumb-separator">/</span>
+            <a href="search" class="breadcrumb-item">🔍 @L["Nav_Search"]</a>
+            <span class="breadcrumb-separator">/</span>
+            @if (!string.IsNullOrEmpty(note?.Path))
+            {
+                var pathParts = note.Path.Split('/');
+                for (var i = 0; i < pathParts.Length - 1; i++)
+                {
+                    var category = string.Join("/", pathParts.Take(i + 1));
+                    <a href="search?q=@category" class="breadcrumb-item">@pathParts[i]</a>
+                    <span class="breadcrumb-separator">/</span>
+                }
+            }
+            <span class="breadcrumb-current">@note?.Title</span>
+        </div>
+
+            <div class="note-header">
+                <button @onclick="GoBack" class="btn btn-link">@L["NoteDetail_Back"]</button>
+                <div class="note-actions">
+                <button @onclick="ToggleFavorite" class="btn @(isFavorite ? "btn-warning" : "btn-outline-warning")">
+                    <span>@(isFavorite ? "⭐" : "☆")</span> @(isFavorite ? L["NoteDetail_Favorited"] : L["NoteDetail_Favorite"])
+                </button>
+                <button @onclick="EditNote" class="btn btn-secondary">
+                    <span>✏️</span> @(isEditing ? L["NoteDetail_CancelEdit"] : L["NoteDetail_Edit"])
+                </button>
+                <button @onclick="GenerateCardsForNote" class="btn btn-outline-info" disabled="@isGeneratingCards">
+                    @(isGeneratingCards ? L["NoteDetail_Generating"] : L["NoteDetail_GenerateAnkiCards"])
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(generateCardsMessage))
+        {
+            <div class="alert @(generateCardsMessage.StartsWith("失败") || generateCardsMessage.Contains("失败") ? "alert-danger" : "alert-info") py-2 small">@generateCardsMessage</div>
+        }
+
+        <div class="note-content-card">
+            <h1 class="note-title">@note?.Title</h1>
+            
+            @if (note == null || string.IsNullOrEmpty(note.Content))
+            {
+                <div class="alert alert-warning" style="background: #f5eee0; border: 1px solid #d4a574; padding: 1rem; border-radius: 4px; margin: 1rem 0;">
+                    <strong>⚠️ @L["NoteDetail_Note"]</strong> @L["NoteDetail_EmptyContent"]
+                    <br/>
+                    <small>@L["NoteDetail_Path"] @noteId</small>
+                </div>
+            }
+            
+            <div class="note-meta">
+                <span class="meta-item">📁 @note?.Path</span>
+                <span class="meta-item">📅 @note?.Modified.ToString("yyyy-MM-dd HH:mm")</span>
+            </div>
+
+            @if (isEditing)
+            {
+                <div class="note-edit-form">
+                    <div class="form-group">
+                        <label for="editContent">@L["NoteDetail_NoteContent"]</label>
+                        <textarea id="editContent" 
+                                  @bind="editContent"
+                                  class="form-control" 
+                                  rows="15"
+                                  style="font-size: @(fontSize)px; line-height: 1.8; font-family: monospace;">
+                        </textarea>
+                    </div>
+                    <div class="edit-actions">
+                        <button @onclick="SaveNote" class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(editContent)">
+                            💾 @L["Common_Save"]
+                        </button>
+                        <button @onclick="CancelEdit" class="btn btn-secondary">
+                            ❌ @L["Common_Cancel"]
+                        </button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="note-body" style="font-size: @(fontSize)px; line-height: 1.8;">
+                    @if (!string.IsNullOrEmpty(note?.Content))
+                    {
+                        var htmlContent = RenderMarkdownWithWikiLinks(StripFrontmatter(note.Content));
+                        @((MarkupString)htmlContent)
+                    }
+                    else
+                    {
+                        <p><em>@L["NoteDetail_NoContent"]</em></p>
+                    }
+                </div>
+            }
+
+            @if (note?.Tags != null && note.Tags.Any())
+            {
+                <div class="note-tags">
+                    @foreach (var tag in note.Tags)
+                    {
+                        <span class="tag">@tag</span>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <div class="empty-state">
+        <h1>📝 @L["NoteDetail_PageTitle"]</h1>
+        <p>@L["NoteDetail_SelectNoteHint"]</p>
+        <button @onclick="GoToSearch" class="btn btn-primary">@L["NoteDetail_GoToSearch"]</button>
+    </div>
+}
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "id")]
+    public string? id { get; set; }
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "vaultId")]
+    public string? vaultId { get; set; }
+
+    private string noteId = "";
+    private string selectedVaultId = "";
+    private string noteVaultId = "";
+    private NoteInfo? note;
+    private bool isLoading = false;
+    private bool isFavorite = false;
+    private double fontSize = 16.0;
+    private bool isEditing = false;
+    private bool isGeneratingCards;
+    private string? generateCardsMessage;
+
+    /// <summary>为本笔记所在知识库生成 Anki 卡片（对齐 /cards 空态引导的真实入口）</summary>
+    private async Task GenerateCardsForNote()
+    {
+        if (string.IsNullOrEmpty(noteVaultId))
+        {
+            generateCardsMessage = L["NoteDetail_NoVaultToGenerate"];
+            return;
+        }
+        isGeneratingCards = true;
+        generateCardsMessage = "";
+        try
+        {
+            var result = await ApiService.GenerateAllCardsAsync(noteVaultId);
+            generateCardsMessage = result != null
+                ? string.Format(L["NoteDetail_CardTaskSubmitted"],
+                    string.IsNullOrEmpty(result.TaskId)
+                        ? L["NoteDetail_CheckTasksPage"]
+                        : string.Format(L["NoteDetail_TaskShortId"], result.TaskId[..Math.Min(8, result.TaskId.Length)]))
+                : L["NoteDetail_CardTaskCreateFailed"];
+        }
+        catch (Exception ex)
+        {
+            generateCardsMessage = string.Format(L["NoteDetail_CardGenerationFailed"], ex.Message);
+        }
+        finally
+        {
+            isGeneratingCards = false;
+        }
+    }
+
+    private string editContent = "";
+
+    /// <summary>剥离 YAML frontmatter（AI 生成的笔记含 ai_provider/ai_model 等元数据，阅读视图不应展示）</summary>
+    private static string StripFrontmatter(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return content ?? "";
+        var trimmed = content.TrimStart();
+        if (!trimmed.StartsWith("---", StringComparison.Ordinal)) return content;
+        var end = trimmed.IndexOf("\n---", StringComparison.Ordinal);
+        if (end < 0) return content;
+        var after = trimmed[(end + 4)..];
+        return after.TrimStart('\r', '\n');
+    }
+    private bool isGeneratingMissingNote = false;
+    private string generateMessage = "";
+    private bool generateSuccess = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 加载字体大小偏好
+        fontSize = await UserPreferencesService.GetFontSize();
+
+        // 从查询参数获取路径，如：/note?id=方剂/桂枝汤
+        if (!string.IsNullOrEmpty(id))
+        {
+            noteId = Uri.UnescapeDataString(id).Trim('/');
+            Logger.LogInformation("加载笔记：{NoteId}", noteId);
+
+            // 优先使用 URL 中指定的知识库
+            if (!string.IsNullOrEmpty(vaultId))
+            {
+                selectedVaultId = vaultId;
+                noteVaultId = vaultId;
+                await LoadNote();
+            }
+            else
+            {
+                // 未指定知识库时，遍历所有知识库查找笔记
+                await LoadNoteFromAnyVault();
+            }
+        }
+        else
+        {
+            Logger.LogWarning("未提供笔记 ID");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && note != null)
+        {
+            // 检查是否已收藏
+            isFavorite = await FavoritesService.IsFavorite(note.Path);
+            StateHasChanged();
+        }
+
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private async Task LoadNote()
+    {
+        isLoading = true;
+        try
+        {
+            note = await LoadNoteFromPath(selectedVaultId);
+
+            if (note == null)
+            {
+                Logger.LogWarning("笔记未找到：{NoteId}", noteId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "加载失败：{NoteId}", noteId);
+            note = null;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadNoteFromAnyVault()
+    {
+        isLoading = true;
+        try
+        {
+            var vaultsResponse = await VaultsService.GetVaultsAsync();
+            foreach (var vault in vaultsResponse.Vaults)
+            {
+                var found = await LoadNoteFromPath(vault.Id);
+                if (found != null)
+                {
+                    selectedVaultId = vault.Id;
+                    noteVaultId = vault.Id;
+                    note = found;
+                    Logger.LogInformation("笔记在知识库 {VaultName}({VaultId}) 中找到", vault.Name, vault.Id);
+                    return;
+                }
+            }
+            Logger.LogWarning("笔记在所有知识库中均未找到：{NoteId}", noteId);
+            note = null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "遍历知识库加载失败：{NoteId}", noteId);
+            note = null;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task<NoteInfo?> LoadNoteFromPath(string vaultIdToUse)
+    {
+        if (string.IsNullOrWhiteSpace(vaultIdToUse))
+        {
+            Logger.LogWarning("未选择知识库，无法加载笔记：{NoteId}", noteId);
+            return null;
+        }
+
+        try
+        {
+            var vaultNote = await ApiService.ReadVaultNoteAsync(noteId, vaultIdToUse);
+            if (vaultNote == null)
+            {
+                Logger.LogWarning("笔记未找到：{NoteId}", noteId);
+                return null;
+            }
+
+            var title = vaultNote.Title;
+            var noteInfo = new NoteInfo
+            {
+                Id = vaultNote.Path,
+                Title = title,
+                Path = vaultNote.Path,
+                Content = vaultNote.Content,
+                Modified = vaultNote.Modified,
+                Tags = vaultNote.Tags?.ToArray() ?? Array.Empty<string>()
+            };
+
+            // 记录到最近浏览
+            _ = RecentNotesService.AddRecentNote(noteInfo.Path, title);
+            return noteInfo;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "读取失败：{NoteId}", noteId);
+            return null;
+        }
+    }
+
+    private async Task<NoteInfo> CreateNoteInfo(string filePath, string path)
+    {
+        var content = await System.IO.File.ReadAllTextAsync(filePath);
+        var title = System.IO.Path.GetFileNameWithoutExtension(path);
+        
+        var noteInfo = new NoteInfo
+        {
+            Id = path,
+            Title = title,
+            Path = path,
+            Content = content,
+            Modified = System.IO.File.GetLastWriteTime(filePath),
+            Tags = Array.Empty<string>()
+        };
+
+        // 记录到最近浏览
+        _ = RecentNotesService.AddRecentNote(path, title);
+
+        return noteInfo;
+    }
+
+    private async Task GoBack()
+    {
+        // 使用浏览器历史返回，保持用户的导航预期
+        await JS.InvokeVoidAsync("history.back");
+    }
+
+    private void GoHome()
+    {
+        Navigation.NavigateTo("");
+    }
+
+    private async Task GoToSearch()
+    {
+        // 如果有搜索状态，使用浏览器返回；否则直接跳转搜索页
+        if (SearchStateService.HasState)
+        {
+            await JS.InvokeVoidAsync("history.back");
+        }
+        else
+        {
+            Navigation.NavigateTo("search");
+        }
+    }
+
+    private void EditNote()
+    {
+        if (note == null) return;
+        
+        if (!isEditing)
+        {
+            // 进入编辑模式
+            isEditing = true;
+            editContent = note.Content;
+        }
+        else
+        {
+            // 退出编辑模式
+            isEditing = false;
+            editContent = "";
+        }
+    }
+
+    private async Task SaveNote()
+    {
+        if (note == null || string.IsNullOrWhiteSpace(editContent)) return;
+
+        if (string.IsNullOrWhiteSpace(selectedVaultId))
+        {
+            Logger.LogWarning("未选择知识库，无法保存笔记：{Path}", note?.Path);
+            return;
+        }
+
+        try
+        {
+            var ok = await ApiService.WriteVaultNoteAsync(note.Path, editContent, selectedVaultId);
+            if (!ok)
+            {
+                Logger.LogWarning("写入笔记失败：{Path}", note.Path);
+                return;
+            }
+
+            note.Content = editContent;
+            note.Modified = DateTime.Now;
+            
+            // 退出编辑模式
+            isEditing = false;
+            editContent = "";
+            
+            Logger.LogInformation("笔记已保存：{NoteId}", note.Path);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "保存笔记失败");
+        }
+    }
+
+    private void CancelEdit()
+    {
+        isEditing = false;
+        editContent = "";
+    }
+
+    private async Task GenerateMissingNote()
+    {
+        if (string.IsNullOrWhiteSpace(noteId) || string.IsNullOrWhiteSpace(selectedVaultId))
+            return;
+
+        isGeneratingMissingNote = true;
+        generateMessage = "";
+        generateSuccess = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await ApiService.GenerateMissingNoteAsync(noteId, selectedVaultId);
+            if (result != null && result.Success)
+            {
+                generateSuccess = true;
+                var msg = L["NoteDetail_NoteGenerated", result.NotePath ?? ""].Value;
+                if (result.FixedLinks > 0)
+                    msg += L["NoteDetail_LinksCorrected", result.FixedLinks].Value;
+                generateMessage = msg;
+
+                // 重新加载笔记（现在应该能找到了）
+                await LoadNote();
+            }
+            else
+            {
+                generateSuccess = false;
+                generateMessage = result?.Message ?? L["NoteDetail_GenerateFailed"].Value;
+            }
+        }
+        catch (Exception ex)
+        {
+            generateSuccess = false;
+            generateMessage = L["NoteDetail_GenerateFailedWithError", ex.Message].Value;
+            Logger.LogError(ex, "AI 生成缺失笔记失败");
+        }
+        finally
+        {
+            isGeneratingMissingNote = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleFavorite()
+    {
+        if (note == null) return;
+
+        var isFav = await FavoritesService.IsFavorite(note.Path);
+        if (isFav)
+        {
+            await FavoritesService.RemoveFavorite(note.Path);
+            isFavorite = false;
+        }
+        else
+        {
+            await FavoritesService.AddFavorite(note.Path, note.Title);
+            isFavorite = true;
+        }
+    }
+
+    /// <summary>
+    /// 渲染 Markdown 并处理双向链接 [[path]]
+    /// </summary>
+    private string RenderMarkdownWithWikiLinks(string content)
+    {
+        // 先将 Markdown 转换为 HTML
+        var html = Markdown.ToHtml(content);
+        
+        // 处理 [[双向链接]] 格式
+        // 匹配 [[path]] 或 [[path|text]]
+        html = System.Text.RegularExpressions.Regex.Replace(html,
+            @"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]",
+            match =>
+            {
+                var path = match.Groups[1].Value.Trim();
+                
+                // 提取纯文本作为显示文本（去掉路径中的目录）
+                var displayText = System.IO.Path.GetFileName(path);
+                if (!string.IsNullOrEmpty(match.Groups[2].Value))
+                {
+                    displayText = match.Groups[2].Value;
+                }
+                
+                // 生成带 onclick 的链接，使用 Blazor 导航
+                var encodedPath = Uri.EscapeDataString(path);
+                return $"<a href=\"note?id={encodedPath}\" class=\"wiki-link\" onclick=\"window.location.href='note?id={encodedPath}'; return false;\">{displayText}</a>";
+            });
+        
+        return html;
+    }
+
+    public class NoteInfo
+    {
+        public string Id { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Path { get; set; } = "";
+        public string Content { get; set; } = "";
+        public string RenderedContent => Content.Replace("\n", "<br/>");
+        public DateTime Modified { get; set; }
+        public string[] Tags { get; set; } = Array.Empty<string>();
+    }
+
+}
+
+<style>
+</style>

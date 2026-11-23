@@ -1,0 +1,510 @@
+@page "/compute"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Baihua.Contracts.ComputePool
+@inject Baihua.Web.Services.IApiService ApiService
+@inject NavigationManager Navigation
+
+<PageTitle>算力池</PageTitle>
+
+<div class="compute-header">
+    <h1 class="h4 mb-0">⚡ 百花算力池</h1>
+    <span class="text-secondary small">局域网内所有百花服务器的 AI 算力一览，点击模型即可选用</span>
+    <span class="text-secondary small ms-auto">仅展示局域网本地算力（固本/本地大模型）；云端模型在「AI 配置」中管理</span>
+</div>
+
+<div class="compute-toolbar">
+    <span class="text-secondary small">刷新于 @_updatedAt</span>
+    <select class="form-select form-select-sm d-inline-block w-auto ms-3" @bind="_taskType">
+        <option value="">全部任务</option>
+        <option value="chat">💬 闲聊</option>
+        <option value="deep">🧠 深度思考</option>
+        <option value="vision">🖼 视觉</option>
+        <option value="code">💻 代码</option>
+    </select>
+    <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="RefreshAsync" disabled="@_busy">🔄 刷新</button>
+</div>
+
+@if (_message != null)
+{
+    <div class="alert alert-success py-2">@_message</div>
+}
+@if (_error != null)
+{
+    <div class="alert alert-danger py-2">@_error</div>
+}
+
+@if (_pool == null)
+{
+    <div class="text-secondary p-4 text-center">加载中…</div>
+}
+else
+{
+    <div class="compute-nodes">
+        @foreach (var node in _pool.Nodes)
+        {
+            <div class="compute-node @(node.IsLocal ? "local" : "")">
+                <div class="compute-node-head">
+                    <span class="node-name">
+                        @(node.IsLocal ? "🖥️ 本机 · " : "🖧 ")@node.Name
+                    </span>
+                    <span class="d-flex align-items-center gap-2">
+                        <span class="node-status @(node.Online ? "ok" : "down")">
+                            @(node.Online ? "● 在线" : "○ 离线")
+                        </span>
+                        @if (!node.IsLocal && node.PeerId.HasValue)
+                        {
+                            <button class="btn btn-sm btn-outline-danger peer-del-btn"
+                                    title="删除该对端登记（同时移除其自动登记的对端提供方）"
+                                    @onclick="() => OpenDeletePeerAsync(node)" disabled="@_busy">🗑</button>
+                        }
+                    </span>
+                </div>
+                <div class="node-meta">
+                    <span>@node.HostUrl</span>
+                    @if (node.CpuCores.HasValue)
+                    {
+                        <span class="ms-2">@node.CpuCores.Value 核 CPU</span>
+                    }
+                    @if (node.OpenAiBaseUrl.Length > 0)
+                    {
+                        <span class="ms-2 badge bg-info-subtle text-info-emphasis">推理端点 @node.OpenAiBaseUrl</span>
+                    }
+                    @if (node.Draw is { ComfyOnline: true } drawCap)
+                    {
+                        <span class="ms-2 badge bg-success-subtle text-success-emphasis" title="该节点可提供文生图/文生视频（ComfyUI）">
+                            🎨 可绘图@(drawCap.Video ? " / 视频" : "")
+                        </span>
+                    }
+                </div>
+
+                @if (node.Providers.Count == 0)
+                {
+                    @if (node.IsLocal)
+                    {
+                        <div class="text-secondary small p-2">
+                            本机暂无对外模型：还没把本地模型登记为算力提供方（Tier 1/2）。
+                            <button class="btn btn-sm btn-outline-primary ms-2" @onclick="RegisterLocalOvmsAsync" disabled="@_busy"
+                                    title="探测本机 OVMS（OpenVinoOms__BaseUrl，默认 http://127.0.0.1:8000）的 /v1/models，把模型登记为本地提供方">
+                                @if (_registeringLocalOvms)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                    <span>登记中…（探测 OVMS /v1/models）</span>
+                                }
+                                else
+                                {
+                                    <span>一键登记本地 OVMS</span>
+                                }
+                            </button>
+                            <span class="ms-2">或到「AI 设置」手动添加提供方</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-secondary small p-2">该节点暂无对外模型（需在对方配置 AI 提供方）</div>
+                    }
+                }
+                else
+                {
+                    <div class="compute-models">
+                        @foreach (var provider in node.Providers)
+                        {
+                            <div class="compute-provider">
+                                <div class="provider-name">@provider.Name <span class="tier-badge">@TierLabel(provider.Tier)</span></div>
+                                @foreach (var model in provider.Models.DistinctBy(m => m.Name))
+                                {
+                                    var tps = model.TokensPerSecond;
+                                    var maxTps = _pool.Nodes
+                                        .SelectMany(n => n.Providers)
+                                        .SelectMany(p => p.Models)
+                                        .Where(m => string.Equals(m.Name, model.Name, StringComparison.OrdinalIgnoreCase))
+                                        .Select(m => m.TokensPerSecond ?? 0)
+                                        .DefaultIfEmpty(0)
+                                        .Max();
+                                    var barPct = (tps.HasValue && maxTps > 0) ? (int)(tps.Value * 100 / maxTps) : 0;
+                                    var isFastest = tps.HasValue && tps.Value > 0 && tps.Value == maxTps;
+                                    var isRecommended = !string.IsNullOrEmpty(_taskType) && IsRecommendedFor(model.Name, _taskType);
+                                    <div class="model-row">
+                                        <span class="model-name">
+                                            @model.Name
+                                            @if (isRecommended)
+                                            {
+                                                <span class="recommend-badge">✨推荐</span>
+                                            }
+                                            @if (isFastest)
+                                            {
+                                                <span class="fastest-badge">⚡最快</span>
+                                            }
+                                        </span>
+                                        <div class="tps-bar-wrap">
+                                            <div class="tps-bar" style="width: @(barPct)%"></div>
+                                        </div>
+                                        <span class="tps-value">@(tps.HasValue ? tps.Value.ToString("F1") + " tok/s" : "未测速")</span>
+                                        <button class="btn btn-sm btn-outline-secondary bench-btn" @onclick="() => BenchmarkAsync(node, model.Name)" disabled="@_busy">⏱ 测速</button>
+                                        @if (!node.IsLocal)
+                                        {
+                                            <button class="btn btn-sm @(node.ProviderRegistered ? "btn-primary" : "btn-outline-primary") select-btn"
+                                                    @onclick="() => SelectAsync(node, model.Name)" disabled="@_busy">
+                                                @(node.ProviderRegistered ? "选用" : "注册并选用")
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-secondary small ms-2">本机模型</span>
+                                            @if (_remoteNodes.Count > 0)
+                                            {
+                                                <button class="btn btn-sm btn-outline-secondary ms-1 deploy-btn" @onclick="() => OpenDeployAsync(model.Name)" disabled="@_busy">📦 布署</button>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (node.IsLocal && _deployModel != null)
+                {
+                    <div class="deploy-panel mt-2">
+                        <span class="small">📦 布署 <b>@_deployModel</b> 到：</span>
+                        <select class="form-select form-select-sm d-inline-block w-auto" @bind="_deployTarget">
+                            @foreach (var rn in _remoteNodes)
+                            {
+                                <option value="@rn.ServerId">@rn.Name（@rn.HostUrl）</option>
+                            }
+                        </select>
+                        <button class="btn btn-sm btn-primary ms-2" @onclick="ConfirmDeployAsync" disabled="@(_busy || string.IsNullOrEmpty(_deployTarget))">执行布署</button>
+                        <button class="btn btn-sm btn-outline-secondary ms-1" @onclick="CancelDeploy" disabled="@_busy">取消</button>
+                        <div class="form-text small">对端将从本机模型商店拉取模型并启动常驻推理服务（大模型需数分钟，页面请勿关闭）</div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="pool-task">
+        <div class="provider-name">🧭 深度任务（走统一网关：按模型名路由全网最快节点 + 故障转移）</div>
+        <textarea class="form-control" rows="3" placeholder="输入提示词，用选中的模型在算力池执行…" @bind="_taskPrompt" @bind:event="oninput"></textarea>
+        <div class="d-flex align-items-center gap-2 mt-2">
+            <select class="form-select form-select-sm w-auto" @bind="_taskModel">
+                <option value="">选择模型…</option>
+                @foreach (var m in _poolModels)
+                {
+                    <option value="@m">@m</option>
+                }
+            </select>
+            <button class="btn btn-sm btn-primary" @onclick="RunTaskAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_taskModel) || string.IsNullOrWhiteSpace(_taskPrompt))">▶ 执行</button>
+        </div>
+        @if (_taskResult != null)
+        {
+            <div class="task-result">@_taskResult</div>
+        }
+    </div>
+
+    <div class="mt-3 text-muted small">
+        💡 选用后，「AI 配置」中会出现该节点对应的提供方（peer- 前缀）。聊天/拜师等会默认使用所选模型；
+        对端机器离线时自动降级，本机 AI 不受影响。
+    </div>
+}
+
+@if (_deletePeer != null)
+{
+    <div class="modal-overlay" @onclick="CancelDeletePeer">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <h3 class="h5">⚠️ 删除对端登记</h3>
+            <p class="mb-1">确定要删除对端「<b>@_deletePeer.Name</b>」（@_deletePeer.HostUrl）吗？</p>
+            <p class="text-secondary small">将同时移除该对端自动登记的 AI 提供方（peer- 前缀），此操作不可恢复；对端机器的配置不受影响。</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" @onclick="CancelDeletePeer" disabled="@_busy">取消</button>
+                <button class="btn btn-danger" @onclick="ConfirmDeletePeerAsync" disabled="@_busy">确认删除</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .compute-header { padding: 0.75rem 1rem; border-bottom: 1px solid var(--bs-border-color); display: flex; align-items: baseline; gap: 0.75rem; }
+    .compute-toolbar { padding: 0.5rem 1rem; display: flex; align-items: center; }
+    .compute-nodes { padding: 0.5rem 1rem 1rem; display: flex; flex-direction: column; gap: 1rem; }
+    .compute-node { border: 1px solid var(--bs-border-color); border-radius: 12px; padding: 0.9rem 1rem; background: rgba(46,139,175,0.04); }
+    .compute-node.local { border-color: rgba(46,139,175,0.5); }
+    .compute-node-head { display: flex; justify-content: space-between; align-items: center; }
+    .node-name { font-weight: 600; }
+    .node-status.ok { color: #2e7d32; }
+    .node-status.down { color: #c62828; }
+    .node-meta { color: var(--bs-secondary-color); font-size: 0.8rem; margin: 0.25rem 0 0.6rem; word-break: break-all; }
+    .compute-models { display: flex; flex-direction: column; gap: 0.6rem; }
+    .compute-provider { display: flex; flex-direction: column; gap: 0.35rem; }
+    .provider-name { font-size: 0.8rem; font-weight: 600; color: var(--bs-secondary-color); }
+    .tier-badge { font-size: 0.7rem; background: rgba(46,139,175,0.15); color: #2e8baf; border-radius: 8px; padding: 0 0.4rem; }
+    .fastest-badge { font-size: 0.68rem; background: rgba(255,152,0,0.18); color: #e65100; border-radius: 8px; padding: 0 0.35rem; margin-left: 0.35rem; }
+    .recommend-badge { font-size: 0.68rem; background: rgba(76,175,80,0.18); color: #2e7d32; border-radius: 8px; padding: 0 0.35rem; margin-left: 0.35rem; }
+    .pool-task { margin: 0.5rem 1rem 0.5rem; border: 1px solid var(--bs-border-color); border-radius: 12px; padding: 0.8rem 1rem; }
+    .task-result { margin-top: 0.6rem; padding: 0.7rem 0.9rem; background: rgba(46,139,175,0.07); border-radius: 8px; font-size: 0.85rem; white-space: pre-wrap; max-height: 240px; overflow-y: auto; }
+    [data-bs-theme="dark"] .recommend-badge { background: rgba(76,175,80,0.25); color: #81c784; }
+    [data-bs-theme="dark"] .fastest-badge { background: rgba(255,152,0,0.25); color: #ffb74d; }
+    .model-row { display: flex; align-items: center; gap: 0.6rem; }
+    .model-name { width: 16rem; font-size: 0.85rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tps-bar-wrap { flex: 1; height: 10px; background: rgba(128,128,128,0.15); border-radius: 5px; overflow: hidden; }
+    .tps-bar { height: 100%; background: linear-gradient(90deg, #2e8baf, #4db8d9); border-radius: 5px; transition: width 0.4s; }
+    .tps-value { width: 7rem; font-size: 0.8rem; color: var(--bs-secondary-color); text-align: right; }
+    .select-btn { flex-shrink: 0; }
+    .bench-btn { flex-shrink: 0; }
+    .deploy-btn { flex-shrink: 0; }
+    .deploy-panel { border: 1px dashed rgba(46,139,175,0.5); border-radius: 8px; padding: 0.5rem 0.7rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .peer-del-btn { flex-shrink: 0; padding: 0.1rem 0.45rem; line-height: 1.2; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 1050; }
+    .modal-content { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 12px; padding: 1.1rem 1.4rem; max-width: 440px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+    .modal-actions { display: flex; gap: 12px; justify-content: center; margin-top: 12px; }
+</style>
+
+@code {
+    private ComputePoolViewDto? _pool;
+    private List<string> _poolModels = new();
+    private List<ComputePoolNodeDto> _remoteNodes = new();
+    private string? _error;
+    private string? _message;
+    private bool _busy;
+    /// <summary>「一键登记本地 OVMS」按钮自己的 loading 态（只控制这颗按钮的文案/spinner）</summary>
+    private bool _registeringLocalOvms;
+    private string _updatedAt = "—";
+    private string _taskType = "";
+    private string _taskPrompt = "";
+    private string _taskModel = "";
+    private string? _taskResult;
+    private string? _deployModel;
+    private string _deployTarget = "";
+    private ComputePoolNodeDto? _deletePeer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _pool = await ApiService.GetComputePoolAsync();
+        if (_pool != null)
+        {
+            _updatedAt = _pool.UpdatedAt.ToLocalTime().ToString("HH:mm:ss");
+            _remoteNodes = _pool.Nodes.Where(n => !n.IsLocal).ToList();
+            _poolModels = _pool.Nodes
+                .SelectMany(n => n.Providers)
+                .SelectMany(p => p.Models)
+                .Select(m => m.Name)
+                .Distinct()
+                .OrderBy(n => n)
+                .ToList();
+            if (string.IsNullOrEmpty(_taskModel) && _poolModels.Count > 0)
+                _taskModel = _poolModels[0];
+            if (_deployTarget == "" && _remoteNodes.Count > 0)
+                _deployTarget = _remoteNodes[0].ServerId;
+        }
+        else if (_error == null)
+            _error = "加载算力池失败";
+    }
+
+    /// <summary>一键登记本机 OVMS：探测 /v1/models 后写成 Tier2 提供方（local-ovms）。</summary>
+    private async Task RegisterLocalOvmsAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _registeringLocalOvms = true;
+        _error = null;
+        _message = null;
+        // 先把「登记中…」画出来，再发请求：否则点击后到响应前界面毫无反馈（实测几秒钟没动静）
+        StateHasChanged();
+        try
+        {
+            var (ok, message) = await ApiService.RegisterLocalOvmsAsync();
+            if (ok) { _message = message; await LoadAsync(); }
+            else { _error = message; }
+        }
+        finally
+        {
+            _busy = false;
+            _registeringLocalOvms = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _busy = true;
+        try
+        {
+            await ApiService.RefreshComputePoolAsync();
+            await LoadAsync();
+            StateHasChanged();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SelectAsync(ComputePoolNodeDto node, string modelName)
+    {
+        _busy = true;
+        try
+        {
+            var (ok, error) = await ApiService.SelectComputeModelAsync(node.ServerId, modelName);
+            if (!ok)
+            {
+                _error = error;
+            }
+            await LoadAsync();
+            StateHasChanged();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RunTaskAsync()
+    {
+        _busy = true;
+        _error = null;
+        _taskResult = null;
+        try
+        {
+            var (ok, text, error) = await ApiService.RunPoolChatAsync(_taskModel, _taskPrompt);
+            if (ok)
+                _taskResult = text;
+            else
+                _error = error ?? "任务失败";
+            StateHasChanged();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task BenchmarkAsync(ComputePoolNodeDto node, string modelName)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await ApiService.RunComputeBenchmarkAsync(node.ServerId, modelName);
+            if (result is { Success: true })
+                _message = $"{node.Name} · {modelName}：{result.TokensPerSecond:F1} token/s（首字延迟 {result.LatencyMs:F0}ms）";
+            else
+                _error = result?.Error ?? "测速失败";
+            await LoadAsync();
+            StateHasChanged();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task PullAsync(ComputePoolNodeDto node, string modelName)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var (ok, error) = await ApiService.PullComputeModelAsync(node.ServerId, modelName);
+            if (ok)
+                _message = $"已从 {node.Name} 拉取 {modelName}";
+            else
+                _error = error;
+            await LoadAsync();
+            StateHasChanged();
+        }
+        finally { _busy = false; }
+    }
+
+    private void OpenDeployAsync(string modelName)
+    {
+        _deployModel = modelName;
+        if (_deployTarget == "" && _remoteNodes.Count > 0)
+            _deployTarget = _remoteNodes[0].ServerId;
+    }
+
+    private void CancelDeploy()
+    {
+        _deployModel = null;
+    }
+
+    private async Task ConfirmDeployAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_deployModel) || string.IsNullOrWhiteSpace(_deployTarget)) return;
+        _busy = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            var target = _remoteNodes.FirstOrDefault(n => n.ServerId == _deployTarget);
+            var (ok, message, error) = await ApiService.DeployComputeModelAsync(_deployTarget, _deployModel);
+            if (ok)
+            {
+                _message = message ?? $"已布署 {_deployModel} 到 {target?.Name}";
+                _deployModel = null;
+            }
+            else
+                _error = error;
+            await LoadAsync();
+            StateHasChanged();
+        }
+        finally { _busy = false; }
+    }
+
+    private void OpenDeletePeerAsync(ComputePoolNodeDto node)
+    {
+        _deletePeer = node;
+    }
+
+    private void CancelDeletePeer()
+    {
+        _deletePeer = null;
+    }
+
+    private async Task ConfirmDeletePeerAsync()
+    {
+        if (_deletePeer == null || !_deletePeer.PeerId.HasValue) return;
+        _busy = true;
+        _error = null;
+        _message = null;
+        try
+        {
+            var (ok, error) = await ApiService.DeleteComputePeerAsync(_deletePeer.PeerId.Value);
+            if (ok)
+            {
+                _message = $"已删除对端登记「{_deletePeer.Name}」";
+                _deletePeer = null;
+            }
+            else
+                _error = error;
+            await LoadAsync();
+            StateHasChanged();
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>任务类型 → 模型推荐（按模型名启发式：尺寸/视觉能力）。</summary>
+    private static bool IsRecommendedFor(string modelName, string taskType)
+    {
+        var lower = modelName.ToLowerInvariant();
+        var isVision = lower.Contains("vl") || lower.Contains("vision");
+        // 提取模型尺寸（如 1.5b / 7b / 14b）
+        double size = 0;
+        var m = System.Text.RegularExpressions.Regex.Match(lower, @"(\d+(?:\.\d+)?)b");
+        if (m.Success && double.TryParse(m.Groups[1].Value, out var s)) size = s;
+
+        return taskType switch
+        {
+            "vision" => isVision,
+            "chat" => !isVision && size > 0 && size <= 3,
+            "deep" => !isVision && size >= 14,
+            "code" => !isVision && size is > 0 and < 14 && size >= 7,
+            _ => false
+        };
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes >= 1L << 30) return $"{bytes / 1024d / 1024d / 1024d:F2} GB";
+        if (bytes >= 1L << 20) return $"{bytes / 1024d / 1024d:F1} MB";
+        return $"{bytes / 1024d:F0} KB";
+    }
+
+    private static string TierLabel(string tier) => tier switch
+    {
+        "1" => "固本",
+        "2" => "本地大模型",
+        "3" => "云端",
+        _ => "未知"
+    };
+}

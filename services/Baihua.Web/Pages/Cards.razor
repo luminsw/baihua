@@ -1,0 +1,301 @@
+@page "/cards"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Baihua.Contracts.Anki
+@using Baihua.Contracts.Vaults
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject ILogger<Cards> Logger
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["Cards_PageTitle"]</PageTitle>
+
+<div class="container mt-4">
+    <h2 class="mb-4">🧠 @L["Cards_Title"]</h2>
+
+    <!-- 知识库选择 + 搜索 -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text">@L["Cards_Vault"]</span>
+                <select class="form-select" @onchange="OnVaultChanged">
+                    <option value="">@L["Cards_AllVaults"]</option>
+                    @foreach (var vault in vaults)
+                    {
+                        <option value="@vault.Id">@vault.Name</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text">🔍</span>
+                <input type="text" class="form-control" placeholder="@(L["Cards_SearchPlaceholder"])"
+                       @bind="searchQuery" @bind:event="oninput" @onkeyup="OnSearchKeyUp" />
+                <button class="btn btn-primary" @onclick="DoSearch">@L["Cards_Search"]</button>
+            </div>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-3 text-muted">@L["Cards_Loading"]</p>
+        </div>
+    }
+    else
+    {
+        <!-- 统计卡片 -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <div class="display-5 text-primary">@totalCards</div>
+                        <div class="text-muted">@L["Cards_TotalCards"]</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <div class="display-5 text-success">@decks.Count</div>
+                        <div class="text-muted">@L["Cards_DeckCount"]</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <div class="display-5 text-info">@aiCards</div>
+                        <div class="text-muted">@L["Cards_AiGenerated"]</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 牌组列表 -->
+        @if (decks.Count > 0)
+        {
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">📂 @L["Cards_DeckDistribution"]</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>@L["Cards_DeckName"]</th>
+                                    <th class="text-end">@L["Cards_CardCount"]</th>
+                                    <th>@L["Cards_SourceNote"]</th>
+                                    <th class="text-end">@L["Cards_Actions"]</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var deck in decks)
+                                {
+                                    <tr class="@(selectedDeckFilter == deck.Name ? "table-primary" : "")">
+                                        <td>
+                                            <a href="javascript:void(0)" @onclick="() => FilterByDeck(deck.Name)" class="text-decoration-none fw-semibold">
+                                                📁 @deck.Name
+                                            </a>
+                                        </td>
+                                        <td class="text-end">@deck.CardCount</td>
+                                        <td>
+                                            @foreach (var src in deck.Sources.Take(3))
+                                            {
+                                                <span class="badge bg-secondary me-1">@src</span>
+                                            }
+                                            @if (deck.Sources.Count > 3)
+                                            {
+                                                <span class="badge bg-light text-muted">+@(deck.Sources.Count - 3)</span>
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => FilterByDeck(deck.Name)" title="@(L["Cards_ViewDeckCardsTitle"])">
+                                                👁️ @L["Cards_View"]
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- 卡片列表 -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <h5 class="mb-0">📝 @L["Cards_CardList"]</h5>
+                    @if (!string.IsNullOrEmpty(selectedDeckFilter))
+                    {
+                        <span class="badge bg-primary">📁 @selectedDeckFilter</span>
+                        <button class="btn btn-sm btn-link p-0" @onclick="ClearDeckFilter">@L["Cards_ClearFilter"]</button>
+                    }
+                </div>
+                <span class="text-muted small">@L["Cards_TotalCount", filteredCards.Count]</span>
+            </div>
+            <div class="card-body p-0">
+                @if (filteredCards.Count == 0)
+                {
+                    <div class="text-center py-5 text-muted">
+                        <div class="fs-1">📝</div>
+                        <p>@L["Cards_NoCards"]</p>
+                        @if (!string.IsNullOrWhiteSpace(selectedVaultId))
+                        {
+                            <p class="small">@L["Cards_NoCardsHint"]</p>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="list-group list-group-flush">
+                        @foreach (var card in filteredCards)
+                        {
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <span class="badge bg-primary">@card.Deck</span>
+                                    <span class="badge @(card.Source == "ai" ? "bg-info" : "bg-secondary")">@card.Source</span>
+                                </div>
+                                <div class="mb-1">
+                                    <strong>Q:</strong> @card.Front
+                                </div>
+                                <div class="text-muted small">
+                                    <strong>A:</strong> @card.Back
+                                </div>
+                                @if (card.Tags.Count > 0)
+                                {
+                                    <div class="mt-1">
+                                        @foreach (var tag in card.Tags)
+                                        {
+                                            <span class="badge bg-light text-dark me-1">@tag</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "q")]
+    public string? Query { get; set; }
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "vaultId")]
+    public string? VaultIdQuery { get; set; }
+
+    private List<VaultConfig> vaults = new();
+    private string selectedVaultId = "";
+    private string searchQuery = "";
+    private string? selectedDeckFilter = null;
+    private AnkiSearchResult searchResult = new() { Cards = new() };
+    private DeckListResult deckResult = new() { Decks = new() };
+    private List<DeckInfo> decks => deckResult.Decks;
+    private bool isLoading = true;
+    private int totalCards = 0;
+    private int aiCards = 0;
+
+
+    /// <summary>经过牌组筛选后的卡片</summary>
+    private List<CardItemDto> filteredCards =>
+        string.IsNullOrEmpty(selectedDeckFilter)
+            ? searchResult.Cards
+            : searchResult.Cards.Where(c => c.Deck == selectedDeckFilter).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadVaultsAsync();
+
+        if (!string.IsNullOrWhiteSpace(Query))
+            searchQuery = Query;
+        if (!string.IsNullOrWhiteSpace(VaultIdQuery))
+            selectedVaultId = VaultIdQuery;
+
+        await LoadDataAsync();
+    }
+
+    private async Task LoadVaultsAsync()
+    {
+        try
+        {
+            var response = await VaultsService.GetVaultsAsync();
+            vaults = response.Vaults;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "加载知识库列表失败");
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+        try
+        {
+            // 未选择知识库时跳过 API 调用
+            if (!string.IsNullOrWhiteSpace(selectedVaultId))
+            {
+                // 加载牌组列表
+                deckResult = await ApiService.GetAnkiDecksAsync(selectedVaultId);
+                totalCards = decks.Sum(d => d.CardCount);
+
+                // 搜索卡片（空查询返回全部）
+                searchResult = await ApiService.SearchAnkiCardsAsync(searchQuery, selectedVaultId, 200);
+
+                // 统计来源分布（从搜索结果中统计，最多 200 条样本）
+                aiCards = searchResult.Cards.Count(c => c.Source == "ai");
+
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "加载卡片数据失败");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OnVaultChanged(ChangeEventArgs e)
+    {
+        selectedVaultId = e.Value?.ToString() ?? "";
+        selectedDeckFilter = null;
+        await LoadDataAsync();
+    }
+
+    private void FilterByDeck(string deckName)
+    {
+        selectedDeckFilter = deckName;
+        // 客户端过滤，不需要重新加载数据
+        StateHasChanged();
+    }
+
+    private void ClearDeckFilter()
+    {
+        selectedDeckFilter = null;
+        StateHasChanged();
+    }
+
+    private async Task DoSearch()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await DoSearch();
+        }
+    }
+}

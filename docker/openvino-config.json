@@ -1,0 +1,8 @@
+{
+  "model_config_list": [
+    { "config": { "name": "qwen2.5",       "base_path": "/models/Qwen2.5-7B-Instruct-int4-ov" } },
+
+    { "config": { "name": "qwen2.5-vl-7b", "base_path": "/models/Qwen2.5-VL-7B-Instruct-int4-ov" } },
+    { "config": { "name": "bge-small-zh",  "base_path": "/models/bge-small-zh-v1.5" } }
+  ]
+}

@@ -1,0 +1,42 @@
+# 百花服务共享配置（非敏感）
+# 所有服务共享的配置项，通过 ConfigMap 注入环境变量
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: baihua-config
+  namespace: baihua
+  labels:
+    app.kubernetes.io/part-of: baihua
+data:
+  # 知识库根路径（容器内挂载点，与 PVC 挂载路径一致）
+  BAIHUA_VAULT_ROOT: "/vaults"
+  BAIHUA_HOME: "/app/data"
+
+  # 移动端二维码/广播入口地址：Traefik :80（无显式端口号），/mg/* 由 Traefik 转发到 bh-server
+  # 花记扫码后使用 http://<host>/，不再出现 :8788 显式端口。
+  # 这里的值只是**占位**：宿主 LAN IP 是 DHCP 的，容器里探测到的是 Pod IP，都无法自动得出正确地址。
+  # k3s 部署需手工把本键改成真实宿主 IP 后再 apply（Windows 上 k3s 形态已随 WSL 卸载退役，走 native `bh lan on`）。
+  # 请勿依赖本文件的字面值，也不要删掉这个键
+  # （删掉会被 kubectl apply 一并移除，后端退回 Pod IP，二维码就扫不通了）。
+  Baihua__PublicBaseUrl: "http://192.168.3.9"
+
+  # OpenObserve 可观测性（如有部署则填实际 URL）
+  OpenObserve__WebUrl: "http://openobserve:5080/"
+  OpenObserve__Enabled: "true"
+
+  # PostgreSQL：整个百花只有一个数据库 baihua（密码经 Secret 注入 PG_PASSWORD）
+  PG_HOST: "bh-postgres"
+  PG_USER: "baihua"
+  PG_DATABASE: "baihua"
+
+  # WebUI → 唯一后端服务（K8s Service DNS）
+  # 合并前的 FamilyApi__BaseUrl / AiApi__BaseUrl / VaultApi__BaseUrl 三个键已删除
+  BaihuaServer__BaseUrl: "http://bh-server:8788/"
+
+  # OpenVINO 推理服务（bh-openvino = Intel OVMS，K8s Service DNS :8000 REST）
+  # bh-server 通过此 URL 探测 OVMS 是否在托管模型（OpenAI 兼容 /v1/models）
+  OPENVINO_LLM_URL: "http://bh-openvino:8000"
+  OPENVINO_HOST_URL: "http://bh-openvino:8000"
+
+  # OVMS（OpenVINO Model Server）REST 基地址 —— 推理统一走 /v3/chat/completions、/v3/embeddings
+  OpenVinoOms__BaseUrl: "http://bh-openvino:8000"

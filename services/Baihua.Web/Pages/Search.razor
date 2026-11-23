@@ -1,0 +1,528 @@
+@page "/search"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Localization
+@using Baihua.Web.Localization
+@inject NavigationManager Navigation
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.SearchStateService SearchStateService
+@inject Baihua.Web.Services.ISearchHistoryService SearchHistoryService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject Microsoft.Extensions.Logging.ILogger<Search> Logger
+@inject IStringLocalizer<SharedResources> L
+@using Baihua.Web.Services
+
+<PageTitle>@L["Search_PageTitle"]</PageTitle>
+
+<h1>@L["Search_Title"]</h1>
+
+<div class="local-search">
+        @if (isVaultsLoading)
+        {
+            <div class="text-muted small mb-2">
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                @L["Search_VaultsLoading"]
+            </div>
+        }
+        @if (vaults.Count > 0)
+        {
+            var industries = vaults.Select(v => v.Industry).Where(i => !string.IsNullOrWhiteSpace(i)).Distinct().OrderBy(i => i).ToList();
+            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                @if (industries.Count > 1)
+                {
+                    <label class="form-label mb-0 text-nowrap" style="font-size:0.9em">@L["Search_FilterIndustry"]</label>
+                    <select class="form-select form-select-sm" @bind="selectedIndustry" @bind:after="OnIndustryChanged" style="max-width:150px">
+                        <option value="">@L["Search_All"]</option>
+                        @foreach (var industry in industries)
+                        {
+                            <option value="@industry">@industry</option>
+                        }
+                    </select>
+                }
+                <label class="form-label mb-0 text-nowrap" style="font-size:0.9em">@L["Search_FilterVault"]</label>
+                <select class="form-select form-select-sm" @bind="selectedVaultId" @bind:after="OnVaultChanged" style="max-width:300px">
+                    <option value="">@L["Search_AllVaults"]</option>
+                    @foreach (var vault in FilteredVaults)
+                    {
+                        <option value="@vault.Id">@vault.Name</option>
+                    }
+                </select>
+            </div>
+        }
+        <div class="search-box">
+            <input type="text" 
+                   @bind="searchQuery" 
+                   @bind:event="oninput"
+                   @onkeydown="HandleKeyDown"
+                   placeholder="@L["Search_Placeholder"]" 
+                   class="form-control" />
+            <button @onclick="PerformSearch" class="btn btn-primary" disabled="@isVaultsLoading">@L["Search_SearchButton"]</button>
+        </div>
+
+        @if (recentSearches != null && recentSearches.Any() && string.IsNullOrWhiteSpace(searchQuery))
+        {
+            <div class="recent-searches">
+                <div class="section-header">
+                    <h3>@L["Search_RecentTitle"]</h3>
+                    <button @onclick="ClearSearchHistory" class="btn btn-sm btn-link">@L["Search_ClearHistory"]</button>
+                </div>
+                <div class="search-chips">
+                    @foreach (var query in recentSearches)
+                    {
+                        <span class="search-chip" @onclick="(() => SearchWithQuery(query))">
+                            @query
+                            <button @onclick="(() => RemoveSearchQuery(query))" class="chip-remove">×</button>
+                        </span>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (isSearching)
+        {
+            <div class="loading">
+                <div class="spinner"></div>
+                <span>@L["Search_Searching"]</span>
+            </div>
+        }
+        else
+        {
+            @if (searchStatus != null && !string.IsNullOrWhiteSpace(searchStatus.SearchMethod) && searchStatus.SearchMethod != "none")
+            {
+                <div class="mb-2">
+                    <span class="badge @GetSearchMethodBadgeClass(searchStatus.SearchMethod)">
+                        @GetSearchMethodLabel(searchStatus.SearchMethod)
+                    </span>
+                    @if (indexStatus != null)
+                    {
+                        <span class="badge @GetIndexBadgeClass(indexStatus.HasIndex) ms-1">
+                            @L["Search_IndexLabel"] @(indexStatus.HasIndex ? $"{indexStatus.IndexedCount} {L["Search_IndexCountSuffix"]}" : L["Search_IndexNotBuilt"])
+                        </span>
+                        @if (!indexStatus.HasIndex)
+                        {
+                            @if (isRebuildingIndex)
+                            {
+                                <button class="btn btn-sm btn-link py-0 text-danger" @onclick="StopRebuildIndexAsync">@L["Search_CancelRebuild"]</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-link py-0" @onclick="RebuildIndexAsync">@L["Search_RebuildIndex"]</button>
+                            }
+                        }
+                    }
+                </div>
+            }
+
+            @if (searchResults != null && searchResults.Any())
+            {
+                var groupedResults = BuildGroupedResults();
+                
+                <div class="results">
+                    <h2>@L["Search_ResultsTitle"] (@searchResults.Count @L["Search_ResultsCountSuffix"])</h2>
+                    
+                    @foreach (var group in groupedResults)
+                    {
+                        <div class="result-group">
+                            <div class="group-header" @onclick="(() => ToggleGroup(group.Key))">
+                                <span class="group-icon">@(expandedGroups.Contains(group.Key) ? "📂" : "📁")</span>
+                                <h3>@group.Key (@group.Value.Count @L["Search_ResultsCountSuffix"])</h3>
+                            </div>
+                            
+                            @if (expandedGroups.Contains(group.Key))
+                            {
+                                <div class="group-items">
+                                    @foreach (var result in group.Value)
+                                    {
+                                        <div class="result-item" @onclick="(() => ViewNote(result))" style="cursor: pointer;">
+                                            <div class="result-header">
+                                                <h3>@result.Title</h3>
+                                                <span class="result-hint">@L["Search_ClickToView"]</span>
+                                            </div>
+                                            <p class="preview">@result.Preview</p>
+                                            <div class="meta">
+                                                <span class="path">📁 @result.Path</span>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            else if (hasSearched)
+            {
+                <div class="no-results">
+                    @if (searchStatus != null && !string.IsNullOrEmpty(searchStatus.ErrorMessage))
+                    {
+                        <span>⚠️</span>
+                        <p>@searchStatus.ErrorMessage</p>
+                        @if (!searchStatus.VaultConfigured)
+                        {
+                            <p class="text-muted">@L["Search_ConfigVaultPath"] <a href="vaults" class="btn btn-sm btn-outline-primary mt-2">@L["Search_SettingsPage"]</a> @L["Search_ConfigVaultPathSuffix"]</p>
+                        }
+                        else if (!searchStatus.VaultExists)
+                        {
+                            <p class="text-muted">@L["Search_CheckVaultPath"]</p>
+                        }
+                    }
+                    else
+                    {
+                        <span>😕</span>
+                        <p>@L["Search_NoResults"]</p>
+                        @if (searchStatus != null)
+                        {
+                            <p class="text-muted">@L["Search_MethodLabel"]@GetSearchMethodLabel(searchStatus.SearchMethod)</p>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="search-tips">
+                    <h3>@L["Search_TipsTitle"]</h3>
+                    <ul>
+                        <li>@L["Search_Tip1"]</li>
+                        <li>@L["Search_Tip2"]</li>
+                        <li>@L["Search_Tip3"]</li>
+                    </ul>
+                </div>
+            }
+        }
+    </div>
+
+@code {
+    private static string? ReadQueryParam(string uri, string param)
+    {
+        var pattern = $"?{param}=";
+        var idx = uri.IndexOf(pattern, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) { pattern = $"&{param}="; idx = uri.IndexOf(pattern, StringComparison.OrdinalIgnoreCase); }
+        if (idx < 0) return null;
+        idx += pattern.Length;
+        var end = uri.IndexOf('&', idx);
+        var val = end > idx ? uri[idx..end] : uri[idx..];
+        return Uri.UnescapeDataString(val);
+    }
+
+    private string? _initialQuery;
+    private string searchQuery = "";
+    private bool isSearching = false;
+    private bool hasSearched = false;
+    private List<SearchResult> searchResults = new();
+    private SearchStatusInfo? searchStatus;
+    private List<string>? recentSearches;
+    private HashSet<string> expandedGroups = new();
+
+    private List<VaultConfig> vaults = new();
+    private bool isVaultsLoading = true;
+    private string selectedVaultId = "";
+    private string selectedIndustry = "";
+    private IndexStatusDto? indexStatus;
+
+    private List<VaultConfig> FilteredVaults => string.IsNullOrWhiteSpace(selectedIndustry)
+        ? vaults
+        : vaults.Where(v => v.Industry == selectedIndustry).ToList();
+    private bool isRebuildingIndex = false;
+    private CancellationTokenSource? _rebuildCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var startTime = DateTime.Now;
+        Logger.LogDebug("页面初始化开始: {StartTime:HH:mm:ss.fff}", startTime);
+
+        _initialQuery = ReadQueryParam(Navigation.Uri, "q");
+
+        if (!string.IsNullOrWhiteSpace(_initialQuery))
+        {
+            searchQuery = _initialQuery;
+            hasSearched = true;
+        }
+        else
+        {
+            var savedState = SearchStateService.Retrieve();
+            if (savedState != null)
+            {
+                searchQuery = savedState.Query;
+                searchResults = savedState.Results;
+                expandedGroups = savedState.ExpandedGroups;
+                hasSearched = true;
+                Logger.LogDebug("恢复搜索状态完成，结果数: {Count}", searchResults?.Count ?? 0);
+            }
+        }
+        
+        var renderTime = DateTime.Now;
+        Logger.LogDebug("页面可以渲染，耗时: {ElapsedMs}ms", (renderTime - startTime).TotalMilliseconds);
+        
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var loadStartTime = DateTime.Now;
+                Logger.LogDebug("后台数据加载开始: {StartTime:HH:mm:ss.fff}", loadStartTime);
+                
+                var loadRecentSearchesTask = SearchHistoryService.GetRecentSearches();
+                var loadVaultsTask = VaultsService.GetVaultsAsync();
+                
+                await Task.WhenAll(loadRecentSearchesTask, loadVaultsTask);
+                
+                var loadEndTime = DateTime.Now;
+                Logger.LogDebug("后台数据加载完成，耗时: {ElapsedMs}ms", (loadEndTime - loadStartTime).TotalMilliseconds);
+                
+                await InvokeAsync(() =>
+                {
+                    recentSearches = loadRecentSearchesTask.Result;
+                    var vaultsResponse = loadVaultsTask.Result;
+                    vaults = vaultsResponse.Vaults;
+                    selectedVaultId = "";
+                    isVaultsLoading = false;
+                    StateHasChanged();
+                    Logger.LogDebug("UI更新完成");
+                });
+                
+                await LoadIndexStatusAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "后台加载失败");
+                await InvokeAsync(() => { isVaultsLoading = false; StateHasChanged(); });
+            }
+        });
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !string.IsNullOrWhiteSpace(_initialQuery))
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                if (vaults.Count > 0) break;
+                await Task.Delay(500);
+            }
+
+            searchQuery = _initialQuery;
+            await PerformSearch();
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await PerformSearch();
+        }
+    }
+
+    private async Task OnIndustryChanged()
+    {
+        var firstVault = FilteredVaults.FirstOrDefault();
+        if (firstVault != null)
+        {
+            selectedVaultId = firstVault.Id;
+            await OnVaultChanged();
+        }
+    }
+
+    private async Task OnVaultChanged()
+    {
+        if (!string.IsNullOrEmpty(selectedVaultId))
+        {
+            await LoadIndexStatusAsync();
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchQuery) && hasSearched)
+        {
+            await SearchWithQuery(searchQuery);
+        }
+    }
+
+    private async Task LoadIndexStatusAsync()
+    {
+        if (string.IsNullOrEmpty(selectedVaultId)) return;
+        try
+        {
+            indexStatus = await ApiService.GetIndexStatusAsync(selectedVaultId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "加载索引状态失败");
+        }
+    }
+
+    private async Task RebuildIndexAsync()
+    {
+        if (string.IsNullOrEmpty(selectedVaultId) || isRebuildingIndex) return;
+        isRebuildingIndex = true;
+        _rebuildCts = new CancellationTokenSource();
+        try
+        {
+            var result = await ApiService.RebuildIndexAsync(selectedVaultId, _rebuildCts.Token);
+            await LoadIndexStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "重建索引失败");
+        }
+        finally
+        {
+            isRebuildingIndex = false;
+            _rebuildCts?.Dispose();
+            _rebuildCts = null;
+        }
+    }
+
+    private void StopRebuildIndexAsync()
+    {
+        _rebuildCts?.Cancel();
+    }
+
+    private string GetSearchMethodBadgeClass(string method) => method switch
+    {
+        "fts5" => "text-bg-success",
+        "fts5+semantic" => "text-bg-info",
+        "semantic" => "text-bg-warning",
+        _ => "text-bg-secondary"
+    };
+
+    private string GetSearchMethodLabel(string method) => method switch
+    {
+        "fts5" => L["Search_MethodFts5"],
+        "fts5+semantic" => L["Search_MethodFts5Semantic"],
+        "semantic" => L["Search_MethodSemantic"],
+        _ => L["Search_MethodFileScan"]
+    };
+
+    private string GetIndexBadgeClass(bool hasIndex) => hasIndex ? "text-bg-success" : "text-bg-warning";
+
+    private async Task PerformSearch()
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery)) return;
+        await SearchWithQuery(searchQuery);
+    }
+
+    private async Task SearchWithQuery(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return;
+
+        if (string.IsNullOrWhiteSpace(selectedVaultId))
+        {
+            var firstVault = vaults.FirstOrDefault();
+            if (firstVault != null)
+            {
+                selectedVaultId = firstVault.Id;
+            }
+            else if (isVaultsLoading)
+            {
+                // 知识库列表还在后台加载（首次打开需 3-5s），提示稍候而非误报"未创建知识库"
+                searchStatus = new SearchStatusInfo { ErrorMessage = L["Search_VaultsLoadingRetry"] };
+                hasSearched = true;
+                return;
+            }
+            else
+            {
+                searchStatus = new SearchStatusInfo { ErrorMessage = L["Search_NeedCreateVault"] };
+                hasSearched = true;
+                return;
+            }
+        }
+
+        await SearchHistoryService.AddSearchQuery(query);
+        recentSearches = await SearchHistoryService.GetRecentSearches();
+
+        searchQuery = query;
+        isSearching = true;
+        hasSearched = true;
+        searchStatus = null;
+
+        try
+        {
+            var response = await ApiService.SearchAsync(query, selectedVaultId);
+            searchResults = response.Results;
+            searchStatus = response.Status;
+            // 默认展开条目最多的分组（避免首屏全折叠看不到任何条目）
+            if (searchResults.Count > 0 && expandedGroups.Count == 0)
+            {
+                var topGroup = BuildGroupedResults()
+                    .OrderByDescending(g => g.Value.Count)
+                    .FirstOrDefault();
+                if (topGroup.Key != null) expandedGroups.Add(topGroup.Key);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "搜索失败");
+            searchResults = new List<SearchResult>();
+            searchStatus = new SearchStatusInfo { ErrorMessage = L["Search_ErrorMessage"] };
+        }
+        finally
+        {
+            isSearching = false;
+        }
+    }
+
+    private void ViewNote(SearchResult result)
+    {
+        SearchStateService.Save(searchQuery, searchResults, expandedGroups);
+        var vaultParam = string.IsNullOrEmpty(selectedVaultId) ? "" : $"&vaultId={Uri.EscapeDataString(selectedVaultId)}";
+        Navigation.NavigateTo($"note?id={Uri.EscapeDataString(result.Path)}{vaultParam}");
+    }
+
+    private Dictionary<string, List<SearchResult>> BuildGroupedResults()
+    {
+        var groups = new Dictionary<string, List<SearchResult>>();
+        var used = new HashSet<string>();
+
+        List<SearchResult> Pick(Func<SearchResult, bool> test)
+        {
+            var picked = new List<SearchResult>();
+            foreach (var n in searchResults)
+            {
+                if (used.Contains(n.Path)) continue;
+                if (test(n))
+                {
+                    picked.Add(n);
+                    used.Add(n.Path);
+                }
+            }
+            picked.Sort((a, b) => string.Compare(a.Title, b.Title, StringComparison.Ordinal));
+            return picked;
+        }
+
+        void AddGroup(string title, Func<SearchResult, bool> test)
+        {
+            var items = Pick(test);
+            if (items.Count > 0) groups[title] = items;
+        }
+
+        AddGroup(L["Search_GroupSymptoms"], n => n.Path.Contains("症状/") || n.Path.Contains("病名/"));
+        AddGroup(L["Search_GroupPathogenesis"], n => n.Path.Contains("病机/") || n.Path.Contains("病理/") || n.Path.Contains("证型/"));
+        AddGroup(L["Search_GroupFormulas"], n => n.Path.Contains("方剂/") || n.Path.Contains("中药/"));
+        AddGroup(L["Search_GroupDiagnosis"], n => n.Path.Contains("舌诊/") || n.Path.Contains("脉诊/") || n.Path.Contains("望诊/") || n.Path.Contains("闻诊/"));
+        AddGroup(L["Search_GroupTreatment"], n => n.Path.StartsWith("治法/"));
+        AddGroup(L["Search_GroupCases"], n => n.Path.StartsWith("医案/"));
+        AddGroup(L["Search_GroupAiQuery"], n => n.Path.Contains("AI 查询/") || n.Path.Contains("AI 生成/"));
+        
+        var other = Pick(n => !used.Contains(n.Path));
+        if (other.Count > 0) groups[L["Search_GroupOther"]] = other;
+
+        return groups;
+    }
+
+    private void ToggleGroup(string groupName)
+    {
+        if (expandedGroups.Contains(groupName)) expandedGroups.Remove(groupName);
+        else expandedGroups.Add(groupName);
+    }
+
+    private async Task ClearSearchHistory()
+    {
+        await SearchHistoryService.ClearSearchHistory();
+        recentSearches = await SearchHistoryService.GetRecentSearches();
+    }
+
+    private async Task RemoveSearchQuery(string query)
+    {
+        await SearchHistoryService.RemoveSearchQuery(query);
+        recentSearches = await SearchHistoryService.GetRecentSearches();
+    }
+}

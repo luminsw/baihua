@@ -1,0 +1,456 @@
+@page "/master-stage"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Baihua.Web.Services
+@using Microsoft.Extensions.Localization
+@using Baihua.Contracts.Master
+@using Baihua.Contracts.Vaults
+@inject Baihua.Web.Services.IApiService ApiService
+@inject VaultsService VaultsService
+@inject NavigationManager NavigationManager
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["MasterStage_PageTitle"]</PageTitle>
+
+<h1>@L["MasterStage_Title"]</h1>
+
+@if (string.IsNullOrEmpty(masterId))
+{
+    <div class="empty-state">
+        <p>@(new MarkupString(L["MasterStage_NoMasterHint"].Value))</p>
+    </div>
+}
+else if (isLoading)
+{
+    <div class="loading">@L["MasterStage_Loading"]</div>
+}
+else
+{
+    <div class="stage-header">
+        <div class="stage-master-info">
+            <span class="master-label">@L["MasterStage_MasterLabel"]</span>
+            <span class="master-value">@masterName</span>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="GoBack">@L["MasterStage_GoBack"]</button>
+    </div>
+
+    <div class="timeline">
+        @foreach (var stage in allStages)
+        {
+            var status = GetStageStatus(stage.Name);
+            <div class="timeline-item @status.ToLower()">
+                <div class="timeline-marker">
+                    @if (status == "Completed")
+                    {
+                        <span class="marker-done">✓</span>
+                    }
+                    else if (status == "Current")
+                    {
+                        <span class="marker-current">▶</span>
+                    }
+                    else
+                    {
+                        <span class="marker-pending">@stage.Order</span>
+                    }
+                </div>
+                <div class="timeline-content">
+                    <div class="timeline-title">
+                        <span class="stage-name">@stage.DisplayName</span>
+                        <span class="stage-status-badge @status.ToLower()">@GetStatusText(status)</span>
+                    </div>
+                    <div class="timeline-desc">@stage.Description</div>
+                    @if (status == "Current")
+                    {
+                        <div class="timeline-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: @GetProgressWidth(stage.Name)"></div>
+                            </div>
+                            <span class="progress-text">@string.Format(L["MasterStage_ProgressText"], graduatedStages.Count, 5)</span>
+                        </div>
+                        <button class="btn btn-sm btn-primary" @onclick="() => CompleteStageAsync(stage.Name)" disabled="@isCompleting">
+                            @(isCompleting ? L["MasterStage_CompletingBtn"] : L["MasterStage_CompleteBtn"])
+                        </button>
+                    }
+                    @if (status == "Completed" && stageSummaries.ContainsKey(stage.Name))
+                    {
+                        <div class="stage-summary">
+                            <div class="summary-label">📖 @L["MasterStage_StageSummary"]</div>
+                            <div class="summary-text">@stageSummaries[stage.Name]</div>
+                        </div>
+                    }
+                    @if (status == "Completed" && stageCorrections.ContainsKey(stage.Name) && stageCorrections[stage.Name] != "无")
+                    {
+                        <div class="stage-corrections">
+                            <div class="corrections-label">⚠️ @L["MasterStage_KeyCorrections"]</div>
+                            <div class="corrections-text">@stageCorrections[stage.Name]</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="vault-focus-section">
+        <div class="section-header">
+            <span class="section-title">📚 @L["MasterStage_KnowledgeBase"]</span>
+            <button class="btn btn-sm btn-outline" @onclick="ShowVaultPicker" disabled="@isLoadingVaults">
+                @(isLoadingVaults ? L["MasterStage_LoadingVaults"] : L["MasterStage_LinkVaultBtn"])
+            </button>
+        </div>
+        @if (focusedVaults.Count == 0)
+        {
+            <div class="vault-empty">@L["MasterStage_VaultEmpty"]</div>
+        }
+        else
+        {
+            <div class="vault-list">
+                @foreach (var v in focusedVaults)
+                {
+                    <div class="vault-item">
+                        <span class="vault-name">@v.VaultName</span>
+                        <span class="vault-state">@v.State</span>
+                        <button class="btn btn-xs btn-outline-danger" @onclick="() => RemoveVaultFocusAsync(v.VaultId)">@L["MasterStage_RemoveVault"]</button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@if (showStageCompleteDialog)
+{
+    <div class="dialog-overlay" @onclick="CloseStageCompleteDialog">
+        <div class="dialog-content" @onclick:stopPropagation>
+            <div class="dialog-header">
+                <span class="dialog-title">🎉 @L["MasterStage_DialogTitle"]</span>
+                <button class="dialog-close" @onclick="CloseStageCompleteDialog">✕</button>
+            </div>
+            <div class="dialog-body">
+                @if (!string.IsNullOrEmpty(completedBlessing))
+                {
+                    <div class="blessing-box">
+                        <div class="blessing-text">@completedBlessing</div>
+                    </div>
+                }
+                <div class="completed-stage-name">@string.Format(L["MasterStage_StageComplete"], completedStageName)</div>
+                @if (!string.IsNullOrEmpty(completedSummary))
+                {
+                    <div class="completed-summary">
+                        <div class="completed-label">📖 @L["MasterStage_StageSummaryDesc"]</div>
+                        <div class="completed-text">@completedSummary</div>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(completedCorrections) && completedCorrections != "无")
+                {
+                    <div class="completed-corrections">
+                        <div class="completed-corrections-label">⚠️ @L["MasterStage_StageCorrections"]</div>
+                        <div class="completed-corrections-text">@completedCorrections</div>
+                    </div>
+                }
+            </div>
+            <div class="dialog-footer">
+                <button class="btn btn-primary" @onclick="CloseStageCompleteDialog">@L["MasterStage_ContinueBtn"]</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showVaultPicker)
+{
+    <div class="dialog-overlay" @onclick="CloseVaultPicker">
+        <div class="dialog-content dialog-wide" @onclick:stopPropagation>
+            <div class="dialog-header">
+                <span class="dialog-title">@L["MasterStage_VaultPickerTitle"]</span>
+                <button class="dialog-close" @onclick="CloseVaultPicker">✕</button>
+            </div>
+            <div class="dialog-body">
+                @if (allVaults.Count == 0)
+                {
+                    <div class="vault-empty">@L["MasterStage_NoVaults"]</div>
+                }
+                else
+                {
+                    @foreach (var vault in allVaults)
+                    {
+                        var isFocused = focusedVaults.Any(f => f.VaultId == vault.Id);
+                        <div class="vault-picker-item @(isFocused ? "selected" : "")" @onclick="() => ToggleVaultFocusAsync(vault)">
+                            <span class="vault-picker-name">@vault.Name</span>
+                            <span class="vault-picker-industry">@vault.Industry</span>
+                            <span class="vault-picker-check">@(isFocused ? "✓" : "")</span>
+                        </div>
+                    }
+                }
+            </div>
+            <div class="dialog-footer">
+                <button class="btn btn-outline-secondary" @onclick="CloseVaultPicker">@L["MasterStage_CloseBtn"]</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .empty-state { text-align: center; padding: 3rem; color: var(--master-text-dim); }
+    .empty-state a { color: var(--master-accent); }
+    .loading { text-align: center; padding: 3rem; color: var(--master-text-dim); }
+    .stage-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--master-border); }
+    .master-label { color: var(--master-text-muted); font-size: 0.9rem; }
+    .master-value { font-weight: 600; font-size: 1rem; }
+    .timeline { position: relative; padding-left: 2rem; }
+    .timeline::before { content: ''; position: absolute; left: 15px; top: 0; bottom: 0; width: 2px; background: var(--master-border); }
+    .timeline-item { position: relative; margin-bottom: 1.5rem; }
+    .timeline-marker { position: absolute; left: -2rem; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; }
+    .timeline-item.completed .timeline-marker { background: var(--master-stage-dot-completed); color: #fff; }
+    .timeline-item.current .timeline-marker { background: var(--master-stage-dot-current); color: #fff; }
+    .timeline-item.pending .timeline-marker { background: var(--master-stage-dot-pending); color: var(--master-text-dim); }
+    .timeline-content { padding-left: 0.5rem; }
+    .timeline-title { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+    .stage-name { font-weight: 600; font-size: 1rem; }
+    .stage-status-badge { padding: 0.1rem 0.5rem; border-radius: 1rem; font-size: 0.7rem; font-weight: 500; }
+    .stage-status-badge.completed { background: var(--master-stage-dot-completed); color: #fff; }
+    .stage-status-badge.current { background: var(--master-stage-dot-current); color: #fff; }
+    .stage-status-badge.pending { background: var(--master-stage-dot-pending); color: var(--master-text-dim); }
+    .timeline-desc { font-size: 0.85rem; color: var(--master-text-muted); margin-bottom: 0.5rem; }
+    .timeline-progress { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+    .progress-bar { flex: 1; max-width: 200px; height: 6px; border-radius: 3px; background: var(--master-border); overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 3px; background: var(--master-accent); transition: width 0.3s; }
+    .progress-text { font-size: 0.8rem; color: var(--master-text-dim); }
+    .stage-summary { margin-top: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--master-surface); border: 1px solid var(--master-border); }
+    .summary-label { font-size: 0.75rem; color: var(--master-text-dim); margin-bottom: 0.25rem; }
+    .summary-text { font-size: 0.85rem; color: var(--master-text-secondary); line-height: 1.5; }
+    .stage-corrections { margin-top: 0.4rem; padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--master-correction-bg); border: 1px solid var(--master-correction-border); }
+    .corrections-label { font-size: 0.75rem; color: var(--master-correction-label); margin-bottom: 0.25rem; }
+    .corrections-text { font-size: 0.85rem; color: var(--master-correction-text); line-height: 1.5; }
+
+    .vault-focus-section { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--master-border); }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+    .section-title { font-weight: 600; font-size: 0.95rem; }
+    .vault-empty { font-size: 0.85rem; color: var(--master-text-dim); padding: 0.5rem 0; }
+    .vault-list { display: flex; flex-direction: column; gap: 0.4rem; }
+    .vault-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; border-radius: 6px; background: var(--master-surface); border: 1px solid var(--master-border); }
+    .vault-name { flex: 1; font-size: 0.85rem; }
+    .vault-state { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 1rem; background: rgba(var(--master-accent-rgb), 0.2); color: var(--master-accent); }
+    .btn-xs { font-size: 0.7rem; padding: 0.15rem 0.4rem; }
+    .btn-outline { background: transparent; border: 1px solid var(--master-border); color: var(--master-text-secondary); }
+    .btn-outline:hover { border-color: var(--master-text-muted); color: var(--master-text); }
+    .btn-outline-danger { background: transparent; border: 1px solid rgba(220,53,69,0.3); color: rgba(220,53,69,0.8); }
+    .btn-outline-danger:hover { border-color: #dc3545; color: #dc3545; }
+
+    .dialog-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--master-modal-overlay); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+    .dialog-content { background: var(--master-modal-bg); border-radius: 12px; max-width: 480px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    .dialog-wide { max-width: 560px; }
+    .dialog-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; border-bottom: 1px solid var(--master-border); }
+    .dialog-title { font-weight: 600; font-size: 1.05rem; }
+    .dialog-close { background: none; border: none; color: var(--master-text-dim); font-size: 1.2rem; cursor: pointer; }
+    .dialog-close:hover { color: var(--master-text); }
+    .dialog-body { padding: 1rem 1.25rem; }
+    .dialog-footer { padding: 0.75rem 1.25rem; border-top: 1px solid var(--master-border); display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+    .blessing-box { padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 8px; background: var(--master-blessing-bg); border: 1px solid var(--master-blessing-border); }
+    .blessing-text { font-size: 0.95rem; color: var(--master-blessing-text); line-height: 1.6; font-style: italic; }
+    .completed-stage-name { font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--master-accent); }
+    .completed-summary { margin-bottom: 0.75rem; }
+    .completed-label { font-size: 0.8rem; color: var(--master-text-dim); margin-bottom: 0.3rem; }
+    .completed-text { font-size: 0.9rem; color: var(--master-text-secondary); line-height: 1.5; }
+    .completed-corrections { padding: 0.5rem 0.75rem; border-radius: 6px; background: var(--master-correction-bg); border: 1px solid var(--master-correction-border); }
+    .completed-corrections-label { font-size: 0.8rem; color: var(--master-correction-label); margin-bottom: 0.3rem; }
+    .completed-corrections-text { font-size: 0.9rem; color: var(--master-correction-text); line-height: 1.5; }
+
+    .vault-picker-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.8rem; border-radius: 8px; cursor: pointer; margin-bottom: 0.3rem; border: 1px solid var(--master-border); transition: all 0.15s; }
+    .vault-picker-item:hover { background: var(--master-surface); }
+    .vault-picker-item.selected { background: rgba(var(--master-accent-rgb), 0.1); border-color: rgba(var(--master-accent-rgb), 0.3); }
+    .vault-picker-name { flex: 1; font-size: 0.9rem; }
+    .vault-picker-industry { font-size: 0.75rem; color: var(--master-text-dim); }
+    .vault-picker-check { color: var(--master-accent); font-weight: 600; }
+</style>
+
+@code {
+    private string? masterId;
+    private string masterName = "";
+    private string currentStage = "入道";
+    private List<string> graduatedStages = new();
+    private Dictionary<string, string> stageSummaries = new();
+    private Dictionary<string, string> stageCorrections = new();
+    private List<StageInfo> allStages = new();
+    private bool isLoading = true;
+    private bool isCompleting = false;
+
+    private List<VaultFocusItem> focusedVaults = new();
+    private List<VaultConfig> allVaults = new();
+    private bool isLoadingVaults = false;
+    private bool showVaultPicker = false;
+
+    private bool showStageCompleteDialog = false;
+    private string completedStageName = "";
+    private string completedBlessing = "";
+    private string completedSummary = "";
+    private string completedCorrections = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        masterId = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query).GetValueOrDefault("masterId").ToString();
+
+        if (string.IsNullOrEmpty(masterId))
+        {
+            isLoading = false;
+            return;
+        }
+
+        allStages = new List<StageInfo>
+        {
+            new() { Name = "入道", DisplayName = "入道", Description = "确定目标、评估基础、生成初始知识库和任务", Order = 1 },
+            new() { Name = "筑基", DisplayName = "筑基", Description = "建立知识框架、每日任务、养成学习习惯", Order = 2 },
+            new() { Name = "精进", DisplayName = "精进", Description = "分科细化、攻克细节、消除薄弱环节", Order = 3 },
+            new() { Name = "磨砺", DisplayName = "磨砺", Description = "模拟考试、查漏补缺、强化高频考点", Order = 4 },
+            new() { Name = "出师", DisplayName = "出师", Description = "能力认证、报考指导、考前冲刺", Order = 5 },
+        };
+
+        await LoadProfileAsync();
+        await LoadVaultFocusAsync();
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        try
+        {
+            var profile = await ApiService.GetMasterProfileAsync(masterId!);
+            if (profile.Success)
+            {
+                currentStage = profile.CurrentStage;
+                graduatedStages = profile.GraduatedStages;
+                masterName = (await ApiService.GetMastersAsync()).FirstOrDefault(m => m.MasterId == masterId)?.MasterName ?? "师父";
+            }
+        }
+        catch { }
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadVaultFocusAsync()
+    {
+        try
+        {
+            var result = await ApiService.GetVaultFocusAsync(masterId!);
+            if (result.Success)
+                focusedVaults = result.Items;
+        }
+        catch { }
+    }
+
+    private string GetStageStatus(string stageName)
+    {
+        if (graduatedStages.Contains(stageName)) return "Completed";
+        if (stageName == currentStage) return "Current";
+        return "Pending";
+    }
+
+    private static string GetStatusText(string status) => status switch
+    {
+        "Completed" => "已完成",
+        "Current" => "进行中",
+        _ => "未开始"
+    };
+
+    private string GetProgressWidth(string stageName)
+    {
+        return $"{(graduatedStages.Count / 5.0 * 100):F0}%";
+    }
+
+    private async Task CompleteStageAsync(string stageName)
+    {
+        isCompleting = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await ApiService.MasterStageCompleteAsync(masterId!, stageName);
+            if (result.Success)
+            {
+                if (!graduatedStages.Contains(stageName))
+                    graduatedStages.Add(stageName);
+                if (!string.IsNullOrEmpty(result.NextStage))
+                    currentStage = result.NextStage;
+                if (!string.IsNullOrEmpty(result.Summary))
+                    stageSummaries[stageName] = result.Summary;
+                if (!string.IsNullOrEmpty(result.KeyCorrections))
+                    stageCorrections[stageName] = result.KeyCorrections;
+
+                completedStageName = stageName;
+                completedBlessing = result.Blessing ?? "";
+                completedSummary = result.Summary ?? "";
+                completedCorrections = result.KeyCorrections ?? "";
+                showStageCompleteDialog = true;
+            }
+        }
+        catch { }
+        finally
+        {
+            isCompleting = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseStageCompleteDialog()
+    {
+        showStageCompleteDialog = false;
+    }
+
+    private async Task ShowVaultPicker()
+    {
+        isLoadingVaults = true;
+        showVaultPicker = true;
+        StateHasChanged();
+        try
+        {
+            var vaultsResp = await VaultsService.GetVaultsAsync(forceRefresh: true);
+            allVaults = vaultsResp.Vaults;
+        }
+        catch { }
+        isLoadingVaults = false;
+        StateHasChanged();
+    }
+
+    private void CloseVaultPicker()
+    {
+        showVaultPicker = false;
+    }
+
+    private async Task ToggleVaultFocusAsync(VaultConfig vault)
+    {
+        var existing = focusedVaults.FirstOrDefault(f => f.VaultId == vault.Id);
+        try
+        {
+            if (existing != null)
+            {
+                await ApiService.RemoveVaultFocusAsync(masterId!, vault.Id);
+                focusedVaults.RemoveAll(f => f.VaultId == vault.Id);
+            }
+            else
+            {
+                var req = new VaultFocusUpdateRequest { VaultId = vault.Id, State = "focused", StageName = currentStage };
+                var resp = await ApiService.UpdateVaultFocusAsync(masterId!, req);
+                if (resp.Success)
+                {
+                    focusedVaults.Add(new VaultFocusItem { VaultId = vault.Id, VaultName = vault.Name, State = "focused", StageName = currentStage });
+                }
+            }
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task RemoveVaultFocusAsync(string vaultId)
+    {
+        try
+        {
+            await ApiService.RemoveVaultFocusAsync(masterId!, vaultId);
+            focusedVaults.RemoveAll(f => f.VaultId == vaultId);
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo("master-chat");
+    }
+}

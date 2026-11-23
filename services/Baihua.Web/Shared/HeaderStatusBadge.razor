@@ -1,0 +1,79 @@
+@using Microsoft.AspNetCore.Components.Web
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Baihua.Web.Services
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject GlobalStateService GlobalStateService
+@inject IConfiguration Configuration
+@implements IDisposable
+
+<div class="ai-status-container">
+    <a href="settings" class="ai-status-badge @(GetAiBadgeClass())" title="@GetAiTitle()" style="text-decoration:none;">
+        <span class="ai-icon">🤖</span>
+        <span class="ai-info">
+            <span class="ai-provider">@(IsConfigured(aiStatus) ? (aiStatus?.ProviderName ?? "AI") : "AI 未配置")</span>
+            <span class="ai-model">@(IsConfigured(aiStatus) ? GetShortModelName(aiStatus?.Model) : "点击设置 API Key")</span>
+        </span>
+        <span class="ai-indicator @(IsConfigured(aiStatus) ? "online" : "offline")">●</span>
+    </a>
+</div>
+
+<style>
+    .ai-status-container {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex: 1;
+    }
+</style>
+
+@code {
+    private AIStatusSummary? aiStatus;
+
+    protected override void OnInitialized()
+    {
+        aiStatus = GlobalStateService.GetAIStatus();
+        GlobalStateService.StateChanged += OnGlobalStateChanged;
+        // StatusHub 由 WebUI 自己提供，且本客户端跑在服务端进程内：
+        // 必须用自身监听地址，不能用 NavigationManager.BaseUri（那是浏览器看到的外部地址，
+        // k8s 下为 http://<入口>/，在 Pod 内指向 :80 无监听 → Connection refused）。
+        GlobalStateService.Initialize($"{WebUiSelfUrl.Resolve(Configuration)}/hubs/status");
+    }
+
+    private void OnGlobalStateChanged(object? sender, EventArgs e)
+    {
+        aiStatus = GlobalStateService.GetAIStatus();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        GlobalStateService.StateChanged -= OnGlobalStateChanged;
+    }
+
+    private bool IsConfigured(AIStatusSummary? status) => status?.IsConfigured ?? true;
+    private string GetAiBadgeClass() => IsConfigured(aiStatus) ? "ai-configured" : "ai-not-configured";
+    private string GetAiTitle() => IsConfigured(aiStatus) ? "AI 已配置 - 点击修改" : "AI 未配置 - 点击设置";
+
+    private string GetShortModelName(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return "默认模型";
+        var parts = fullName.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length > 0)
+        {
+            var lastPart = parts[^1];
+            if (lastPart.Length > 20)
+            {
+                if (lastPart.Contains("DeepSeek"))
+                    return "DeepSeek";
+                if (lastPart.Contains("Qwen"))
+                    return "Qwen";
+                if (lastPart.Contains("GPT"))
+                    return "GPT";
+                return lastPart.Substring(0, 20) + "...";
+            }
+            return lastPart;
+        }
+        return fullName.Length > 20 ? fullName.Substring(0, 20) + "..." : fullName;
+    }
+}

@@ -1,0 +1,587 @@
+@page "/family"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject Baihua.Web.Services.IApiService ApiService
+@inject Baihua.Web.Services.VaultsService VaultsService
+@inject NavigationManager Navigation
+@inject Microsoft.Extensions.Logging.ILogger<FamilyLanding> Logger
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["FamilyLanding_PageTitle"]</PageTitle>
+
+<div class="family-landing">
+    <div class="landing-header">
+        <h1>@L["FamilyLanding_Title"]</h1>
+        <p class="landing-subtitle">@L["FamilyLanding_Subtitle"]</p>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading">@L["FamilyLanding_Loading"]</div>
+    }
+    else if (showOnboarding)
+    {
+        <!-- FAM-34 Onboarding 向导（无 Learner + 未完成标记） -->
+        <div class="onboarding-wizard">
+            <div class="onboarding-header">
+                <button class="onboarding-skip" @onclick="SkipOnboarding">@L["FamilyLanding_Skip"] ✕</button>
+            </div>
+
+            @if (onboardingStep == 1)
+            {
+                <div class="onboarding-card" data-step="Step 1">
+                    <h2>👋 @L["FamilyLanding_WelcomeTitle"]</h2>
+                    <p>@L["FamilyLanding_WelcomeSubtitle"]</p>
+                    <div class="onboarding-form">
+                        <input type="text" class="form-control" @bind="newLearnerName" placeholder="@L["FamilyLanding_LearnerNamePlaceholder"]" />
+                        @if (!string.IsNullOrEmpty(onboardingError))
+                        {
+                            <p class="onboarding-error">@onboardingError</p>
+                        }
+                        <button class="btn btn-primary" @onclick="CreateLearnerFromOnboarding" disabled="@isOnboardingBusy">@L["FamilyLanding_Start"]</button>
+                    </div>
+                </div>
+            }
+            else if (onboardingStep == 2)
+            {
+                <div class="onboarding-card" data-step="Step 2">
+                    <h2>📖 @L["FamilyLanding_FirstStudyTitle"]</h2>
+                    <p>@L["FamilyLanding_FirstStudySubtitle"]</p>
+                    <a class="guide-button" href="daily-card">@L["FamilyLanding_GoDailyCard"] ➡️</a>
+                </div>
+            }
+            else if (onboardingStep == 3)
+            {
+                <div class="onboarding-card" data-step="Step 3">
+                    <h2>🎉 @L["FamilyLanding_CongratsTitle"]</h2>
+                    <p>@L["FamilyLanding_CongratsSubtitle"]</p>
+                    <a class="guide-button" href="/checkin">@L["FamilyLanding_ViewCheckin"] ➡️</a>
+                </div>
+            }
+
+            <div class="onboarding-steps">
+                <span class="ob-step @(onboardingStep >= 1 ? "active" : "")">@L["FamilyLanding_Step1"]</span>
+                <span class="ob-step @(onboardingStep >= 2 ? "active" : "")">@L["FamilyLanding_Step2"]</span>
+                <span class="ob-step @(onboardingStep >= 3 ? "active" : "")">@L["FamilyLanding_Step3"]</span>
+                <span class="ob-step @(onboardingStep >= 4 ? "active" : "")">Done</span>
+            </div>
+        </div>
+    }
+    else if (learners.Count == 0)
+    {
+        <!-- 无 Learner 引导（不空白） -->
+        <div class="empty-guide">
+            <div class="guide-icon">🌱</div>
+            <h2>@L["FamilyLanding_NoLearnerGuideTitle"]</h2>
+            <p>@L["FamilyLanding_NoLearnerGuideDesc"]</p>
+            <a class="guide-button" href="achievements">@L["FamilyLanding_GoCreateLearner"] ➡️</a>
+        </div>
+    }
+    else
+    {
+        <!-- 区域 1：家庭学习汇总卡片 -->
+        <div class="family-summary">
+            <div class="summary-card">
+                <div class="summary-icon">📚</div>
+                <div class="summary-text">
+                    <div class="summary-value">@todayTotal</div>
+                    <div class="summary-label">@L["FamilyLanding_TodayLearned"]</div>
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-icon">🔥</div>
+                <div class="summary-text">
+                    <div class="summary-value">@maxStreak</div>
+                    <div class="summary-label">@L["FamilyLanding_MaxStreak"]</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 区域 2：成员学习快照 -->
+        <div class="section">
+            <div class="section-header">
+                <h2>@L["FamilyLanding_MemberSnapshot"]</h2>
+            </div>
+            <div class="member-snapshot">
+                @foreach (var member in data.FamilyStats)
+                {
+                    <div class="member-card" style="border-color:@member.Color">
+                        <div class="member-header">
+                            <span class="member-avatar" style="background:@member.Color">@member.AvatarEmoji</span>
+                            <span class="member-name">@member.Name</span>
+                        </div>
+                        <div class="member-stats">
+                            <div class="m-stat">
+                                <div class="m-value">@member.WeekTotal</div>
+                                <div class="m-label">@L["FamilyLanding_WeekTotal"]</div>
+                            </div>
+                            <div class="m-stat">
+                                <div class="m-value">🔥 @member.Streak</div>
+                                <div class="m-label">@L["FamilyLanding_Streak"]</div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- 区域 3：每日卡片捷径 -->
+        <div class="section">
+            <div class="section-header">
+                <h2>@L["FamilyLanding_DailyCardShortcut"]</h2>
+            </div>
+            <a class="daily-card-shortcut" href="daily-card">
+                <span class="shortcut-icon">🃏</span>
+                <span class="shortcut-text">
+                    <span class="shortcut-title">@L["FamilyLanding_DailyCardTitle"]</span>
+                    <span class="shortcut-desc">@L["FamilyLanding_DailyCardDesc"]</span>
+                </span>
+                <span class="shortcut-arrow">➡️</span>
+            </a>
+        </div>
+
+        <!-- 区域 3b：题库学习（多行业） -->
+        <div class="section">
+            <div class="section-header">
+                <h2>题库学习</h2>
+            </div>
+            <a class="daily-card-shortcut" href="/learn">
+                <span class="shortcut-icon">📚</span>
+                <span class="shortcut-text">
+                    <span class="shortcut-title">刷题闯关 · 多行业题库</span>
+                    <span class="shortcut-desc">按行业选择题库，看题选答案，即时解析与易混淆项区分点</span>
+                </span>
+                <span class="shortcut-arrow">➡️</span>
+            </a>
+        </div>
+
+        <!-- 区域 4：本周排行预览 -->
+        <div class="section">
+            <div class="section-header">
+                <h2>@L["FamilyLanding_LeaderboardPreview"]</h2>
+                <a href="leaderboard" class="section-link">@L["FamilyLanding_ViewMore"]</a>
+            </div>
+            <div class="leaderboard-preview">
+                @if (leaderboardEntries.Count > 0)
+                {
+                    @foreach (var entry in leaderboardEntries.Take(5))
+                    {
+                        <div class="leaderboard-row">
+                            <span class="lb-avatar" style="background:@entry.Color">@entry.AvatarEmoji</span>
+                            <span class="lb-name">@entry.LearnerName</span>
+                            <span class="lb-score">@entry.Score @L["FamilyLanding_Points"]</span>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="section-empty">@L["FamilyLanding_NoLeaderboardData"]</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .family-landing {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 1rem;
+    }
+
+    .landing-header {
+        text-align: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .landing-header h1 {
+        margin-bottom: 0.25rem;
+        color: #1e3a4c;
+    }
+
+    .landing-subtitle {
+        color: #5a6a72;
+        margin: 0;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 3rem;
+        color: #888;
+    }
+
+    .empty-guide {
+        text-align: center;
+        padding: 3rem 1rem;
+        background: #f5f8fa;
+        border-radius: 12px;
+        border: 2px dashed #c8d4dc;
+    }
+
+    .guide-icon {
+        font-size: 3rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .empty-guide h2 {
+        margin-bottom: 0.5rem;
+        color: #1e3a4c;
+    }
+
+    .empty-guide p {
+        color: #5a6a72;
+        margin-bottom: 1rem;
+    }
+
+    .guide-button {
+        display: inline-block;
+        padding: 0.6rem 1.5rem;
+        background: #2e8baf;
+        color: white;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .family-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .summary-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .summary-icon {
+        font-size: 2rem;
+    }
+
+    .summary-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #1e3a4c;
+    }
+
+    .summary-label {
+        font-size: 0.85rem;
+        color: #5a6a72;
+    }
+
+    .section {
+        margin-bottom: 2rem;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+
+    .section-header h2 {
+        margin: 0;
+        font-size: 1.15rem;
+        color: #1e3a4c;
+    }
+
+    .section-link {
+        color: #2e8baf;
+        text-decoration: none;
+        font-size: 0.9rem;
+    }
+
+    .member-snapshot {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .member-card {
+        background: white;
+        border: 2px solid;
+        border-radius: 12px;
+        padding: 1rem;
+    }
+
+    .member-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .member-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        color: white;
+    }
+
+    .member-name {
+        font-weight: 600;
+        color: #1e3a4c;
+    }
+
+    .member-stats {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .m-value {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #1e3a4c;
+    }
+
+    .m-label {
+        font-size: 0.75rem;
+        color: #5a6a72;
+    }
+
+    .daily-card-shortcut {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 1.25rem 1.5rem;
+        text-decoration: none;
+        box-shadow: 0 4px 12px rgba(17, 153, 142, 0.25);
+        transition: transform 0.2s;
+    }
+
+    .daily-card-shortcut:hover {
+        transform: translateY(-2px);
+    }
+
+    .shortcut-icon {
+        font-size: 2rem;
+    }
+
+    .shortcut-text {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .shortcut-title {
+        font-size: 1.15rem;
+        font-weight: 600;
+    }
+
+    .shortcut-desc {
+        font-size: 0.85rem;
+        opacity: 0.9;
+    }
+
+    .shortcut-arrow {
+        font-size: 1.3rem;
+    }
+
+    .leaderboard-preview {
+        background: white;
+        border-radius: 12px;
+        padding: 0.5rem 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .leaderboard-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.6rem 0;
+        border-bottom: 1px solid #f0f4f6;
+    }
+
+    .leaderboard-row:last-child {
+        border-bottom: none;
+    }
+
+    .lb-avatar {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        color: white;
+    }
+
+    .lb-name {
+        flex: 1;
+        color: #1e3a4c;
+        font-weight: 500;
+    }
+
+    .lb-score {
+        color: #5a6a72;
+        font-size: 0.9rem;
+    }
+
+    .section-empty {
+        padding: 1.5rem;
+        text-align: center;
+        color: #888;
+        background: #f5f8fa;
+        border-radius: 8px;
+    }
+
+    /* FAM-34 Onboarding 向导 */
+    .onboarding-wizard { max-width: 560px; margin: 2rem auto; }
+    .onboarding-header { text-align: right; margin-bottom: 0.5rem; }
+    .onboarding-skip { background: none; border: none; color: #888; cursor: pointer; font-size: 0.9rem; }
+    .onboarding-card { background: white; border-radius: 16px; padding: 2rem; text-align: center; box-shadow: 0 6px 24px rgba(0,0,0,0.1); }
+    .onboarding-card h2 { margin-bottom: 0.5rem; color: #1e3a4c; }
+    .onboarding-card p { color: #5a6a72; margin-bottom: 1.25rem; }
+    .onboarding-form { display: flex; flex-direction: column; gap: 0.75rem; max-width: 320px; margin: 0 auto; }
+    .onboarding-error { color: #c0392b; font-size: 0.85rem; margin: 0; }
+    .onboarding-steps { display: flex; justify-content: center; gap: 0.75rem; margin-top: 1.25rem; }
+    .ob-step { font-size: 0.8rem; color: #aaa; padding: 0.3rem 0.75rem; border-radius: 20px; background: #f0f4f6; }
+    .ob-step.active { color: #fff; background: #2e8baf; font-weight: 600; }
+
+    /* FAM-32 响应式：手机 ≤768px（汇总卡片堆叠、成员卡片单列） */
+    @@media (max-width: 768px) {
+        .family-landing { padding: 0.5rem; }
+        .family-summary { grid-template-columns: 1fr; gap: 0.5rem; }
+        .member-snapshot { grid-template-columns: 1fr; }
+        .daily-card-shortcut { padding: 1rem; }
+        .landing-header h1 { font-size: 1.3rem; }
+        .onboarding-card { padding: 1.25rem; }
+        .onboarding-steps { flex-wrap: wrap; gap: 0.4rem; }
+    }
+
+    /* FAM-32 响应式：平板 769-1024px */
+    @@media (min-width: 769px) and (max-width: 1024px) {
+        .family-landing { max-width: 100%; }
+        .family-summary { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* FAM-32 响应式：桌面 ≥1025px（锚） */
+    @@media (min-width: 1025px) {
+        .family-landing { max-width: 960px; }
+    }
+</style>
+
+@code {
+    private List<Baihua.Contracts.Achievements.LearnerDto> learners = new();
+    private DashboardDataDto data = new();
+    private List<LeaderboardEntryDto> leaderboardEntries = new();
+    private bool isLoading = true;
+
+    // FAM-34 Onboarding
+    private bool showOnboarding = false;
+    private int onboardingStep = 1;
+    private string newLearnerName = "";
+    private string onboardingError = "";
+    private bool isOnboardingBusy = false;
+
+    private int todayTotal => data.FamilyStats.Sum(s => s.WeekTotal);
+    private int maxStreak => data.FamilyStats.Count > 0 ? data.FamilyStats.Max(s => s.Streak) : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Logger.LogInformation("FamilyLanding OnInitializedAsync enter");
+        try
+        {
+            await LoadLandingAsync();
+            Logger.LogInformation("FamilyLanding OnInitializedAsync done");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "FamilyLanding OnInitializedAsync exception");
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadLandingAsync()
+    {
+        Logger.LogInformation("FamilyLanding LoadLandingAsync start");
+        try
+        {
+            learners = await ApiService.GetLearnersAsync();
+            Logger.LogInformation("FamilyLanding learners count={Count}", learners.Count);
+            // FAM-34 AC1/AC4：无 Learner 且 Onboarding 未完成（且无使用痕迹）才触发
+            if (learners.Count == 0)
+            {
+                var onboarding = await ApiService.GetOnboardingStatusAsync();
+                showOnboarding = !onboarding.IsOnboardingCompleted;
+                if (showOnboarding)
+                {
+                    onboardingStep = 1;
+                    isLoading = false;
+                    return;
+                }
+            }
+
+            var vaults = await VaultsService.GetVaultsAsync();
+            var vaultId = vaults.Vaults.FirstOrDefault()?.Id;
+            data = await ApiService.GetDashboardAsync(vaultId);
+            leaderboardEntries = await ApiService.GetLeaderboardAsync("weekly", vaultId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "加载家庭首页失败");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task CreateLearnerFromOnboarding()
+    {
+        if (string.IsNullOrWhiteSpace(newLearnerName))
+        {
+            onboardingError = L["FamilyLanding_NameRequired"].Value;
+            return;
+        }
+        if (newLearnerName.Trim().Length > 20)
+        {
+            onboardingError = L["FamilyLanding_NameTooLong"].Value;
+            return;
+        }
+        isOnboardingBusy = true;
+        onboardingError = "";
+        try
+        {
+            await ApiService.CreateLearnerAsync(new Baihua.Contracts.Achievements.CreateLearnerRequest
+            {
+                Name = newLearnerName.Trim(),
+                AvatarEmoji = "😊",
+                Color = "#2e8baf"
+            });
+            onboardingStep = 2;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Onboarding 创建学习者失败");
+            onboardingError = L["FamilyLanding_CreateFailed"].Value;
+        }
+        finally
+        {
+            isOnboardingBusy = false;
+        }
+    }
+
+    private async Task SkipOnboarding()
+    {
+        // FAM-34 AC3：跳过后持久化 OnboardingCompleted，不再弹出
+        await ApiService.CompleteOnboardingAsync();
+        showOnboarding = false;
+        await LoadLandingAsync();
+    }
+}

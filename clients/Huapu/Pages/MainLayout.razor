@@ -1,0 +1,116 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@inject BaihuaSdk.Push.PushWebSocketService PushService
+@inject MobileContract.Services.IDeviceRegistrationService DeviceRegistration
+@inject BaihuaSdk.Signing.IRequestSigner Signer
+@inject BaihuaSdk.Storage.ISecureStore SecureStore
+@inject BaihuaSdk.Storage.IServerConfigStore ServerStore
+@implements IDisposable
+
+<div class="app-shell">
+    <main class="tab-content">
+        @Body
+    </main>
+    <nav class="bottom-tabs">
+        <a href="/" class="tab-item @((CurrentRoute == "/") ? "active" : "")">
+            <span class="tab-icon">🏠</span>
+            <span class="tab-label">首页</span>
+        </a>
+        <a href="/knowledge" class="tab-item @((CurrentRoute == "/knowledge") ? "active" : "")">
+            <span class="tab-icon">📚</span>
+            <span class="tab-label">获取知识</span>
+        </a>
+        <a href="/profile" class="tab-item @((CurrentRoute == "/profile") ? "active" : "")">
+            <span class="tab-icon">👤</span>
+            <span class="tab-label">我的</span>
+        </a>
+    </nav>
+</div>
+
+@code {
+    private string CurrentRoute => Navigation.ToBaseRelativePath(Navigation.Uri).Split('?')[0] switch
+    {
+        "" => "/",
+        var r => "/" + r
+    };
+
+    private EventHandler? _pushAuthorizedHandler;
+    private string? _listeningUrl;
+    private bool _subscribed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 全局 WebSocket 授权监听：任意页面注册/等待授权时，WebUI 批准后推送到达，
+        // 自动重新注册拿到 SharedSecret 并保存——无需手动再点注册。
+        // 用导航事件驱动（非轮询）：配对注册后切到任何页面都会触发检查并建立监听。
+        Navigation.LocationChanged += OnLocationChanged;
+        await EnsureGlobalListenerAsync();
+    }
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        await EnsureGlobalListenerAsync();
+    }
+
+    private async Task EnsureGlobalListenerAsync()
+    {
+        var current = await ServerStore.GetCurrentServerAsync();
+        if (current == null) return;
+
+        // 已授权：无需监听，断开清理
+        var secret = Signer.HasServerSecret(current.HttpUrl)
+            ? null
+            : await SecureStore.GetAsync($"secret_{current.HttpUrl}");
+        if (!string.IsNullOrEmpty(secret))
+        {
+            Signer.SetServerSecret(current.HttpUrl, secret);
+            TeardownGlobalListener();
+            return;
+        }
+
+        // 未授权且未监听该服务器：建立全局监听
+        if (_subscribed && _listeningUrl == current.HttpUrl) return;
+        TeardownGlobalListener();
+
+        _listeningUrl = current.HttpUrl;
+        _pushAuthorizedHandler = async (s, e) =>
+        {
+            try
+            {
+                var server = await ServerStore.GetCurrentServerAsync();
+                if (server == null) return;
+
+                var result = await DeviceRegistration.RegisterDeviceAsync(server.HttpUrl);
+                if (result is { Success: true, Authorized: true, SharedSecret: not null })
+                {
+                    Signer.SetServerSecret(server.HttpUrl, result.SharedSecret);
+                    await SecureStore.SetAsync($"secret_{server.HttpUrl}", result.SharedSecret);
+                }
+            }
+            catch
+            {
+                // 网络抖动/服务器离线：PushWebSocketService 会自动重连，授权后仍会收到推送
+            }
+        };
+        PushService.Authorized += _pushAuthorizedHandler;
+        _subscribed = true;
+        await PushService.ConnectAsync(current.HttpUrl, MobileApp.Maui.Services.DeviceInfoHelper.GetDeviceName());
+    }
+
+    private void TeardownGlobalListener()
+    {
+        if (_pushAuthorizedHandler != null)
+        {
+            PushService.Authorized -= _pushAuthorizedHandler;
+            _pushAuthorizedHandler = null;
+        }
+        _subscribed = false;
+        _listeningUrl = null;
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        TeardownGlobalListener();
+    }
+}

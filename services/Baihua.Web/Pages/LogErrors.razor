@@ -1,0 +1,378 @@
+@page "/log-errors"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@layout Baihua.Web.Shared.MainLayout
+@using System.Net.Http.Headers
+@using System.Text
+@using System.Text.Json
+@using Microsoft.Extensions.Localization
+@inject IStringLocalizer<Baihua.Web.Localization.SharedResources> L
+
+<PageTitle>@L["LogErrors_PageTitle"]</PageTitle>
+
+<div class="container-fluid py-3">
+    <h4 class="mb-3">@L["LogErrors_Title"]</h4>
+
+    <div class="mb-2 d-flex gap-2 align-items-center flex-wrap">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshLocal" disabled="@loading">@L["LogErrors_RefreshLocal"]</button>
+        <button class="btn btn-sm btn-outline-info" @onclick="RefreshOpenObserve" disabled="@loadingOo">@L["LogErrors_OpenObserveErrors"]</button>
+        <button class="btn btn-sm btn-outline-danger" @onclick="ClearLocalLogs">@L["LogErrors_ClearLocal"]</button>
+        <button class="btn btn-sm btn-outline-warning" @onclick="ClearOpenObserve" disabled="@clearingOo">@L["LogErrors_ClearOpenObserve"]</button>
+        <a href="http://localhost:5082" target="_blank" class="btn btn-sm btn-outline-info">@L["LogErrors_OpenObserveUI"]</a>
+        <span class="small">@status</span>
+    </div>
+
+    @if (pendingClear != null)
+    {
+        <div class="confirm-modal-overlay" @onclick="CancelClear">
+            <div class="confirm-modal-box" @onclick:stopPropagation="true">
+                <h3>⚠️ @(pendingClear == "local" ? L["LogErrors_ClearLocal"] : L["LogErrors_ClearOpenObserve"])</h3>
+                <p>@(pendingClear == "local" ? L["LogErrors_ConfirmClearLocal"] : L["LogErrors_ConfirmClearOpenObserve"])</p>
+                <div class="confirm-modal-actions">
+                    <button class="btn-secondary" @onclick="CancelClear">@L["LogErrors_Cancel"]</button>
+                    <button class="btn-danger" @onclick='async () => { if (pendingClear == "local") await ConfirmClearLocalLogs(); else await ConfirmClearOpenObserve(); }'>@L["LogErrors_ConfirmClear"]</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (loading || loadingOo)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (entries.Count == 0)
+    {
+        <div class="alert alert-info">@L["LogErrors_NoErrors"]</div>
+    }
+    else
+    {
+        <div class="mb-1 small text-muted">@L["LogErrors_CurrentSource"]@sourceLabel</div>
+        <div class="list-group" style="font-size: 0.85rem;">
+            @foreach (var e in entries)
+            {
+                <div class="list-group-item py-1 px-2">
+                    <small class="text-muted">@e.Time</small>
+                    @if (!string.IsNullOrEmpty(e.Service))
+                    {
+                        <span class="badge bg-secondary me-1" style="font-size:0.7rem;">@e.Service</span>
+                    }
+                    @if (!string.IsNullOrEmpty(e.Level))
+                    {
+                        <span class="badge @LevelBadge(e.Level) me-1" style="font-size:0.7rem;">@e.Level</span>
+                    }
+                    <code style="font-size:0.8rem;white-space:pre-wrap;word-break:break-all;">@e.Msg</code>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .confirm-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+    .confirm-modal-box {
+        background: white;
+        padding: 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        max-width: 400px;
+        width: 90%;
+        text-align: center;
+    }
+    .confirm-modal-box h3 {
+        margin-top: 0;
+        margin-bottom: 12px;
+        color: #c94c4c;
+    }
+    .confirm-modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        margin-top: 8px;
+    }
+    .confirm-modal-actions .btn-secondary {
+        background-color: #5a6a72;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .confirm-modal-actions .btn-danger {
+        background-color: #c94c4c;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+</style>
+
+@code {
+    private record Entry(string Time, string Msg, string Service = "", string Level = "");
+    private List<Entry> entries = new();
+    private bool loading = true;
+    private bool loadingOo;
+    private bool clearingOo;
+    private string status = "";
+    private string sourceLabel = "";
+    private string? ooAuthHeader;
+
+    private static readonly string[] SvcNames = { "family", "webui", "vault", "ai" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Build OpenObserve auth header
+        var ooUrl = Configuration["OpenObserve:WebUrl"] ?? "http://localhost:5082";
+        var ooUser = Configuration["OpenObserve:User"] ?? "root@localhost.com";
+        var ooPass = Configuration["OpenObserve:Password"] ?? "";
+        if (!string.IsNullOrEmpty(ooUser) && !string.IsNullOrEmpty(ooPass))
+        {
+            var raw = Encoding.UTF8.GetBytes($"{ooUser}:{ooPass}");
+            ooAuthHeader = Convert.ToBase64String(raw);
+        }
+
+        await RefreshLocal();
+    }
+
+    [Microsoft.AspNetCore.Components.Inject]
+    private Microsoft.AspNetCore.Components.NavigationManager NavigationManager { get; set; } = default!;
+
+    [Microsoft.AspNetCore.Components.Inject]
+    private IConfiguration Configuration { get; set; } = default!;
+
+    private async Task RefreshLocal()
+    {
+        loading = true;
+        loadingOo = false;
+        entries.Clear();
+        sourceLabel = L["LogErrors_SourceLocalFiles"];
+
+        try
+        {
+            foreach (var svc in SvcNames)
+            {
+                var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"bh-{svc}.log");
+                if (!System.IO.File.Exists(path)) continue;
+
+                string text;
+                try
+                {
+                    using var fs = new System.IO.FileStream(path, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite);
+                    using var sr = new System.IO.StreamReader(fs);
+                    text = await sr.ReadToEndAsync();
+                }
+                catch { continue; }
+
+                var lines = text.Split('\n');
+                foreach (var line in lines.Reverse())
+                {
+                    var t = line.Trim();
+                    if (t.Length == 0) continue;
+                    if (!t.Contains("ERR") && !t.Contains("Error") && !t.Contains("Exception") && !t.Contains("fail") && !t.Contains("WRN")) continue;
+
+                    var time = "";
+                    var m = System.Text.RegularExpressions.Regex.Match(t, @"\d{2}:\d{2}:\d{2}");
+                    if (m.Success) time = m.Value;
+
+                    var level = t.Contains("ERR") ? "ERROR" : t.Contains("WRN") ? "WARN" : "ERROR";
+
+                    entries.Add(new Entry(time, t, svc, level));
+                    if (entries.Count >= 200) break;
+                }
+                if (entries.Count >= 200) break;
+            }
+            status = string.Format(L["LogErrors_StatusLocal"], entries.Count);
+        }
+        catch (Exception ex)
+        {
+            entries.Add(new Entry("", string.Format(L["LogErrors_ReadFailedEntry"], ex.Message), "", "ERROR"));
+            status = L["LogErrors_StatusError"];
+        }
+
+        loading = false;
+    }
+
+    private async Task RefreshOpenObserve()
+    {
+        if (string.IsNullOrEmpty(ooAuthHeader)) return;
+
+        loadingOo = true;
+        loading = false;
+        entries.Clear();
+        sourceLabel = "OpenObserve";
+
+        try
+        {
+            var baseUrl = (Configuration["OpenObserve:WebUrl"] ?? "http://localhost:5082").TrimEnd('/');
+
+            var endTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000L;
+            var startTime = DateTimeOffset.UtcNow.AddHours(-24).ToUnixTimeMilliseconds() * 1000L;
+
+            var queryObj = new
+            {
+                query = new
+                {
+                    sql = "SELECT _timestamp, body, service_name, severity FROM default WHERE severity = 'Error' OR severity = 'Warn' ORDER BY _timestamp DESC LIMIT 200",
+                    start_time = startTime,
+                    end_time = endTime
+                }
+            };
+
+            var json = JsonSerializer.Serialize(queryObj);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            using var http = new HttpClient();
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", ooAuthHeader);
+            http.Timeout = TimeSpan.FromSeconds(15);
+
+            var resp = await http.PostAsync($"{baseUrl}/api/default/_search", content);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                var errBody = await resp.Content.ReadAsStringAsync();
+
+                // 流不存在 = 暂无日志数据，不是真正的错误
+                if (errBody.Contains("stream not found"))
+                {
+                    status = L["LogErrors_OpenObserveNoStream"];
+                    loadingOo = false;
+                    return;
+                }
+
+                status = string.Format(L["LogErrors_OpenObserveQueryFailed"], (int)resp.StatusCode, errBody.Substring(0, Math.Min(errBody.Length, 200)));
+                loadingOo = false;
+                return;
+            }
+
+            var respJson = await resp.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(respJson);
+            var root = doc.RootElement;
+
+            var total = 0;
+            if (root.TryGetProperty("total", out var totalEl)) total = totalEl.GetInt32();
+
+            if (total > 0 && root.TryGetProperty("hits", out var hits))
+            {
+                foreach (var hit in hits.EnumerateArray())
+                {
+                    var ts = "";
+                    if (hit.TryGetProperty("_timestamp", out var tsEl))
+                    {
+                        var micros = tsEl.GetInt64();
+                        var dt = DateTimeOffset.FromUnixTimeMilliseconds(micros / 1000);
+                        ts = dt.ToLocalTime().ToString("MM-dd HH:mm:ss");
+                    }
+
+                    var body = hit.TryGetProperty("body", out var bEl) ? bEl.GetString() ?? "" : "";
+                    var svc = hit.TryGetProperty("service_name", out var svcEl) ? svcEl.GetString() ?? "" : "";
+                    var level = hit.TryGetProperty("severity", out var lvlEl) ? lvlEl.GetString() ?? "Error" : "Error";
+
+                    entries.Add(new Entry(ts, body, svc, level));
+                    if (entries.Count >= 200) break;
+                }
+            }
+
+            status = total == 0 ? L["LogErrors_OpenObserveNoErrors"] : string.Format(L["LogErrors_StatusOpenObserve"], entries.Count);
+        }
+        catch (Exception ex)
+        {
+            entries.Add(new Entry("", string.Format(L["LogErrors_QueryFailedEntry"], ex.Message), "", "ERROR"));
+            status = L["LogErrors_StatusError"];
+        }
+
+        loadingOo = false;
+    }
+
+    private async Task ClearLocalLogs()
+    {
+        // 原生 confirm 改为站内确认弹窗
+        pendingClear = "local";
+    }
+
+    private async Task ConfirmClearLocalLogs()
+    {
+        pendingClear = null;
+        var cleared = 0;
+        foreach (var svc in SvcNames)
+        {
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"bh-{svc}.log");
+            try
+            {
+                if (System.IO.File.Exists(path))
+                {
+                    using var fs = new System.IO.FileStream(path, System.IO.FileMode.Truncate, System.IO.FileAccess.Write, System.IO.FileShare.ReadWrite);
+                    fs.SetLength(0);
+                    cleared++;
+                }
+            }
+            catch { }
+        }
+
+        entries.Clear();
+        status = string.Format(L["LogErrors_ClearedLocalLogs"], cleared);
+        StateHasChanged();
+    }
+
+    private async Task ClearOpenObserve()
+    {
+        if (string.IsNullOrEmpty(ooAuthHeader)) return;
+        // 原生 confirm 改为站内确认弹窗
+        pendingClear = "openobserve";
+    }
+
+    private async Task ConfirmClearOpenObserve()
+    {
+        pendingClear = null;
+        clearingOo = true;
+        try
+        {
+            var baseUrl = (Configuration["OpenObserve:WebUrl"] ?? "http://localhost:5082").TrimEnd('/');
+
+            using var http = new HttpClient();
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", ooAuthHeader);
+            http.Timeout = TimeSpan.FromSeconds(15);
+
+            var resp = await http.DeleteAsync($"{baseUrl}/api/default/streams/default");
+            if (resp.IsSuccessStatusCode)
+            {
+                entries.Clear();
+                status = L["LogErrors_OpenObserveStreamDeleted"];
+            }
+            else
+            {
+                var errBody = await resp.Content.ReadAsStringAsync();
+                status = string.Format(L["LogErrors_DeleteFailed"], (int)resp.StatusCode, errBody);
+            }
+        }
+        catch (Exception ex)
+        {
+            status = string.Format(L["LogErrors_RequestFailed"], ex.Message);
+        }
+
+        clearingOo = false;
+    }
+
+    private string? pendingClear;
+    private void CancelClear() => pendingClear = null;
+
+    private string LevelBadge(string level) => level.ToUpperInvariant() switch
+    {
+        "ERROR" => "bg-danger",
+        "WARN" => "bg-warning text-dark",
+        "WARNING" => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
+
+    [Microsoft.AspNetCore.Components.Inject]
+    private IJSRuntime JSRuntime { get; set; } = default!;
+}
