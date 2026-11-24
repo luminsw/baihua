@@ -19,6 +19,9 @@ tmp_check_db.csx
 # Playwright CLI 运行时日志与快照
 .playwright-cli/
 
+# GitNexus 本地代码图谱索引（npx gitnexus analyze 生成，仅本机用、不入库）
+.gitnexus/
+
 # hvigor 构建缓存（根目录）
 .hvigor/
 

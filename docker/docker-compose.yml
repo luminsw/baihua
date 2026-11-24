@@ -61,6 +61,9 @@ services:
       - BAIHUA_VAULT_ROOT=/vaults
       - BAIHUA_ENCRYPTION_KEY=${BAIHUA_ENCRYPTION_KEY:-}
       - MobileAuth__SharedSecret=${MOBILE_AUTH_SECRET:-}
+      # 配对二维码/移动端入口：留空则服务端按本机 IP（host 网络=宿主 LAN IP）+ 8788 自动探测。
+      # 想走 nginx :80 或固定域名时在 .env 里设 BAIHUA_PUBLIC_BASE_URL=http://<host>
+      - Baihua__PublicBaseUrl=${BAIHUA_PUBLIC_BASE_URL:-}
       # OpenVINO Model Server（host 网络：127.0.0.1:8000 = 本机 openvino 容器）
       - OPENVINO_LLM_URL=http://127.0.0.1:8000
       - OpenVinoOms__BaseUrl=http://127.0.0.1:8000
