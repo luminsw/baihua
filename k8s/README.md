@@ -79,18 +79,19 @@ Windows 用户：先开 WSL 终端（`wsl`）再执行上面命令。详见 `scr
 不再运行自研 Python 服务（`openvino_llm_server.py` / `vision_server.py` 已弃用）。唯一后端 bh-server 通过 OpenAI 兼容 REST 调用：
 
 - `http://bh-openvino:8000/v3/chat/completions` — LLM 对话（模型 id：`qwen2.5`）与视觉识别（`qwen2.5-vl-7b`）
-- `http://bh-openvino:8000/v3/embeddings` — RAG 嵌入（`bge-small-zh`，原 22b-embedding 已并入 OVMS）
 - `http://bh-openvino:8000/v1/models` — 状态 / 模型列表探测
 
+当前 k8s 部署只加载 `qwen2.5-vl-7b`；RAG 嵌入模型未部署，不能调用 `/v3/embeddings`。
+
 配置：`OpenVinoOms__BaseUrl`（ConfigMap 注入 `http://bh-openvino:8000`）或环境变量 `OPENVINO_LLM_URL`。
-OVMS 模型由 `config.json`（`model_config_list`，22a-openvino.yaml 内联 ConfigMap）注册；
-每个模型目录的 `graph.pbtxt` 由 bh-openvino Pod 的 initContainer `ovms --configure` 启动时幂等生成（模型缺失则跳过）。
+`bh-openvino` 当前用单模型 GenAI 参数（`--model_path`、`--model_name`、`--task=text_generation`）
+直接加载模型目录根部文件。不要改成 `model_config_list`，除非模型文件已整理为 OVMS 要求的数字版本子目录。
 
 ### 模型文件存储
 
 ```
 PVC: baihua-models-pvc (50Gi, hostPath: /opt/baihua/models)
-├── bh-openvino Pod:  挂载 /models (RW) — OVMS 读取模型 + initContainer 写 graph.pbtxt
+├── bh-openvino Pod:  挂载 /models (RW) — OVMS 单模型 GenAI 模式读取模型
 └── bh-server Pod:    挂载 /opt/baihua/models (RO) — 模型扫描（UI 列表）
 ```
 
@@ -362,16 +363,17 @@ export HF_ENDPOINT=https://hf-mirror.com
     /opt/baihua/models/Qwen2.5-VL-7B-Instruct-int4-ov
 ```
 
-OVMS（`config.json`）注册的 3 个模型目录（22a-openvino.yaml 内联 ConfigMap），缺哪个 OVMS 就加载不了哪个：
+当前单模型启动参数只加载 `qwen2.5-vl-7b`。下表列出模型仓库中已知或可选的目录；其他模型需单独调整 OVMS 启动配置：
 
 | OVMS 模型 id | 目录（/opt/baihua/models/） | 任务 / 设备 | 下载 |
 |---|---|---|---|
 | `qwen2.5` | `Qwen2.5-7B-Instruct-int4-ov` | 对话 / GPU | `git clone https://hf-mirror.com/OpenVINO/Qwen2.5-7B-Instruct-int4-ov` |
-| `qwen2.5-vl-7b` | `Qwen2.5-VL-7B-Instruct-int4-ov` | 视觉 / GPU | `git clone https://hf-mirror.com/OpenVINO/Qwen2.5-VL-7B-Instruct-int4-ov`（方式 A） |
+| `qwen2.5-vl-7b` | `Qwen2.5-VL-7B-Instruct-int4-ov` | 视觉 / GPU（当前已注册） | `git clone https://hf-mirror.com/OpenVINO/Qwen2.5-VL-7B-Instruct-int4-ov`（方式 A） |
 | `bge-small-zh` | `bge-small-zh-v1.5` | 嵌入 / CPU | gated（或方式 B 转换 BAAI/bge-small-zh-v1.5） |
 
-> 下载/转换完成后，`bh-openvino` Pod 会自动恢复（initContainer 会为已存在的模型目录生成 graph.pbtxt；
-> 若模型目录缺失则跳过，OVMS 只加载已注册且可用的 servable）。可用 `sudo bh status` 确认。
+> 新增模型时，先确认模型文件结构，再修改 `22a-openvino.yaml` 中的启动参数并重启 `bh-openvino`；
+> OVMS 的 `model_config_list` 需要数字版本子目录，不能直接套用到当前目录结构。
+> 可用 `GET http://<节点IP>:8000/v1/models` 确认 OVMS 实际加载的模型。
 
 #### 6. 验证 GPU + OpenVINO
 
@@ -447,15 +449,9 @@ WebUI 侧边栏「服务器互联」页面（`/server-messages`）：登记其�
 ```
 Pod (bh-openvino)
 ├── /dev/dri/renderD128  ← Intel GPU Device Plugin 自动挂载（WSL2 另挂 /dev/dxg）
-├── initContainer: ovms --configure
-│   └── 为 /models 下已下载模型生成 graph.pbtxt（幂等，缺失跳过）
-├── ovms (OpenVINO Model Server) ← OpenAI 兼容推理服务 (:8000 REST / :9000 gRPC)
-│   ├── config.json (ConfigMap) ← model_config_list 注册 3 个 servable
-│   │   ├── qwen2.5         → /models/Qwen2.5-7B-Instruct-int4-ov       (GPU)
-│   │   ├── qwen2.5-vl-7b   → /models/Qwen2.5-VL-7B-Instruct-int4-ov    (GPU)
-│   │   └── bge-small-zh    → /models/bge-small-zh-v1.5                 (CPU)
-│   └── /v3/chat/completions · /v3/embeddings · /v1/models
-└── /models/ ← PVC 挂载（模型文件）
+└── ovms (OpenVINO Model Server) ← qwen2.5-vl-7b，OpenAI 兼容 (:8000 REST / :9000 gRPC)
+    └── /v3/chat/completions · /v1/models
+    /models/ ← PVC 挂载（模型文件）
 ```
 
 ### bh-server Pod（唯一后端，无 GPU）
