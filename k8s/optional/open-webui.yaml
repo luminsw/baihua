@@ -82,6 +82,7 @@ spec:
               value: "http://localhost:1"
             # 模型走百花自己的 OpenAI 兼容网关（云端模型 + 本机 OVMS 都在里面），
             # 等价于在「管理员设置 → 连接」里手填 http://<节点IP>/mg/ai/v1。
+            # 当前仅支持纯文本聊天；多模态聊天内容返回 400，独立媒体/embedding API 未实现。
             # bh-server 的 /mg/ai/v1 在局域网内默认免鉴权；若管理员配置了
             # BAIHUA_AI_EXTERNAL_TOKEN，下面的 OPENAI_API_KEY 必须改成同一值。
             - name: ENABLE_OPENAI_API
@@ -90,7 +91,8 @@ spec:
               value: "http://bh-server:8788/mg/ai/v1"
             - name: OPENAI_API_KEY
               value: "baihua"
-            # embedding 走 OVMS 的 qwen3-embedding-0.6b，绕过 HuggingFace 下载（境内不通 HF）
+            # RAG_OPENAI_API_BASE_URL 默认继承 OPENAI_API_BASE_URL；百花网关没有 /embeddings，
+            # 因此文件 RAG 需另配 RAG_OPENAI_API_BASE_URL / RAG_OPENAI_API_KEY 指向可用的 embedding 服务。
             - name: RAG_EMBEDDING_ENGINE
               value: "openai"
             - name: RAG_OPENAI_EMBEDDING_MODEL

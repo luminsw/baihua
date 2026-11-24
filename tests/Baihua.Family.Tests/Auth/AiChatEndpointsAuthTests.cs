@@ -119,6 +119,24 @@ public class AiChatEndpointsAuthTests : IClassFixture<AiChatEndpointsAuthFixture
         Assert.StartsWith("text/event-stream", resp.Content.Headers.ContentType?.ToString());
     }
 
+    [Fact]
+    public async Task OpenAiCompat_ImageMessage_ReturnsBadRequestWithTextOnlyNotice()
+    {
+        const string body = """
+            {"model":"qwen2.5-vl-7b","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,AA=="}}]}]}
+            """;
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/mg/ai/v1/chat/completions")
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("Authorization", $"Bearer {AiChatEndpointsAuthFixture.TestAiExternalToken}");
+
+        var response = await _fx.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("仅支持纯文本聊天", await response.Content.ReadAsStringAsync());
+    }
+
     // ---------- 回归：/mg/* 鉴权行为不变 ----------
 
     [Fact]
@@ -153,6 +171,7 @@ public class AiChatEndpointsAuthTests : IClassFixture<AiChatEndpointsAuthFixture
 public sealed class AiChatEndpointsAuthFixture : IDisposable
 {
     public const string TestSecret = "ai-01-test-shared-secret";
+    public const string TestAiExternalToken = "ai-compat-test-token";
 
     private readonly string _oldBaihuaHome;
     private readonly string _tempHome;
@@ -197,6 +216,11 @@ public sealed class AiChatEndpointsAuthFixture : IDisposable
             {
                 builder.UseSetting("MobileAuth:SharedSecret", TestSecret);
                 builder.UseSetting("BAIHUA_SKIP_MUTEX", "true");
+                builder.ConfigureAppConfiguration((_, configuration) =>
+                    configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["BAIHUA_AI_EXTERNAL_TOKEN"] = TestAiExternalToken
+                    }));
                 builder.ConfigureServices(services =>
                     TestSqliteDb.ConfigureSqlite(services, familyDbPath, familyDbPath));
             });

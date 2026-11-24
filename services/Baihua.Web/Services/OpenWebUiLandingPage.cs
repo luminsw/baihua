@@ -169,6 +169,7 @@ API Key:             随便填一个非空值（如 baihua）</pre>
         <ul>
           <li>如果百花管理员配置了 <code>BAIHUA_AI_EXTERNAL_TOKEN</code>，API Key 必须填它的值。</li>
           <li>保存后点该页面的「刷新」，模型会自动出现在下拉列表里。</li>
+          <li>百花网关目前只支持纯文本对话（含流式响应）；多模态聊天内容会报错，独立媒体和 embedding 接口尚未实现。</li>
           <li>地址里的主机名必须是 Open WebUI 能访问到的百花地址（通常是局域网 IP）；
             容器里的 <code>localhost</code> 指向容器自己，不能填 localhost。</li>
         </ul>

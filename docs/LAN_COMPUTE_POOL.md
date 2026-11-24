@@ -138,7 +138,8 @@ GET /mg/capabilities
 - **管理端点**：`GET /api/compute-pool`、`POST /api/compute-pool/refresh`、`POST /api/compute-pool/select`
 - **OpenAI 兼容 shim**：`Baihua.Modules.Ai`（同一 `Baihua.Server` 进程）的 `/mg/ai/v1/chat/completions`（非流式 + 流式 SSE）与
   `/mg/ai/v1/models`——按模型名路由到本机 AI 提供方（含本地 Ollama/llama.cpp/OpenVINO），
-  鉴权 `Authorization: Bearer` 对 `BAIHUA_AI_EXTERNAL_TOKEN`（未配置则局域网信任）
+  仅支持纯文本聊天（包括流式与非流式）；聊天消息中的非文本内容返回 400，独立媒体/embedding API 尚未实现。
+  这是 OpenAI Chat Completions 的文本功能子集，不是完整多模态 API。鉴权 `Authorization: Bearer` 对 `BAIHUA_AI_EXTERNAL_TOKEN`（未配置则局域网信任）
 - **Traefik**：`/mg/ai/`（priority 760）→ `bh-server`:8788（合并前 → `bh-ai`:`8791`，该后端已随三服务合一删除）
 - **WebUI**：`/compute` 算力池页（节点卡片 + 模型×TPS 柱状图（CSS bar）+ 一键选用）+
   侧栏「算力池」入口
