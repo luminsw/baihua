@@ -4,7 +4,8 @@ import json
 import subprocess
 
 NS = "baihua"
-SVCS = ["bh-server", "bh-webui", "bh-openvino", "bh-postgres", "bh-open-webui"]
+# 平台部署的 4 个工作负载（Open WebUI 不再随部署内置：需要时自行 apply k8s/optional/open-webui.yaml）
+SVCS = ["bh-server", "bh-webui", "bh-openvino", "bh-postgres"]
 
 
 def kget(*args):

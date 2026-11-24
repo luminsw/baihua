@@ -1,8 +1,17 @@
-# bh-open-webui: Open WebUI（AI 对话前端）
-# 宿主机浏览器经 iframe（Baihua.Web /open-webui 页）访问 http://localhost:8080
-# Service 用 LoadBalancer 类型，k3s svclb 自动绑宿主 :8080（不走 Traefik，避免 SPA 路径前缀问题）
-# 镜像为上游 ghcr.io/open-webui/open-webui:main，不由本仓库构建
-# LLM 后端在 open-webui 设置页里配（云端 OpenAI 兼容端点，如 DeepSeek），不在此硬编码
+# bh-open-webui: Open WebUI（AI 对话前端）—— 可选，不进默认部署
+#
+# 为什么不在 k8s/ 主目录：镜像在上游 ghcr.io（压缩后约 1.5 GB），国内直连拉取很慢，
+# 而它只是「AI 对话」这一个界面，不影响百花自身的 AI 功能。默认部署（bh deploy）刻意不 apply 它，
+# 需要的人自行执行（几分钟到几十分钟，看网速）：
+#
+#   sudo k3s kubectl apply -f k8s/optional/open-webui.yaml
+#   sudo k3s kubectl -n baihua rollout status deploy/bh-open-webui
+#
+# 装好后浏览器访问 http://<节点IP>:8080（Service 用 LoadBalancer，k3s svclb 绑宿主 :8080），
+# 首次进入创建管理员账号。百花 WebUI 的 AI 对话页（/open-webui）按钮默认就指向这个地址。
+#
+# 注意：本清单不属于平台管理范围 —— bh backup/restore 不备份 baihua-openwebui-pv，
+# bh doctor / bh status 也不检查它；不需要时 `kubectl -n baihua delete -f` 即可。
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -55,34 +64,37 @@ spec:
     spec:
       containers:
         - name: bh-open-webui
-          image: ghcr.io/open-webui/open-webui:main
+          # 境内拉取：南京大学镜像站（与 ghcr.io 同内容，版本可能略滞后）。
+          # 网络好或要跟最新版时换成 ghcr.io/open-webui/open-webui:main
+          image: ghcr.nju.edu.cn/open-webui/open-webui:main
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
               name: http
           env:
-            # 集群内 WebUI 经 iframe 嵌入，关闭 open-webui 自带的注册页
-            # 首次使用需在 open-webui 内创建管理员账号，之后可按需放开
+            # 首次使用需在 open-webui 内创建管理员账号（第一个注册的用户即管理员）
             - name: WEBUI_AUTH
               value: "true"
-            # 禁用 Ollama（本环境无 Ollama，指向不存在的端口避免 open-webui 反重试）
+            # 禁用 Ollama（本环境无 Ollama，指向不存在的端口避免 open-webui 反复重试）
             - name: ENABLE_OLLAMA_API
               value: "false"
             - name: OLLAMA_BASE_URL
               value: "http://localhost:1"
-            # OpenAI 兼容 API → 集群内 OVMS（qwen3-4b 对话 + qwen3-embedding-0.6b 嵌入）
+            # 模型走百花自己的 OpenAI 兼容网关（云端模型 + 本机 OVMS 都在里面），
+            # 等价于在「管理员设置 → 连接」里手填 http://<节点IP>/mg/ai/v1。
+            # bh-server 的 /mg/ai/v1 在局域网内默认免鉴权；若管理员配置了
+            # BAIHUA_AI_EXTERNAL_TOKEN，下面的 OPENAI_API_KEY 必须改成同一值。
             - name: ENABLE_OPENAI_API
               value: "true"
             - name: OPENAI_API_BASE_URL
-              value: "http://bh-openvino:8000/v1"
+              value: "http://bh-server:8788/mg/ai/v1"
             - name: OPENAI_API_KEY
-              value: "dummy"
-            # embedding 走 OVMS 的 qwen3-embedding-0.6b，绕过 HuggingFace 下载（WSL 不通 HF）
+              value: "baihua"
+            # embedding 走 OVMS 的 qwen3-embedding-0.6b，绕过 HuggingFace 下载（境内不通 HF）
             - name: RAG_EMBEDDING_ENGINE
               value: "openai"
             - name: RAG_OPENAI_EMBEDDING_MODEL
               value: "qwen3-embedding-0.6b"
-            # 禁用 HuggingFace/sentence-transformers 网络请求（WSL 不通 HF，避免启动卡死）
             - name: TRANSFORMERS_OFFLINE
               value: "1"
             - name: HF_HUB_OFFLINE
@@ -98,7 +110,7 @@ spec:
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
-            failureThreshold: 30
+            failureThreshold: 60
           livenessProbe:
             httpGet:
               path: /

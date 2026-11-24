@@ -207,7 +207,7 @@ dotnet build services/BaiHua.slnx -c Release
 | Baihua.Server | 8788 | 唯一后端 HTTP API（家庭/亲子、AI、知识库三模块合一；含 MCP `/mcp`） |
 | Baihua.Web | 5177 | HTTP Blazor Server（仍是独立进程） |
 | OVMS（本地推理） | 8000 | OpenAI 兼容；Windows 为 wslc 容器 `ovms-gpu`，Linux 为 `bh-openvino` |
-| Open WebUI | 8080 | AI 对话页后端（wslc 容器 `bh-open-webui`，数据卷 `bh-openwebui-data`；native/dev 形态仍用 Windows venv；Web 的 `/open-webui` 只做 302 跳转） |
+| Open WebUI | 8080 | AI 对话页（独立应用，**可选**）：wslc 形态仍是容器 `bh-open-webui`（数据卷 `bh-openwebui-data`，native/dev 为 Windows venv）；**Linux k8s 默认部署不含它**，Web 的 `/open-webui` 是入口页（打开链接 + 部署步骤），需要时自行 `kubectl apply -f k8s/optional/open-webui.yaml` 或 docker run |
 | 局域网入口 | 80 | wslc 的 nginx 容器 / k8s 的 Traefik |
 
 **路由命名（合并后）**：单进程下 `api/AI/*` 与 `api/ai/*` 在 ASP.NET Core 大小写不敏感路由下冲突，
@@ -265,7 +265,11 @@ dotnet build services/BaiHua.slnx -c Release
   拉不到 `mcr.microsoft.com/dotnet/sdk` 时用 `bh build -Prebuilt`（宿主机 publish + `aspnet:10.0` 运行时镜像）。
 - **k8s（仅 Linux，`tools/bh/linux/k8s/`）**：`server`（8788）+ `webui`（5177）+ `postgres` + `openvino`（OVMS，profile 可选）等工作负载全部容器化；
   k8s 清单见 `k8s/20-server.yaml` / `23-webui.yaml` / `25-postgres.yaml` / `22a-openvino.yaml`，Linux 上 `bh build server webui` → `bh deploy` / `bh up`。
-  `sudo bh backup [目录]` / `sudo bh restore <备份目录> [-y]`：数据卷冷备份/恢复（缩容→tar hostPath PV（postgres/data/openwebui/vaults，
+  **open-webui 不在 k8s 部署清单内**（镜像境外 1.5GB、拉取慢）：AI 对话页由 Web 的 `/open-webui` 入口页给出步骤，用户自行部署
+  （k8s 用 `k8s/optional/open-webui.yaml`，或 docker run），装好后入口页按钮直接打开；该可选组件不备份、不体检。
+  部署时 `Baihua__PublicBaseUrl`（配对二维码/移动端入口）由 `bh deploy` 按**运行脚本那台机器的默认路由 IP** 自动校正
+  （清单里是占位值，DHCP 换 IP 后重跑 deploy 即可；`sudo BAIHUA_PUBLIC_BASE_URL=http://<host> bh deploy` 可覆盖）。
+  `sudo bh backup [目录]` / `sudo bh restore <备份目录> [-y]`：数据卷冷备份/恢复（缩容→tar hostPath PV（postgres/data/vaults，
   跳过 logs/models）→pg_controldata 恢复演练→按原副本数扩容；恢复时旧目录挪 `*.pre-restore-<时间>`、回放 secret/configmap、pg_isready 健康检查；
   产物含 `backup.meta` + `k8s-config/pv/pvc.yaml`，与 wslc 形态的 backup/restore 口径对齐，详见 `k8s/README.md`；
   真机验收手册：`docs/K8S_BACKUP_RESTORE_TEST.md`）。
@@ -296,7 +300,7 @@ dotnet build services/BaiHua.slnx -c Release
 native 部署下 `bh lan on` 设置宿主 `:80 -> :8788` portproxy（netsh）作为统一入口；
 k8s 部署下 **Traefik**（IngressRoute，svclb 绑定宿主 :80）作为统一入口，`/mg/*`、`/pair` 等路径由
 Traefik 转发到 `Baihua.Server`（8788）；配对二维码的 `baseUrl` 由 `Baihua:PublicBaseUrl` 决定
-（k8s 已注入 `http://<节点IP>`，无端口；native 由 `bh lan on` 自动设置）。
+（k8s 由 `bh deploy` / `deploy.sh` 按宿主默认路由 IP 自动写入，无端口，可用 `BAIHUA_PUBLIC_BASE_URL` 覆盖；native 由 `bh lan on` 自动设置）。
 合并后**不再有跨服务转发**：原 family→vault / family→ai 两个转发中间件已删除，改为 `Baihua.Server`
 内的**一个设备授权中间件**（见 `services/Baihua.Server/Program.cs`）——
 先做 HMAC 签名校验，再要求"必须是已配对设备"：携带 `X-Device-Id` 且 `DeviceService` 中该设备已授权

@@ -1,0 +1,237 @@
+using System.Text.Encodings.Web;
+
+namespace Baihua.Web.Services;
+
+/// <summary>
+/// /open-webui 入口页：AI 对话由独立部署的 Open WebUI 提供。
+///
+/// 本仓库的 Linux k8s 部署不再内置 Open WebUI（镜像在 ghcr.io，压缩后约 1.5 GB，
+/// 国内直连拉取很慢；最终用户也不该为此配代理），因此页面从 302 跳转改为入口页：
+/// 给出「打开 AI 对话页」链接 + 自行部署步骤 + 接入百花模型网关的地址。
+/// 用户按步骤部署完，点本页按钮即可打开，不需要改代码。
+///
+/// 地址解析（全部是「浏览器侧视角」，与容器网络无关）：
+///   OpenWebUi:BaseUrl（环境变量 OpenWebUi__BaseUrl）显式配置优先；
+///   未配置时取 Baihua:PublicBaseUrl 的主机名（k8s ConfigMap 已注入），再加 :8080；
+///   再退到当前请求的 Host。写死 localhost 会让局域网其它设备打不开（localhost 指向设备自己）。
+/// 模型网关地址：
+///   Baihua:PublicBaseUrl（Traefik :80 统一入口）→ /mg/ai/v1；未配置则用当前请求的 scheme+host。
+/// </summary>
+public static class OpenWebUiLandingPage
+{
+    /// <summary>Open WebUI 默认监听端口（本页在未配置地址时按它推导）。</summary>
+    private const int DefaultPort = 8080;
+
+    private const string Template = """
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="favicon.png">
+<title>AI 对话页</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 24px; background: #f5f6f8; color: #1f2328;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .card {
+    width: 100%; max-width: 760px; background: #fff; border: 1px solid #e3e6ea;
+    border-radius: 16px; padding: 28px 28px 24px; box-shadow: 0 8px 28px rgba(0,0,0,.06);
+  }
+  h1 { margin: 0 0 10px; font-size: 22px; display: flex; align-items: center; gap: 8px; }
+  h1 .dot { width: 9px; height: 9px; border-radius: 50%; background: #ff2442; display: inline-block; }
+  p { line-height: 1.7; margin: 0 0 14px; }
+  .lead { color: #444; font-size: 14.5px; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0 6px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 11px 20px;
+    border-radius: 10px; background: #ff2442; color: #fff; text-decoration: none;
+    font-size: 15px; font-weight: 600; transition: filter .15s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .addr { color: #6b7280; font-size: 13px; word-break: break-all; }
+  .status { font-size: 13.5px; margin: 8px 0 0; min-height: 1.4em; }
+  .status.ok { color: #1a7f37; }
+  .status.warn { color: #9a6700; }
+  .addr code, code { background: #f0f2f5; border-radius: 5px; padding: 1px 5px; font-size: 12.5px; }
+  .hint { margin: 16px 0 0; padding: 10px 12px; background: #f6f8fa; border: 1px solid #e3e6ea; border-radius: 9px; }
+  details { margin-top: 20px; border-top: 1px dashed #dfe3e8; padding-top: 16px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 14.5px; color: #1f2328; }
+  ol { margin: 14px 0 0; padding-left: 20px; }
+  ol li { margin-bottom: 14px; line-height: 1.7; font-size: 14px; }
+  ol li > ul { margin: 6px 0 0; padding-left: 18px; }
+  ol li > ul li { margin-bottom: 4px; font-size: 13.5px; }
+  pre {
+    background: #0f1115; color: #e6edf3; border-radius: 9px; padding: 12px 14px;
+    font-size: 12.5px; line-height: 1.6; overflow-x: auto; margin: 8px 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .muted { color: #6b7280; font-size: 13px; margin: 10px 0 0; }
+  a { color: #d61a35; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0d1117; color: #e6edf3; }
+    .card { background: #161b22; border-color: #30363d; box-shadow: none; }
+    .lead, .addr, .muted { color: #9aa4b2; }
+    .addr code, code { background: #21262d; }
+    .hint { background: #1c2128; border-color: #30363d; }
+    details { border-top-color: #30363d; }
+    summary { color: #e6edf3; }
+    .status.ok { color: #3fb950; }
+    .status.warn { color: #d29922; }
+    a { color: #ff7b8f; }
+  }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1><span class="dot"></span>AI 对话页</h1>
+  <p class="lead">
+    AI 对话由 <strong>Open WebUI</strong> 提供，它是一个独立应用，百花的部署包<strong>不再内置</strong>它：
+    镜像在境外仓库（压缩后约 1.5&nbsp;GB），默认部署时拉取很慢，交给需要的人按需安装更合适。
+    部署好之后，点下面的按钮就能打开，本页无需改动。
+  </p>
+  <div class="actions">
+    <a class="btn" href="__BASE_URL__/" target="_blank" rel="noopener">打开 AI 对话页 ↗</a>
+    <span class="addr">地址：<code>__BASE_URL__</code></span>
+  </div>
+  <p class="status" id="ow-status" aria-live="polite"></p>
+  <p class="hint muted">
+    百花自身的 AI 功能（虚拟师父、知识生成、每日卡片、摘要等）不依赖 Open WebUI，照常可用；
+    这里只是缺一个通用聊天界面。
+  </p>
+
+  <details id="ow-steps">
+    <summary>还没有部署？展开看部署步骤（约 5 分钟）</summary>
+    <ol>
+      <li><strong>拉取镜像</strong>（体积大，慢就换国内镜像站，内容相同、版本可能略滞后）：
+        <pre>docker pull ghcr.io/open-webui/open-webui:main
+
+# 国内镜像站（拉取慢时用这个）
+docker pull ghcr.nju.edu.cn/open-webui/open-webui:main</pre>
+      </li>
+      <li><strong>启动容器</strong>（对话数据存在命名卷 <code>open-webui</code> 里，换镜像不丢历史）：
+        <pre>docker run -d --name open-webui --restart unless-stopped \
+  -p 8080:8080 \
+  -v open-webui:/app/backend/data \
+  ghcr.io/open-webui/open-webui:main</pre>
+        <ul>
+          <li>装在本服务器上最省事：本页按钮默认就指向 <code>__BASE_URL__</code>，装完即可点开。</li>
+          <li>本机是 k3s（没有 docker）时，也可以直接 apply 仓库里的可选清单：
+            <code>sudo k3s kubectl apply -f k8s/optional/open-webui.yaml</code>
+            （同样发布到宿主 :8080；该清单已预填模型网关，第 4 步可跳过）。</li>
+          <li>装在另一台机器也行，见第 5 步。</li>
+        </ul>
+      </li>
+      <li><strong>首次打开创建管理员</strong>：浏览器访问 <code>__BASE_URL__</code>，
+        第一个注册的账号就是管理员。</li>
+      <li><strong>接入百花的模型网关</strong>（这样模型列表里会出现云端模型和本机 OVMS 模型）：
+        进入 <em>管理员设置 → 连接 → OpenAI API</em>，填：
+        <pre>基础地址（Base URL）: __GATEWAY_URL__
+API Key:             随便填一个非空值（如 baihua）</pre>
+        <ul>
+          <li>如果百花管理员配置了 <code>BAIHUA_AI_EXTERNAL_TOKEN</code>，API Key 必须填它的值。</li>
+          <li>保存后点该页面的「刷新」，模型会自动出现在下拉列表里。</li>
+          <li>地址里的主机名必须是 Open WebUI 能访问到的百花地址（通常是局域网 IP）；
+            容器里的 <code>localhost</code> 指向容器自己，不能填 localhost。</li>
+        </ul>
+      </li>
+      <li><strong>装在别的机器 / 换端口时</strong>：把百花 WebUI 的配置
+        <code>OpenWebUi:BaseUrl</code>（环境变量 <code>OpenWebUi__BaseUrl</code>）改成
+        <code>http://&lt;那台机器的IP&gt;:&lt;端口&gt;</code>，重启 webui 后本页按钮立即指向它。
+        当前解析出的地址见页面顶部的「地址」。</li>
+      <li><strong>数据与卸载</strong>：
+        <pre>docker rm -f open-webui            # 停止并删除容器（对话数据还在卷里）
+docker volume rm open-webui         # 连数据一起删（不可恢复，先导出备份再执行）</pre>
+      </li>
+    </ol>
+    <p class="muted">
+      官方文档：<a href="https://docs.openwebui.com/" target="_blank" rel="noopener">docs.openwebui.com</a>
+      · 镜像仓库：<a href="https://github.com/open-webui/open-webui" target="_blank" rel="noopener">github.com/open-webui/open-webui</a>
+    </p>
+  </details>
+</main>
+<script>
+(function () {
+  var statusEl = document.getElementById('ow-status');
+  var stepsEl = document.getElementById('ow-steps');
+  var target = "__BASE_URL__/";
+  if (!statusEl || !window.fetch || !window.AbortController) {
+    if (statusEl) { statusEl.textContent = ''; }
+    return;
+  }
+  var ctrl = new AbortController();
+  var timer = setTimeout(function () { ctrl.abort(); }, 4000);
+  // 跨源 no-cors 探测：只要能连上（哪怕返回 401/HTML）就 resolve；DNS/连接失败会 reject。
+  fetch(target, { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal })
+    .then(function () {
+      clearTimeout(timer);
+      statusEl.textContent = '✓ 已检测到 Open WebUI，点上面的按钮即可开始对话。';
+      statusEl.className = 'status ok';
+    })
+    .catch(function () {
+      clearTimeout(timer);
+      statusEl.textContent = '尚未检测到 Open WebUI —— 按下面步骤部署后刷新本页即可。';
+      statusEl.className = 'status warn';
+      if (stepsEl) { stepsEl.open = true; }
+    });
+})();
+</script>
+</body>
+</html>
+""";
+
+    /// <summary>
+    /// 解析 Open WebUI 的浏览器侧地址：显式配置 &gt; 百花公开地址的主机名 + :8080 &gt; 当前请求 Host。
+    /// </summary>
+    public static string ResolveBaseUrl(string? configuredBaseUrl, string? publicBaseUrl, HttpRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(configuredBaseUrl))
+            return configuredBaseUrl.Trim().TrimEnd('/');
+
+        // Baihua:PublicBaseUrl 是「局域网入口」的规范地址（k8s ConfigMap 注入，如 http://192.168.3.9）。
+        // 用它推导出的 :8080 对局域网内任何设备都可用；退化到请求 Host 时至少服务器本机能用。
+        var host = ExtractHost(publicBaseUrl);
+        if (host is null)
+            host = string.IsNullOrEmpty(request.Host.Host) ? "localhost" : request.Host.Host;
+
+        return $"http://{host}:{DefaultPort}";
+    }
+
+    /// <summary>
+    /// 解析 Open WebUI 应填的百花模型网关地址（OpenAI 兼容 /mg/ai/v1）。
+    /// 优先用公开入口（Traefik :80），否则用当前请求的 scheme+host。
+    /// </summary>
+    public static string ResolveGatewayUrl(string? publicBaseUrl, HttpRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(publicBaseUrl))
+            return publicBaseUrl.Trim().TrimEnd('/') + "/mg/ai/v1";
+
+        return $"{request.Scheme}://{request.Host}/mg/ai/v1";
+    }
+
+    public static string Render(string baseUrl, string gatewayUrl)
+    {
+        var encoder = HtmlEncoder.Default;
+        return Template
+            .Replace("__BASE_URL__", encoder.Encode(baseUrl))
+            .Replace("__GATEWAY_URL__", encoder.Encode(gatewayUrl));
+    }
+
+    /// <summary>从 URL 里取主机名（含 IPv6 方括号）；解析不出来返回 null。</summary>
+    private static string? ExtractHost(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return null;
+
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.Host))
+            return null;
+
+        return uri.Host;
+    }
+}

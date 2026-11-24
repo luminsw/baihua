@@ -408,6 +408,34 @@ build_all() {
     echo "[build] done: ${targets# }"
 }
 
+# 宿主 LAN IP：优先默认路由的源地址（多网卡环境下不会误取 docker0 / br-* / flannel 的 172.x、10.42.x），
+# 退路是 hostname -I 里第一个像私有 LAN 的 IPv4。取不到返回空（调用方决定是警告还是跳过）。
+host_lan_ip() {
+    local ip=""
+    if command -v ip >/dev/null 2>&1; then
+        ip="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
+    fi
+    if [ -z "$ip" ]; then
+        ip="$(hostname -I 2>/dev/null | tr ' ' '\n' \
+            | grep -E '^[0-9]+(\.[0-9]+){3}$' \
+            | grep -vE '^(127\.|172\.1[7-9]\.|10\.42\.)' | head -1)"
+    fi
+    echo "$ip"
+}
+
+# 移动端入口 / 配对二维码用的公开地址（Baihua__PublicBaseUrl）：
+# 显式 env 优先，否则按本机 LAN IP 推导。必须是「客户端能访问到的宿主地址」——
+# 容器里探测到的是 Pod IP，清单里写死又会被 DHCP 换 IP 打脸，所以只能在部署时由宿主机算。
+public_base_url() {
+    if [ -n "${BAIHUA_PUBLIC_BASE_URL:-}" ]; then
+        echo "${BAIHUA_PUBLIC_BASE_URL%/}"; return
+    fi
+    local host="${BAIHUA_PUBLIC_HOST:-}"
+    [ -z "$host" ] && host="$(host_lan_ip)"
+    [ -z "$host" ] && { echo ""; return; }
+    echo "http://$host"
+}
+
 deploy_all() {
     if [ "$(id -u)" != "0" ]; then
         echo "[deploy] 需要 root 权限（/etc/rancher/k3s/k3s.yaml 仅 root 可读），自动提权..." >&2
@@ -420,11 +448,30 @@ deploy_all() {
     fi
     # 基础清单（与 GPU 无关，始终部署）
     # 25-postgres 必须在这里：此前它被本列表遗漏（清单从未被任何部署路径应用）。
+    # open-webui 不在本列表：AI 对话页由用户按需自行部署（Web 的 /open-webui 入口页给出步骤，
+    # k8s 用户可直接 apply k8s/optional/open-webui.yaml），避免默认部署去境外 registry 拉 1.5GB 镜像。
     for m in 00-namespace.yaml 01-configmap.yaml 02-secret.yaml 03-pvc.yaml \
-             25-postgres.yaml 20-server.yaml 23-webui.yaml 26-open-webui.yaml; do
+             25-postgres.yaml 20-server.yaml 23-webui.yaml; do
         echo "[deploy] $m"
         k apply -f "$K8S_DIR/$m" >/dev/null || exit 1
     done
+    # Baihua__PublicBaseUrl（配对二维码 / 移动端入口）不能靠清单里的字面值：
+    # 宿主 IP 是 DHCP 的、换机器就变，而容器里探测到的是 Pod IP（写进二维码手机就连不上）。
+    # 清单里的值只是占位，这里用**运行 bh 的这台机器**的 LAN IP 覆盖它。
+    # 需要指定别的地址（域名 / 端口 / 反向代理）：sudo BAIHUA_PUBLIC_BASE_URL=http://host bh deploy
+    local public_url
+    public_url="$(public_base_url)"
+    if [ -n "$public_url" ]; then
+        if k -n "$NAMESPACE" patch configmap baihua-config --type merge \
+            -p "{\"data\":{\"Baihua__PublicBaseUrl\":\"$public_url\"}}" >/dev/null 2>&1; then
+            echo "[deploy] Baihua__PublicBaseUrl -> $public_url（按宿主 LAN IP 自动校正，手机扫码配对用）"
+        else
+            echo "[deploy] 警告: 校正 Baihua__PublicBaseUrl 失败，配对二维码可能携带清单里的占位地址" >&2
+        fi
+    else
+        echo "[deploy] 警告: 探测不到宿主 LAN IP，保留清单里的 Baihua__PublicBaseUrl（配对二维码可能不可用）" >&2
+        echo "         请显式指定: sudo BAIHUA_PUBLIC_BASE_URL=http://<宿主IP> $(basename "$0") deploy" >&2
+    fi
     # 24-traefik.yaml 是 IngressRoute（traefik.io CRD）：集群未装 Traefik 时先跳过而不是整体失败，
     # 否则基础工作负载已经起来了却因为入口层报错中断，容易误判成"部署挂了"。
     if k get crd ingressroutes.traefik.io >/dev/null 2>&1; then
@@ -450,7 +497,7 @@ deploy_all() {
     # 给 deployment 打上 git commit 标注（供 bh-k3s status --json 判断运行代码是否最新）。
     # 标注语义是「这个工作负载最后一次是在哪个 commit 部署的」，不是「镜像由本仓库构建」，
     # 所以 postgres 这类上游镜像也一起打 —— 否则它永远是 upToDate:false，看着像待处理问题。
-    for svc in bh-server bh-webui bh-openvino bh-postgres bh-open-webui; do
+    for svc in bh-server bh-webui bh-openvino bh-postgres; do
         k -n "$NAMESPACE" annotate deploy "$svc" "baihua.git-commit=$git_commit" --overwrite >/dev/null 2>&1 || true
     done
     echo "[deploy] 记录源码 commit: $git_commit"
@@ -522,8 +569,9 @@ prune_cache() {
 #   恢复 = 缩容 → 旧目录挪 <目录>.pre-restore-<时间> → 解包覆盖 → 回放配置 → 扩容 → 健康检查
 # 日志（baihua-logs-pv）与模型（baihua-models-pv，体积大且可重新拉取）不备份，与 wslc 形态口径一致。
 
-BACKUP_PVS="baihua-postgres-pv baihua-data-pv baihua-openwebui-pv baihua-vaults-pv"
-BACKUP_DEPLOYS="bh-server bh-webui bh-postgres bh-open-webui bh-openvino"
+# open-webui 不再随 k8s 部署（AI 对话页交给用户自行部署），备份/恢复不再涉及它。
+BACKUP_PVS="baihua-postgres-pv baihua-data-pv baihua-vaults-pv"
+BACKUP_DEPLOYS="bh-server bh-webui bh-postgres bh-openvino"
 
 pv_hostpath() { k get pv "$1" -o jsonpath='{.spec.hostPath.path}' 2>/dev/null; }
 
@@ -664,7 +712,7 @@ backup_cmd() {
         k -n "$NAMESPACE" get secret,configmap -o yaml > "$dest_dir/k8s-config.yaml" 2>/dev/null || fail=1
         first=1
         : > "$dest_dir/k8s-pv.yaml"
-        for pv in baihua-postgres-pv baihua-data-pv baihua-logs-pv baihua-models-pv baihua-vaults-pv baihua-openwebui-pv; do
+        for pv in baihua-postgres-pv baihua-data-pv baihua-logs-pv baihua-models-pv baihua-vaults-pv; do
             out="$(k get pv "$pv" -o yaml 2>/dev/null)" || continue
             [ -n "$out" ] || continue
             [ "$first" = "0" ] && echo "---" >> "$dest_dir/k8s-pv.yaml"
@@ -895,8 +943,6 @@ service_affected() {
         webui)    paths=("services/Baihua.Web/" "services/Baihua.Contracts/");;
         openvino) paths=("k8s/images/Dockerfile.openvino-server" "services/Baihua.AI.Provider.OpenVino/");;
         postgres) paths=("k8s/25-postgres.yaml");;
-        # open-webui 用上游镜像（ghcr.io/open-webui/open-webui），源码不在本仓库，任何 commit 变化都不影响它
-        open-webui) echo false; return;;
     esac
     local pat=""; for p in "${paths[@]}"; do pat="${pat:+"$pat|"}$p"; done
     if git -C "$ROOT" diff --name-only "$from".."$to" 2>/dev/null | grep -E "^(${pat})" | grep -q .; then
@@ -919,7 +965,7 @@ status_json() {
             git_dirty="true"
         fi
     fi
-    local services="bh-server bh-webui bh-openvino bh-postgres bh-open-webui"
+    local services="bh-server bh-webui bh-openvino bh-postgres"
     local entries=""
     local first=1
     local ready_total=0 total=0
@@ -961,7 +1007,7 @@ status_json() {
 # 单个服务启停/重启（操作 deployment 副本数/滚动重启；服务名可不带 bh- 前缀）
 scale_service() {
     local svc="${2:-}"
-    [ -z "$svc" ] && { echo "[${1}] 用法: bh-k3s ${1} <svc>（server/webui/openvino/postgres/open-webui）" >&2; return 1; }
+    [ -z "$svc" ] && { echo "[${1}] 用法: bh-k3s ${1} <svc>（server/webui/openvino/postgres）" >&2; return 1; }
     case "$svc" in bh-*) ;; *) svc="bh-$svc" ;; esac
     if [ "$(id -u)" != "0" ]; then
         echo "[${1}] 需要 root 权限（k3s.yaml 仅 root 可读），自动提权..." >&2
@@ -994,7 +1040,7 @@ open_dashboard() {
         host="$BAIHUA_PUBLIC_HOST"
     else
         local lanip
-        lanip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+        lanip="$(host_lan_ip)"
         if [ -n "$lanip" ] && [[ "$lanip" =~ ^[0-9.]+$ ]]; then
             host="$lanip"
         fi
@@ -1219,7 +1265,7 @@ doctor_cmd() {
 
     # 3) Deployment 就绪（按服务逐个看）
     local svc ready reps
-    for svc in bh-server bh-webui bh-postgres bh-open-webui bh-openvino; do
+    for svc in bh-server bh-webui bh-postgres bh-openvino; do
         if ! k -n "$NAMESPACE" get deploy "$svc" >/dev/null 2>&1; then
             _dwarn "deploy/$svc 不存在" 'bh deploy（openvino 由 deploy 自动探测是否启用）'
             continue
@@ -1263,11 +1309,22 @@ doctor_cmd() {
     else
         _dwarn 'OVMS pod 未运行（AI 功能降级）' 'bh openvino status / bh openvino on'
     fi
-    if k -n "$NAMESPACE" get pods -l app=bh-open-webui --no-headers 2>/dev/null | grep -q Running; then
-        _dok 'open-webui pod Running（AI 对话页后端）'
+
+    # 7) 移动端入口地址：Baihua__PublicBaseUrl 必须是宿主 LAN IP（盒子里/清单里的 POD IP、旧 DHCP 地址都扫不通）
+    local pub expected
+    pub="$(k -n "$NAMESPACE" get cm baihua-config -o jsonpath='{.data.Baihua__PublicBaseUrl}' 2>/dev/null)"
+    expected="$(public_base_url)"
+    if [ -z "$pub" ]; then
+        _dwarn 'ConfigMap 缺 Baihua__PublicBaseUrl（配对二维码会拿 Pod IP，手机扫不通）' 'bh deploy（自动按宿主 LAN IP 写入）'
+    elif [ -n "$expected" ] && [ "${pub%/}" != "$expected" ]; then
+        _dwarn "Baihua__PublicBaseUrl=$pub 与本机 LAN IP 不一致（应为 $expected）" \
+            "bh deploy 自动校正；或 patch 后重启: sudo k3s kubectl -n $NAMESPACE patch cm baihua-config --type merge -p '{\"data\":{\"Baihua__PublicBaseUrl\":\"$expected\"}}'"
     else
-        _dwarn 'open-webui pod 未运行（/open-webui 页会空白）' 'bh start open-webui'
+        _dok "Baihua__PublicBaseUrl=$pub（与本机 LAN IP 一致）"
     fi
+    # open-webui（AI 对话页）不在默认部署内：需要时用户自行 apply k8s/optional/open-webui.yaml，
+    # 装好后 WebUI 的 /open-webui 入口页按钮即可打开。这里只提示，不计入体检项。
+    [ "$mode" = '--json' ] || printf '[INFO] AI 对话页（Open WebUI）不在默认部署内；需要时: sudo k3s kubectl apply -f k8s/optional/open-webui.yaml\n'
 
     _finish
 }

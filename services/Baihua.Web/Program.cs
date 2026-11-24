@@ -429,14 +429,22 @@ app.UseRequestMetrics();
 
 app.UseWebUIAuthentication();
 
-// AI 对话：直接跳转到 Open WebUI（独立应用），不再用 iframe 内嵌。
-// 内嵌的代价：open-webui 的相对资源/接口按自身 origin 解析，塞进 iframe 会出现路径 404
-// （如左下角用户头像）、X-Frame-Options/CSP 限制、键盘/剪贴板/下载行为受限；收益为零
-// （两者本来就不是同源应用，也没有共享登录态）。旧书签 / 侧边菜单都打这个地址，302 过去。
-app.MapGet("/open-webui", (IConfiguration cfg) =>
+// AI 对话：Open WebUI 是独立应用，本仓库的部署不再内置它
+// （镜像在 ghcr.io，压缩后约 1.5 GB，国内拉取慢，且不该要求最终用户配代理）。
+// /open-webui 从 302 跳转改为入口页：给出打开链接 + 自行部署步骤 + 接入百花模型网关的地址；
+// 地址由 OpenWebUi:BaseUrl（浏览器侧视角）决定，未配置时按 Baihua:PublicBaseUrl / 请求 Host + :8080 推导。
+app.MapGet("/open-webui", (HttpContext http, IConfiguration cfg) =>
 {
-    var baseUrl = (cfg["OpenWebUi:BaseUrl"] ?? "http://localhost:8080").TrimEnd('/');
-    return Results.Redirect(baseUrl + "/");
+    var baseUrl = Baihua.Web.Services.OpenWebUiLandingPage.ResolveBaseUrl(
+        cfg["OpenWebUi:BaseUrl"], cfg["Baihua:PublicBaseUrl"], http.Request);
+    var gatewayUrl = Baihua.Web.Services.OpenWebUiLandingPage.ResolveGatewayUrl(
+        cfg["Baihua:PublicBaseUrl"], http.Request);
+
+    // 地址可能随配置变化，且页面内容就是「当前地址」，避免浏览器缓存旧页面/旧地址
+    http.Response.Headers.CacheControl = "no-store";
+    return Results.Content(
+        Baihua.Web.Services.OpenWebUiLandingPage.Render(baseUrl, gatewayUrl),
+        "text/html; charset=utf-8");
 });
 
 app.MapRazorComponents<Baihua.Web.Components.App>()

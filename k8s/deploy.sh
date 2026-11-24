@@ -96,6 +96,44 @@ load_images() {
 }
 
 # ============================================================
+# 3.5 宿主 LAN IP / 移动端入口地址
+# ============================================================
+# 默认路由源地址优先：多网卡时不会误取 docker0 / br-* / flannel 的 172.x、10.42.x
+detect_host_ip() {
+    local ip=""
+    if command -v ip >/dev/null 2>&1; then
+        ip=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' || true)
+    fi
+    if [ -z "$ip" ]; then
+        ip=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+(\.[0-9]+){3}$' \
+            | grep -vE '^(127\.|172\.1[7-9]\.|10\.42\.)' | head -1 || true)
+    fi
+    echo "${ip:-}"
+}
+
+# 把 Baihua__PublicBaseUrl 校正为宿主 LAN IP（配对二维码/移动端入口；可用 BAIHUA_PUBLIC_BASE_URL 覆盖）
+# 清单里的值只是占位：宿主 IP 是 DHCP 的，换机器/换网就变；容器里只能看到 Pod IP，写进二维码手机连不上。
+sync_public_base_url() {
+    local url="${BAIHUA_PUBLIC_BASE_URL:-}"
+    if [ -z "$url" ]; then
+        local ip
+        ip=$(detect_host_ip)
+        if [ -z "$ip" ]; then
+            warn "探测不到宿主 LAN IP，保留清单里的 Baihua__PublicBaseUrl（配对二维码可能不可用）"
+            return 0
+        fi
+        url="http://$ip"
+    fi
+    url="${url%/}"
+    if kubectl -n "$NAMESPACE" patch configmap baihua-config --type merge \
+        -p "{\"data\":{\"Baihua__PublicBaseUrl\":\"$url\"}}" >/dev/null 2>&1; then
+        log "  Baihua__PublicBaseUrl -> $url（配对二维码/移动端入口）"
+    else
+        warn "  校正 Baihua__PublicBaseUrl 失败：配对二维码可能携带占位地址"
+    fi
+}
+
+# ============================================================
 # 4. 部署到 K8s
 # ============================================================
 
@@ -167,6 +205,10 @@ deploy() {
         kubectl apply -f "$K8S_DIR/$manifest" 2>&1 | sed 's/^/    /'
     done
 
+    # 配对二维码 / 移动端入口地址：清单里的 Baihua__PublicBaseUrl 只是占位（宿主 IP 是 DHCP 的），
+    # 用运行本脚本这台机器的 LAN IP 覆盖它（容器里只能看到 Pod IP，写进二维码手机连不上）。
+    sync_public_base_url
+
     # GPU 按需：有 Intel GPU 才部署 intel-gpu-plugin（kube-system）+ bh-openvino
     if has_intel_gpu; then
         for manifest in "10-intel-gpu-plugin.yaml" "22a-openvino.yaml"; do
@@ -224,6 +266,9 @@ status() {
         info "  Server: http://$NODE_IP/   (Traefik /mg/* /api/* /vault/* /mcp 转发)"
         info "  OpenVINO (OVMS): http://bh-openvino:8000 (集群内, OpenAI 兼容 /v3)"
     fi
+    local PUB_BASE
+    PUB_BASE=$(kubectl -n "$NAMESPACE" get cm baihua-config -o jsonpath='{.data.Baihua__PublicBaseUrl}' 2>/dev/null || true)
+    [ -n "$PUB_BASE" ] && info "  移动端配对 baseUrl: $PUB_BASE"
 }
 
 # ============================================================

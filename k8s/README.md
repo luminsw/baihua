@@ -63,6 +63,7 @@ Windows 用户：先开 WSL 终端（`wsl`）再执行上面命令。详见 `scr
 | `23-webui.yaml` | bh-webui Deployment + Service |
 | `24-traefik.yaml` | Traefik IngressRoute + Middleware（统一入口 :80，替代 nginx） |
 | **`25-postgres.yaml`** | **bh-postgres Deployment + Service + PV/PVC/Secret（单库 `baihua`）** |
+| `optional/open-webui.yaml` | 可选：AI 对话前端 Open WebUI（**不在默认部署内**，需要时手工 `kubectl apply`；镜像约 1.5 GB，见「AI 对话页」一节） |
 | `deploy.sh` | 一键部署脚本 |
 | `./images/Dockerfile.openvino-server` | OpenVINO 推理容器 = 官方 `openvino/model_server` 镜像别名（bh build openvino 产出 bh-openvino:latest） |
 | `./images/Dockerfile.server` | 唯一后端容器（合并前为 Dockerfile.family / .ai / .vault 三份） |
@@ -510,11 +511,12 @@ sudo bh backup            # 数据卷冷备份（默认 backup/baihua-backup-<�
 sudo bh restore <备份目录> [-y]   # 从备份恢复（旧目录保留为 *.pre-restore-<时间>）
 ```
 
-- **备份**：自动缩容全部工作负载（冷备，防止写入中拷贝）→ 打包 4 个数据 PV 的 hostPath 目录
-  （`baihua-postgres-pv` / `baihua-data-pv` / `baihua-openwebui-pv` / `baihua-vaults-pv`，路径从 PV 对象动态解析）
+- **备份**：自动缩容全部工作负载（冷备，防止写入中拷贝）→ 打包 3 个数据 PV 的 hostPath 目录
+  （`baihua-postgres-pv` / `baihua-data-pv` / `baihua-vaults-pv`，路径从 PV 对象动态解析）
   → 导出 namespace 配置（secret/configmap + PV/PVC 清单，`k8s-config.yaml` 含密码，目录权限 700）
   → **恢复演练**（解包 postgres 归档 + 一次性 pod 跑 `pg_controldata` 校验干净停机状态）
   → 按原副本数扩容回去。日志卷（`baihua-logs-pv`）与模型卷（`baihua-models-pv`，体积大可重拉）不备份。
+  可选部署的 Open WebUI（`baihua-openwebui-pv`）不属于平台管理范围，不在备份/恢复内。
 - **恢复**：缩容 → 旧数据目录挪 `<目录>.pre-restore-<时间>` 保留 → 解包覆盖（目标路径以当前集群 PV 对象为准）
   → 回放 secret/configmap → 扩容 → `pg_isready` 健康检查。
 - **新机恢复**：clone 仓库 → `bh up`（或 `bh deploy`）→ `sudo bh restore <备份目录>`。
@@ -523,6 +525,35 @@ sudo bh restore <备份目录> [-y]   # 从备份恢复（旧目录保留为 *.p
 ### 免 sudo 状态查看
 
 `bh status` / `bh logs` / `bh dashboard` 在 k3s 配置（/etc/rancher/k3s/k3s.yaml，root 600）不可读时自动提权，普通用户可直接使用；`build`/`deploy`/`update` 仍建议 sudo。
+
+## AI 对话页（Open WebUI，可选）
+
+`bh deploy` / `bh up` / `deploy.sh` **都不部署 Open WebUI**：镜像在上游 `ghcr.io/open-webui/open-webui`
+（压缩后约 1.5 GB），境内直连拉取很慢，而它只是「AI 对话」这一个通用聊天界面（百花自身的 AI 功能不依赖它）。
+WebUI 的 `/open-webui` 现在是**入口页**（不再是 302 跳转），显示「打开 AI 对话页」按钮 + 自行部署步骤 +
+接入百花模型网关的地址，并在浏览器侧探测是否已部署。
+
+需要时自行安装（几分钟到几十分钟，看网速）：
+
+```bash
+# 方式 A：k8s 内（仓库自带可选清单，镜像默认走南京大学镜像站）
+sudo k3s kubectl apply -f k8s/optional/open-webui.yaml
+sudo k3s kubectl -n baihua rollout status deploy/bh-open-webui
+
+# 方式 B：docker（可以装在任意能跑 docker 的机器上）
+docker run -d --name open-webui --restart unless-stopped \
+  -p 8080:8080 -v open-webui:/app/backend/data \
+  ghcr.io/open-webui/open-webui:main        # 慢就换 ghcr.nju.edu.cn/open-webui/open-webui:main
+```
+
+装好后浏览器打开 `http://<节点IP>:8080`，首次进入创建管理员账号（第一个用户即管理员），
+再到「管理员设置 → 连接 → OpenAI API」填百花网关 `http://<节点IP>/mg/ai/v1`
+（API Key 随便填非空值；若配了 `BAIHUA_AI_EXTERNAL_TOKEN` 则必须填它的值），保存后刷新即可看到模型列表。
+WebUI 入口页按钮默认指向 `http://<节点IP>:8080`；装在别的机器或改了端口时，把 bh-webui 的
+`OpenWebUi__BaseUrl`（环境变量）配成实际地址并重启，入口页按钮就指向它，不需要改代码。
+
+> 可选清单不在平台管理范围：`bh backup` / `bh restore` 不备份 `baihua-openwebui-pv`，
+> `bh doctor` / `bh status` 也不检查它（`bh doctor` 只打印一行提示）。
 
 ## 故障排查
 
