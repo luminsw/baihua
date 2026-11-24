@@ -23,14 +23,14 @@ COPY services/Baihua.Modules.Ai/Baihua.Modules.Ai.csproj services/Baihua.Modules
 COPY services/Baihua.Modules.Vault/Baihua.Modules.Vault.csproj services/Baihua.Modules.Vault/
 COPY services/Baihua.Server/Baihua.Server.csproj services/Baihua.Server/
 COPY libs/MobileContract/MobileContract.csproj libs/MobileContract/
-RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
-    dotnet restore services/Baihua.Server/Baihua.Server.csproj -r linux-x64 --nologo
+# Keep restored packages in the build layer: a cache mount can be empty while this
+# restore layer is reused from cache, leaving --no-restore publish without packages.
+RUN dotnet restore services/Baihua.Server/Baihua.Server.csproj -r linux-x64 --nologo
 # 再 COPY 源码（代码变更只影响编译层）
 COPY services/ services/
 COPY libs/ libs/
-RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
-    dotnet publish services/Baihua.Server/Baihua.Server.csproj \
-        -c Release -o /publish --no-restore --nologo
+RUN dotnet publish services/Baihua.Server/Baihua.Server.csproj \
+    -c Release -o /publish --no-restore --nologo
 
 FROM bh/base-runtime:latest AS runtime
 WORKDIR /app
