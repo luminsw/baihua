@@ -156,24 +156,28 @@ docker pull ghcr.nju.edu.cn/open-webui/open-webui:main</pre>
           <li>装在本服务器上最省事：本页按钮默认就指向 <code>__BASE_URL__</code>，装完即可点开。</li>
           <li>本机是 k3s（没有 docker）时，也可以直接 apply 仓库里的可选清单：
             <code>sudo k3s kubectl apply -f k8s/optional/open-webui.yaml</code>
-            （同样发布到宿主 :8080；该清单已预填模型网关，第 4 步可跳过）。</li>
+            （同样发布到宿主 :8080；首次部署会预填百花网关和 OVMS 直连；已有数据卷可能需手动添加 OVMS）。</li>
           <li>装在另一台机器也行，见第 5 步。</li>
         </ul>
       </li>
       <li><strong>首次打开创建管理员</strong>：浏览器访问 <code>__BASE_URL__</code>，
         第一个注册的账号就是管理员。</li>
-      <li><strong>接入百花的模型网关</strong>（这样模型列表里会出现云端模型和本机 OVMS 模型）：
+      <li><strong>接入百花模型网关</strong>（这样模型列表里会出现云端和算力池文本模型）：
         进入 <em>管理员设置 → 连接 → OpenAI API</em>，填：
         <pre>基础地址（Base URL）: __GATEWAY_URL__
 API Key:             随便填一个非空值（如 baihua）</pre>
         <ul>
           <li>如果百花管理员配置了 <code>BAIHUA_AI_EXTERNAL_TOKEN</code>，API Key 必须填它的值。</li>
           <li>保存后点该页面的「刷新」，模型会自动出现在下拉列表里。</li>
+          <li>模型 ID 使用 <code>baihua.</code> 前缀区分百花网关来源。</li>
           <li>百花网关目前只支持纯文本对话（含流式响应）；多模态聊天内容会报错，独立媒体和 embedding 接口尚未实现。</li>
           <li>地址里的主机名必须是 Open WebUI 能访问到的百花地址（通常是局域网 IP）；
             容器里的 <code>localhost</code> 指向容器自己，不能填 localhost。</li>
         </ul>
       </li>
+      <li><strong>（可选，k8s 内）添加 OVMS 直连</strong>：如需给本机视觉模型发送图片，
+        在「连接 → OpenAI API」中添加一个新的连接，地址填 <code>http://bh-openvino:8000/v3</code>，API Key 留空。
+        该地址只在 k8s 集群内可达；模型 ID 带 <code>ovms.</code> 前缀。当前模型支持文本和图片，不提供音频、视频或 embedding。</li>
       <li><strong>装在别的机器 / 换端口时</strong>：把百花 WebUI 的配置
         <code>OpenWebUi:BaseUrl</code>（环境变量 <code>OpenWebUi__BaseUrl</code>）改成
         <code>http://&lt;那台机器的IP&gt;:&lt;端口&gt;</code>，重启 webui 后本页按钮立即指向它。

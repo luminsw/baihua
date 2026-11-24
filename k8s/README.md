@@ -544,9 +544,15 @@ docker run -d --name open-webui --restart unless-stopped \
   ghcr.io/open-webui/open-webui:main        # 慢就换 ghcr.nju.edu.cn/open-webui/open-webui:main
 ```
 
-装好后浏览器打开 `http://<节点IP>:8080`，首次进入创建管理员账号（第一个用户即管理员），
-再到「管理员设置 → 连接 → OpenAI API」填百花网关 `http://<节点IP>/mg/ai/v1`
-（API Key 随便填非空值；若配了 `BAIHUA_AI_EXTERNAL_TOKEN` 则必须填它的值），保存后刷新即可看到模型列表。
+装好后浏览器打开 `http://<节点IP>:8080`，首次进入创建管理员账号（第一个用户即管理员）。
+k8s 可选清单会预配置两个 OpenAI 连接：百花网关 `http://bh-server:8788/mg/ai/v1`（模型 ID 带 `baihua.` 前缀）
+和 OVMS `http://bh-openvino:8000/v3`（本机视觉模型，模型 ID 带 `ovms.` 前缀）。
+OVMS 地址只在集群内可达，不要为此额外暴露 8000 端口。若配置了 `BAIHUA_AI_EXTERNAL_TOKEN`，
+将清单中 `OPENAI_API_KEYS` 的第一个值改成该 token；第二个值留空。
+使用独立 Docker 安装时，需在「管理员设置 → 连接 → OpenAI API」中分别添加这些连接，
+并将地址改为 OpenWebUI 所在机器实际可访问的服务地址。
+已初始化的 Open WebUI 会把连接设置保存在数据卷中，已保存设置可能优先于清单中的环境变量；
+若应用清单后没有看到带 `baihua.` / `ovms.` 前缀的模型，请在「管理员设置 → 连接」中手动添加上述连接。
 WebUI 入口页按钮默认指向 `http://<节点IP>:8080`；装在别的机器或改了端口时，把 bh-webui 的
 `OpenWebUi__BaseUrl`（环境变量）配成实际地址并重启，入口页按钮就指向它，不需要改代码。
 

@@ -80,19 +80,26 @@ spec:
               value: "false"
             - name: OLLAMA_BASE_URL
               value: "http://localhost:1"
-            # 模型走百花自己的 OpenAI 兼容网关（云端模型 + 本机 OVMS 都在里面），
-            # 等价于在「管理员设置 → 连接」里手填 http://<节点IP>/mg/ai/v1。
-            # 当前仅支持纯文本聊天；多模态聊天内容返回 400，独立媒体/embedding API 未实现。
-            # bh-server 的 /mg/ai/v1 在局域网内默认免鉴权；若管理员配置了
-            # BAIHUA_AI_EXTERNAL_TOKEN，下面的 OPENAI_API_KEY 必须改成同一值。
+            # 配置两个 OpenAI 连接：百花网关用于云端/算力池文本模型，OVMS 直连用于本机视觉模型。
+            # OpenWebUI 在 Pod 内请求；bh-openvino 是集群内 Service，不需要暴露 8000 端口。
+            # 百花网关目前只支持纯文本；OVMS 连接使用 /v3，支持已加载模型的视觉输入。
+            # 独立音频/视频端点及 embedding 模型当前均未部署。
             - name: ENABLE_OPENAI_API
               value: "true"
+            # 单连接兼容回退；当前 OpenWebUI 使用下面的多连接配置覆盖它。
             - name: OPENAI_API_BASE_URL
               value: "http://bh-server:8788/mg/ai/v1"
             - name: OPENAI_API_KEY
               value: "baihua"
-            # RAG_OPENAI_API_BASE_URL 默认继承 OPENAI_API_BASE_URL；百花网关没有 /embeddings，
-            # 因此文件 RAG 需另配 RAG_OPENAI_API_BASE_URL / RAG_OPENAI_API_KEY 指向可用的 embedding 服务。
+            # 分号分隔，URL 与 API Key 按索引配对：[0] 百花网关；[1] OVMS（无需 API Key）。
+            - name: OPENAI_API_BASE_URLS
+              value: "http://bh-server:8788/mg/ai/v1;http://bh-openvino:8000/v3"
+            - name: OPENAI_API_KEYS
+              value: "baihua;"
+            # 区分模型来源并避免 ID 冲突：网关为 baihua.<模型名>，OVMS 为 ovms.<模型名>。
+            - name: OPENAI_API_CONFIGS
+              value: '{"0":{"prefix_id":"baihua"},"1":{"prefix_id":"ovms"}}'
+            # 当前没有部署 embedding 模型；需要文件 RAG 时，需另配支持 embeddings 的服务。
             - name: RAG_EMBEDDING_ENGINE
               value: "openai"
             - name: RAG_OPENAI_EMBEDDING_MODEL
