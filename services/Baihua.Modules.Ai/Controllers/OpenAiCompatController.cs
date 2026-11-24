@@ -1,8 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Baihua.Contracts.Ai;
 using Baihua.Core.Models;
 using Baihua.Core.Security;
 using Baihua.Core.Services;
+using Baihua.Modules.Ai.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.AI;
 
@@ -21,31 +23,43 @@ public class OpenAiCompatController : ControllerBase
 {
     private readonly AiSettingsService _aiSettings;
     private readonly AiClientService _aiClientService;
+    private readonly AiProviderModelHealthService _modelHealth;
     private readonly IConfiguration _configuration;
     private readonly ILogger<OpenAiCompatController> _logger;
 
     public OpenAiCompatController(
         AiSettingsService aiSettings,
         AiClientService aiClientService,
+        AiProviderModelHealthService modelHealth,
         IConfiguration configuration,
         ILogger<OpenAiCompatController> logger)
     {
         _aiSettings = aiSettings;
         _aiClientService = aiClientService;
+        _modelHealth = modelHealth;
         _configuration = configuration;
         _logger = logger;
     }
 
     /// <summary>模型列表（OpenAI /v1/models 兼容）</summary>
     [HttpGet("models")]
-    public ActionResult<object> ListModels()
+    public async Task<ActionResult<object>> ListModels(CancellationToken cancellationToken)
     {
         if (!Authorize()) return Unauthorized(new { error = "invalid token" });
 
-        var models = _aiSettings.GetAiProviders()
-            .Where(p => p.Models is { Count: > 0 })
-            .SelectMany(p => p.Models.Select(m => new { id = m.Name, @object = "model", owned_by = p.Id }))
-            .ToList();
+        var providers = _aiSettings.GetAiProviders().Where(p => p.Models is { Count: > 0 });
+        var modelsByProvider = await Task.WhenAll(providers.Select(async provider =>
+        {
+            var availableIds = provider.Tier == AiModelTier.Tier2_Local
+                ? await _modelHealth.GetAvailableModelIdsAsync(provider, cancellationToken)
+                : null;
+
+            return provider.Models
+                .Where(model => availableIds == null || availableIds.Contains(model.Name))
+                .Select(model => (object)new { id = model.Name, @object = "model", owned_by = provider.Id })
+                .ToList();
+        }));
+        var models = modelsByProvider.SelectMany(providerModels => providerModels).ToList();
         return Ok(new { @object = "list", data = models });
     }
 
@@ -88,6 +102,16 @@ public class OpenAiCompatController : ControllerBase
             if (!ready)
             {
                 await WriteErrorAsync($"local model provider {provider.Name} is not running");
+                return;
+            }
+
+            if (provider.Tier == AiModelTier.Tier2_Local
+                && !await _modelHealth.IsModelAvailableAsync(provider, resolvedModel, ct))
+            {
+                await WriteErrorAsync(
+                    $"本地模型 {resolvedModel} 当前未加载或推理服务不可用，请检查模型服务状态后重试。",
+                    StatusCodes.Status503ServiceUnavailable,
+                    "service_unavailable");
                 return;
             }
 
@@ -388,9 +412,12 @@ public class OpenAiCompatController : ControllerBase
         await Response.Body.FlushAsync(ct);
     }
 
-    private async Task WriteErrorAsync(string message)
+    private async Task WriteErrorAsync(
+        string message,
+        int statusCode = StatusCodes.Status400BadRequest,
+        string type = "invalid_request_error")
     {
-        Response.StatusCode = 400;
-        await Response.WriteAsJsonAsync(new { error = new { message, type = "invalid_request_error" } });
+        Response.StatusCode = statusCode;
+        await Response.WriteAsJsonAsync(new { error = new { message, type } });
     }
 }

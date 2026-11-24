@@ -7,6 +7,7 @@ using Baihua.Core.Models;
 using Baihua.Core.Services;
 using Baihua.Core.Security;
 using Baihua.Contracts.Ai;
+using Baihua.Modules.Ai.Services;
 
 namespace Baihua.Modules.Ai.Controllers;
 
@@ -19,6 +20,7 @@ public partial class AiConfigController : ControllerBase
 {
     private readonly AiConfigService _aiConfigService;
     private readonly AiSettingsService _aiSettings;
+    private readonly AiProviderModelHealthService _modelHealth;
     private readonly Baihua.Core.Services.AiCategorySettingsService _categorySettings;
     private readonly WebUINotificationService _webUINotification;
     private readonly Baihua.Core.Services.CapabilityService _capabilityService;
@@ -28,6 +30,7 @@ public partial class AiConfigController : ControllerBase
     public AiConfigController(
         AiConfigService aiConfigService,
         AiSettingsService aiSettings,
+        AiProviderModelHealthService modelHealth,
         Baihua.Core.Services.AiCategorySettingsService categorySettings,
         WebUINotificationService webUINotification,
         Baihua.Core.Services.CapabilityService capabilityService,
@@ -36,6 +39,7 @@ public partial class AiConfigController : ControllerBase
     {
         _aiConfigService = aiConfigService;
         _aiSettings = aiSettings;
+        _modelHealth = modelHealth;
         _categorySettings = categorySettings;
         _webUINotification = webUINotification;
         _capabilityService = capabilityService;
@@ -76,6 +80,16 @@ public partial class AiConfigController : ControllerBase
         }).ToList();
 
         return Ok(result);
+    }
+
+    /// <summary>探测本地模型服务并返回不含敏感配置的状态。</summary>
+    [HttpGet("diagnostics")]
+    public async Task<ActionResult<AiGatewayDiagnosticsDto>> GetDiagnostics(CancellationToken cancellationToken)
+    {
+        var providers = _aiSettings.GetAiProviders();
+        var providerDiagnostics = await Task.WhenAll(
+            providers.Select(provider => _modelHealth.DiagnoseAsync(provider, cancellationToken)));
+        return Ok(new AiGatewayDiagnosticsDto { Providers = providerDiagnostics.ToList() });
     }
 
     /// <summary>

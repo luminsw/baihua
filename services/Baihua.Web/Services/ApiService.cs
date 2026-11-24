@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Baihua.Contracts.Ai;
+using Baihua.Contracts.Capability;
 using Baihua.Contracts.Assistant;
 using Baihua.Contracts.Budget;
 using Baihua.Contracts.ComputePool;
@@ -122,6 +123,8 @@ namespace Baihua.Web.Services
 
         // AI 配置管理
         Task<List<AiConfigProvider>> GetAiConfigProvidersAsync();
+        Task<AiGatewayDiagnosticsDto> GetAiGatewayDiagnosticsAsync(CancellationToken cancellationToken = default);
+        Task<CapabilityInfo> GetCapabilityInfoAsync(CancellationToken cancellationToken = default);
         Task<AiConfigProvider?> GetAiConfigProviderAsync(string providerId);
         Task<SaveAiProviderResult> SaveAiConfigProviderAsync(SaveAiProviderRequest request);
         Task<bool> DeleteAiConfigProviderAsync(string providerId);

@@ -68,8 +68,9 @@ spec:
               readOnly: true
           readinessProbe:
             httpGet:
-              path: /v1/models
+              path: /v1/models/qwen2.5-vl-7b
               port: 8000
+            # 等待指定模型完成加载，避免 /v1/models 在空模型列表时也报告 Ready
             # 冷启动首次加载 7B 模型编译较慢，放宽等待窗口
             initialDelaySeconds: 60
             periodSeconds: 20

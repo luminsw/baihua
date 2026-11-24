@@ -22,6 +22,10 @@ public sealed class AiModule : IBaihuaModule
 
         // Embedding 配置读取：知识库模块的语义检索经接口在进程内读取（不再 HTTP）
         services.AddSingleton<IEmbeddingConfigProvider, EmbeddingConfigProvider>();
+        services.AddScoped<AiProviderModelHealthService>();
+        services.AddHttpClient("AiProviderModelHealth", client =>
+            client.Timeout = TimeSpan.FromSeconds(3))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { UseProxy = false });
     }
 
     /// <inheritdoc />

@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Baihua.Contracts.Ai;
+using Baihua.Contracts.Capability;
 using Baihua.Contracts.Assistant;
 using Baihua.Contracts.Budget;
 using Baihua.Contracts.Stock;
@@ -25,6 +26,27 @@ using Baihua.Contracts.Generate;
 namespace Baihua.Web.Services
 {
     public partial class ApiService {
+        public async Task<AiGatewayDiagnosticsDto> GetAiGatewayDiagnosticsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(QuickCallTimeout);
+            var response = await _aiHttpClient.GetAsync("/api/ai/config/diagnostics", timeout.Token);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<AiGatewayDiagnosticsDto>(timeout.Token)
+                   ?? throw new InvalidOperationException("AI gateway diagnostics response was empty.");
+        }
+
+        public async Task<CapabilityInfo> GetCapabilityInfoAsync(CancellationToken cancellationToken = default)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(QuickCallTimeout);
+            var response = await _httpClient.GetAsync("/api/capability", timeout.Token);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<CapabilityInfo>(timeout.Token)
+                   ?? throw new InvalidOperationException("Capability response was empty.");
+        }
+
         // AI 配置管理 API
         public async Task<List<AiConfigProvider>> GetAiConfigProvidersAsync()
         {

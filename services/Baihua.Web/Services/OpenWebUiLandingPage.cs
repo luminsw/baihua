@@ -19,6 +19,8 @@ namespace Baihua.Web.Services;
 /// </summary>
 public static class OpenWebUiLandingPage
 {
+    public sealed record TestChatRequest(string ModelId);
+
     /// <summary>Open WebUI 默认监听端口（本页在未配置地址时按它推导）。</summary>
     private const int DefaultPort = 8080;
 
@@ -58,6 +60,18 @@ public static class OpenWebUiLandingPage
   .status { font-size: 13.5px; margin: 8px 0 0; min-height: 1.4em; }
   .status.ok { color: #1a7f37; }
   .status.warn { color: #9a6700; }
+  .diagnostics { margin-top: 20px; padding: 14px; background: #f6f8fa; border: 1px solid #e3e6ea; border-radius: 10px; }
+  .diagnostics-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .diagnostics-head strong { font-size: 15px; }
+  .diagnostics-head button, .test-button {
+    border: 0; border-radius: 8px; padding: 8px 12px; background: #e8ebef; color: inherit;
+    cursor: pointer; font: inherit; font-size: 13px;
+  }
+  .diagnostics-head button:disabled, .test-button:disabled { opacity: .55; cursor: default; }
+  .diagnostics-status, .device-status, .test-result { font-size: 13.5px; margin: 10px 0 0; line-height: 1.6; }
+  .model-row { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid #e3e6ea; font-size: 13px; }
+  .model-row strong { margin-right: 6px; }
+  .test-result { white-space: pre-wrap; word-break: break-word; }
   .addr code, code { background: #f0f2f5; border-radius: 5px; padding: 1px 5px; font-size: 12.5px; }
   .hint { margin: 16px 0 0; padding: 10px 12px; background: #f6f8fa; border: 1px solid #e3e6ea; border-radius: 9px; }
   details { margin-top: 20px; border-top: 1px dashed #dfe3e8; padding-top: 16px; }
@@ -80,6 +94,9 @@ public static class OpenWebUiLandingPage
     .lead, .addr, .muted { color: #9aa4b2; }
     .addr code, code { background: #21262d; }
     .hint { background: #1c2128; border-color: #30363d; }
+    .diagnostics { background: #1c2128; border-color: #30363d; }
+    .diagnostics-head button, .test-button { background: #30363d; }
+    .model-row { border-top-color: #30363d; }
     details { border-top-color: #30363d; }
     summary { color: #e6edf3; }
     .status.ok { color: #3fb950; }
@@ -105,6 +122,21 @@ public static class OpenWebUiLandingPage
     百花自身的 AI 功能（虚拟师父、知识生成、每日卡片、摘要等）不依赖 Open WebUI，照常可用；
     这里只是缺一个通用聊天界面。
   </p>
+
+  <section class="diagnostics" aria-labelledby="diagnostics-title">
+    <div class="diagnostics-head">
+      <strong id="diagnostics-title">百花模型连接检测</strong>
+      <button id="diagnostics-refresh" type="button">重新检测</button>
+    </div>
+    <p class="diagnostics-status" id="diagnostics-status" aria-live="polite">正在检测本地模型服务…</p>
+    <div id="model-list"></div>
+    <p class="device-status" id="device-status"></p>
+    <div class="actions">
+      <button class="test-button" id="test-local-model" type="button" disabled>测试本地模型</button>
+      <span class="muted">仅发送固定短提示词，不会保存到聊天记录。</span>
+    </div>
+    <p class="test-result" id="test-result" aria-live="polite"></p>
+  </section>
 
   <details id="ow-steps">
     <summary>还没有部署？展开看部署步骤（约 5 分钟）</summary>
@@ -160,6 +192,13 @@ docker volume rm open-webui         # 连数据一起删（不可恢复，先导
 (function () {
   var statusEl = document.getElementById('ow-status');
   var stepsEl = document.getElementById('ow-steps');
+  var diagnosticsStatusEl = document.getElementById('diagnostics-status');
+  var modelListEl = document.getElementById('model-list');
+  var deviceStatusEl = document.getElementById('device-status');
+  var refreshButton = document.getElementById('diagnostics-refresh');
+  var testButton = document.getElementById('test-local-model');
+  var testResultEl = document.getElementById('test-result');
+  var selectedModelId = null;
   var target = "__BASE_URL__/";
   if (!statusEl || !window.fetch || !window.AbortController) {
     if (statusEl) { statusEl.textContent = ''; }
@@ -180,6 +219,102 @@ docker volume rm open-webui         # 连数据一起删（不可恢复，先导
       statusEl.className = 'status warn';
       if (stepsEl) { stepsEl.open = true; }
     });
+
+  function appendModelRow(provider, model) {
+    var row = document.createElement('p');
+    row.className = 'model-row';
+    var title = document.createElement('strong');
+    title.textContent = model.id;
+    var category = provider.tier === 2 ? '本地' : provider.tier === 3 ? '云端' : '其他';
+    var status = provider.tier === 2
+      ? model.isAvailable === true ? '已加载'
+        : model.isAvailable === false ? '未加载'
+          : '暂无法确认'
+      : '已配置，未主动探测';
+    if (!model.isConfigured && model.isAvailable === true) status = '服务端已加载，尚未加入百花配置';
+    row.appendChild(title);
+    row.appendChild(document.createTextNode('[' + category + '] ' + status));
+    modelListEl.appendChild(row);
+  }
+
+  async function loadDiagnostics() {
+    diagnosticsStatusEl.textContent = '正在检测本地模型服务…';
+    diagnosticsStatusEl.className = 'diagnostics-status';
+    modelListEl.textContent = '';
+    deviceStatusEl.textContent = '';
+    testButton.disabled = true;
+    selectedModelId = null;
+    testResultEl.textContent = '';
+    try {
+      var response = await fetch('/open-webui/diagnostics', { cache: 'no-store' });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      var payload = await response.json();
+      var providers = payload.gateway && payload.gateway.providers ? payload.gateway.providers : [];
+      var readyCount = 0;
+      providers.forEach(function (provider) {
+        var heading = document.createElement('p');
+        heading.className = 'model-row';
+        var kind = provider.tier === 2 ? '本地模型服务' : provider.tier === 3 ? '云端模型配置' : '模型提供方';
+        var health = '未进行连通性检测';
+        if (provider.tier === 2) {
+          if (!provider.errorCode) health = '服务可达';
+          else if (provider.errorCode === 'connection_failed') health = '连接失败';
+          else if (provider.errorCode === 'timeout') health = '连接超时';
+          else if (provider.errorCode === 'invalid_base_url') health = '地址配置无效';
+          else if (provider.errorCode === 'invalid_model_list') health = '模型列表响应异常';
+          else if (provider.errorCode.indexOf('http_') === 0) health = '服务返回 ' + provider.errorCode.slice(5);
+          else health = '检测异常（' + provider.errorCode + '）';
+        }
+        heading.textContent = provider.name + ' · ' + kind + ' · ' + health;
+        modelListEl.appendChild(heading);
+        (provider.models || []).forEach(function (model) {
+          appendModelRow(provider, model);
+          if (provider.tier === 2 && model.isConfigured && model.isAvailable === true) {
+            readyCount++;
+            if (!selectedModelId) selectedModelId = model.id;
+          }
+        });
+      });
+      diagnosticsStatusEl.textContent = providers.length
+        ? readyCount
+          ? '检测完成：' + readyCount + ' 个本地模型可用。'
+          : '检测完成：没有已加载的本地模型；云端模型状态需在 Open WebUI 中实际试用。'
+        : '尚未配置 AI 模型提供方。';
+      diagnosticsStatusEl.className = 'diagnostics-status ' + (readyCount ? 'status ok' : 'status warn');
+      testButton.disabled = !selectedModelId;
+
+      var capability = payload.capability || {};
+      deviceStatusEl.textContent = capability.isIntelGpu
+        ? '主机检测到 Intel GPU：' + (capability.gpuName || '名称未知')
+          + '。OVMS 未通过模型列表接口报告实际推理设备，请以 OVMS 日志确认是否使用 GPU。'
+        : '主机未检测到 Intel GPU，本地推理可能使用 CPU，速度会较慢；实际设备请以 OVMS 日志为准。';
+    } catch (error) {
+      diagnosticsStatusEl.textContent = '检测失败：' + error.message;
+      diagnosticsStatusEl.className = 'diagnostics-status status warn';
+    }
+  }
+
+  refreshButton.addEventListener('click', loadDiagnostics);
+  testButton.addEventListener('click', async function () {
+    if (!selectedModelId) return;
+    testButton.disabled = true;
+    testResultEl.textContent = '正在测试 ' + selectedModelId + '…';
+    try {
+      var response = await fetch('/open-webui/test-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelId: selectedModelId })
+      });
+      var result = await response.json();
+      if (!response.ok) throw new Error(result.detail || result.error || ('HTTP ' + response.status));
+      testResultEl.textContent = '测试成功：' + (result.text || '(模型返回空内容)');
+    } catch (error) {
+      testResultEl.textContent = '测试失败：' + error.message;
+    } finally {
+      testButton.disabled = !selectedModelId;
+    }
+  });
+  loadDiagnostics();
 })();
 </script>
 </body>

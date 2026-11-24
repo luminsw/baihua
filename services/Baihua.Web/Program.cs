@@ -447,6 +447,40 @@ app.MapGet("/open-webui", (HttpContext http, IConfiguration cfg) =>
         "text/html; charset=utf-8");
 });
 
+app.MapGet("/open-webui/diagnostics", async (Baihua.Web.Services.IApiService api, CancellationToken cancellationToken) =>
+{
+    var gateway = await api.GetAiGatewayDiagnosticsAsync(cancellationToken);
+    var capability = await api.GetCapabilityInfoAsync(cancellationToken);
+    return Results.Ok(new { gateway, capability });
+});
+
+app.MapPost("/open-webui/test-chat", async (
+    Baihua.Web.Services.OpenWebUiLandingPage.TestChatRequest request,
+    Baihua.Web.Services.IApiService api,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(request.ModelId))
+        return Results.BadRequest(new { error = "modelId is required" });
+
+    var diagnostics = await api.GetAiGatewayDiagnosticsAsync(cancellationToken);
+    var isAvailableLocalModel = diagnostics.Providers
+        .Where(provider => provider.Tier == Baihua.Contracts.Ai.AiModelTier.Tier2_Local)
+        .SelectMany(provider => provider.Models)
+        .Any(model => model.IsConfigured
+            && model.IsAvailable == true
+            && model.Id.Equals(request.ModelId, StringComparison.OrdinalIgnoreCase));
+    if (!isAvailableLocalModel)
+        return Results.Conflict(new { error = "所选本地模型当前不可用，请先刷新模型检测。" });
+
+    var (ok, text, error) = await api.RunPoolChatAsync(request.ModelId, "请只回复：OK");
+    if (!ok)
+        return Results.Problem(
+            detail: error ?? "本地模型测试失败。",
+            statusCode: StatusCodes.Status502BadGateway);
+
+    return Results.Ok(new { modelId = request.ModelId, text });
+});
+
 app.MapRazorComponents<Baihua.Web.Components.App>()
     .AddInteractiveServerRenderMode();
 

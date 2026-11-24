@@ -82,6 +82,8 @@ Windows 用户：先开 WSL 终端（`wsl`）再执行上面命令。详见 `scr
 - `http://bh-openvino:8000/v1/models` — 状态 / 模型列表探测
 
 当前 k8s 部署只加载 `qwen2.5-vl-7b`；RAG 嵌入模型未部署，不能调用 `/v3/embeddings`。
+Deployment 的 readinessProbe 检查 `/v1/models/qwen2.5-vl-7b`，只有该模型实际加载后才会 Ready；
+仅检查 `/v1/models` 的 HTTP 状态可能在模型列表为空时误报就绪。
 
 配置：`OpenVinoOms__BaseUrl`（ConfigMap 注入 `http://bh-openvino:8000`）或环境变量 `OPENVINO_LLM_URL`。
 `bh-openvino` 当前用单模型 GenAI 参数（`--model_path`、`--model_name`、`--task=text_generation`）
