@@ -1,22 +1,22 @@
 ﻿#Requires -Version 5.1
 <#
-  生成「最终用户」瘦部署包（不含 C# 源码）：dist\baihua-deploy-<version>.zip
+  生成「最终用户」部署包（Windows，native 形态）：dist\baihua-deploy-<version>.zip
 
-  包内容只有运行所需：
-    bh CLI（tools/bh，含 locator/bh.cmd/wslc cell）
-    nginx 配置（docker/nginx/wslc.conf + server-proxy-headers.conf）
-    docker/.env.wslc.example
+  包内容（镜像仓库结构，native cell 的 5 级向上 = 包根，apps\ 检测生效）：
     bh.cmd（根入口）/ README.txt / VERSION.txt
-  镜像默认从华为云 SWR 拉取（docker/.env.wslc 的 BAIHUA_IMAGE_SOURCE=auto 在无源码时即 registry；
-  国内匿名拉取已验证，Docker Hub 直连国内超时已避开）。
+    tools\bh\（bh CLI：bh.ps1 / bh.cmd / locator.ps1 / README / win\native cell）
+    apps\server\ + apps\webui\（self-contained win-x64 publish，最终用户无需 .NET）
+  2026-11-25 起 Windows 统一 native + SQLite，不再打包 wslc 容器栈 / docker env 模板。
 
   用法：
-    pwsh -File scripts/make-deploy-package.ps1 [-Tag latest] [-Version 0.1.0]
+    pwsh -File scripts/make-deploy-package.ps1 [-Tag v0.1.0] [-Version 0.1.0] [-SkipPublish]
+    -SkipPublish：复用 stage 里已有的 apps\（本地反复调 README/VERSION 时用）
 #>
 param(
-    [string]$Tag = 'latest',
+    [string]$Tag = '',
     [string]$Version = '',
-    [string]$OutDir = ''
+    [string]$OutDir = '',
+    [switch]$SkipPublish
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,6 +27,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     try { $Version = (& git -C $repo rev-parse --short HEAD 2>$null) } catch { }
     if ([string]::IsNullOrWhiteSpace($Version)) { $Version = (Get-Date -Format 'yyyyMMdd') }
 }
+if ([string]::IsNullOrWhiteSpace($Tag)) { $Tag = $Version }
 if ([string]::IsNullOrWhiteSpace($OutDir)) { $OutDir = Join-Path $repo 'dist' }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
@@ -34,16 +35,13 @@ $stage = Join-Path $OutDir ('stage-' + $Version)
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
+# ---- 1) bh CLI（文本文件）----
 $files = @(
     'tools/bh/bh.ps1',
     'tools/bh/bh.cmd',
     'tools/bh/locator.ps1',
     'tools/bh/README.md',
-    'tools/bh/win/wslc/bh.ps1',
-    'tools/bh/win/native/bh.ps1',
-    'docker/nginx/wslc.conf',
-    'docker/nginx/server-proxy-headers.conf',
-    'docker/.env.wslc.example'
+    'tools/bh/win/native/bh.ps1'
 )
 foreach ($rel in $files) {
     $src = Join-Path $repo $rel
@@ -53,23 +51,28 @@ foreach ($rel in $files) {
     Copy-Item $src $dst -Force
 }
 
-# 预置 docker/.env.wslc（不止 .example）：镜像 tag 固定为本次发布版本。
-# wslc cell 的 Get-EnvMap 只补缺失键，BAIHUA_IMAGE_TAG=<Tag> 会被保留 →
-# 旧部署包不会被未来发布的新 latest 带跑（v0.1.0 之前 -Tag 只写 VERSION.txt，无人消费，实际拉的是 latest）。
-# VAULTS_DIR 不预置：首启按最终用户 $HOME 生成（example 里的"你的用户名"占位符不能落进真实配置）。
-$envExample = Join-Path $stage 'docker\.env.wslc.example'
-$seedLines = @(
-    '# 部署包预置配置（make-deploy-package.ps1 生成；BAIHUA_IMAGE_TAG 已固定为本包版本）',
-    '# 首次 bh start 自动补全缺失项（随机 PG_PASSWORD 等）；改端口/路径后 bh restart 生效。'
+# ---- 2) 自包含 publish：apps\{server,webui}（win-x64；部署包形态的 $OutDir 即 apps\）----
+$apps = @(
+    @{ Name = 'server'; Project = 'services/Baihua.Server/Baihua.Server.csproj' },
+    @{ Name = 'webui';  Project = 'services/Baihua.Web/Baihua.Web.csproj' }
 )
-foreach ($line in (Get-Content $envExample)) {
-    if ($line -match '^\s*VAULTS_DIR=') { continue }
-    if ($line -match '^\s*BAIHUA_IMAGE_TAG=') { $seedLines += ('BAIHUA_IMAGE_TAG=' + $Tag); continue }
-    $seedLines += $line
+if (-not $SkipPublish) {
+    foreach ($app in $apps) {
+        $proj = Join-Path $repo $app.Project
+        if (-not (Test-Path $proj)) { throw ('缺少项目文件：' + $app.Project) }
+        $dest = Join-Path (Join-Path $stage 'apps') $app.Name
+        Write-Host ('[deploy] dotnet publish ' + $app.Project + ' -> apps\' + $app.Name + '（self-contained win-x64）...')
+        & dotnet publish $proj -c Release -r win-x64 --self-contained true -o $dest
+        if ($LASTEXITCODE -ne 0) { throw ('dotnet publish 失败：' + $app.Project) }
+        # .pdb 只在排障时有用，部署包不带（省 ~30% 体积）
+        Get-ChildItem $dest -Recurse -Filter '*.pdb' | Remove-Item -Force
+        Get-ChildItem $dest -Recurse -Include '*.xml' | Where-Object { $_.Name -match '^Baihua\.' } | Remove-Item -Force
+    }
+} else {
+    Write-Host '[deploy] -SkipPublish：跳过 dotnet publish'
 }
-[IO.File]::WriteAllLines((Join-Path $stage 'docker\.env.wslc'), $seedLines,
-    (New-Object System.Text.UTF8Encoding($false)))
 
+# ---- 3) 根入口 / VERSION / README ----
 $bhCmd = @'
 @echo off
 rem 百花部署包入口：转发到包内 bh CLI
@@ -78,60 +81,80 @@ exit /b %errorlevel%
 '@
 Set-Content -Path (Join-Path $stage 'bh.cmd') -Value $bhCmd -Encoding ASCII
 
+$commit = ''
+try { $commit = (& git -C $repo rev-parse --short HEAD 2>$null) } catch { }
 $versionLines = @(
     ('version=' + $Version),
-    'image_namespace=luminsw',
-    ('image_tag=' + $Tag),
-    ('built=' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
+    ('tag=' + $Tag),
+    ('commit=' + $commit),
+    ('built=' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')),
+    'form=native-win-x64'
 )
 Set-Content -Path (Join-Path $stage 'VERSION.txt') -Value $versionLines -Encoding UTF8
 
 $readme = @"
-百花 · 部署包（Windows，wslc 容器形态）
+百花 · 部署包（Windows，native 形态：dotnet 进程 + SQLite，无需 .NET / Docker）
 
-1. 解压到任意目录（例如 C:\baihua-deploy），不要放在 C:\Program Files 下。
+1. 解压到任意目录（例如 C:\baihua），不要放在 C:\Program Files 下（无需管理员）。
 2. 在解压目录打开终端，执行：bh.cmd install
+   （安装定位器到 %USERPROFILE%\.local\bin 并加入 PATH，之后任意目录可用 bh）
 3. 启动：bh.cmd start
-   首次会拉取镜像：bh-server / bh-webui 来自华为云 SWR（国内直连快；可在 docker\.env.wslc 改 BAIHUA_IMAGE_REGISTRY 换源），PostgreSQL / Nginx / Open WebUI 来自公共镜像。
-4. 浏览器打开：http://<本机局域网 IP>/    （服务器名默认随机生成，可在 WebUI 里修改）
+   首次自动建库：%USERPROFILE%\.baihua\db\baihua.db（BAIHUA_DATA_HOME 可覆盖数据目录）
+4. 浏览器打开：http://localhost:5177
+   局域网入口（手机/其它设备）：bh.cmd lan on 配置 :80 转发 → http://<本机局域网 IP>/
 5. 手机花记：在 WebUI 的配对页扫码（二维码自动使用本机局域网 IP）
 
 常用命令：
-  bh.cmd status / bh.cmd doctor / bh.cmd logs server 50
-  bh.cmd stop
-  bh.cmd update         拉取新镜像并重建容器（命名卷数据保留）
-  bh.cmd autostart on   登录自启
-  bh.cmd backup         冷备份全部数据卷+配置 到 backup\baihua-backup-<时间>\（自动恢复演练）
-  bh.cmd restore <备份目录>   从备份恢复（覆盖现有数据，需输 yes 确认）
+  bh status / bh doctor / bh logs server 50 / bh stop
+  bh backup            冷备份数据目录 → zip + .sha256（需先 bh stop）
+  bh restore <zip>     恢复（旧数据改名 .pre-restore-<时间> 保留；需先 bh stop）
+  bh autostart on      登录自启（用户级 Startup，不需要管理员）
 
-数据与配置：
-  命名卷 bh-pgdata / bh-data / bh-logs / bh-openwebui-data
-  知识库目录：docker\.env.wslc 的 VAULTS_DIR（默认 %USERPROFILE%\Vaults）
-  配置：docker\.env.wslc（部署包已预置镜像版本（BAIHUA_IMAGE_TAG）；首次启动补全随机 PG 密码等，勿外传）
+可选组件（需 WSL >= 2.9.3，缺失仅对应功能降级）：
+  bh open-webui install    AI 对话页（wslc 容器 bh-open-webui，:8080）
+  bh ovms status           本地推理 OVMS（wslc 容器 ovms-gpu，:8000）
 
-卸载：
-  bh.cmd stop，然后 bh.cmd uninstall（移除定位器并清除 BAIHUA_HOME），再删除部署目录。
-  数据卷不会被 bh 删除，需要时请手动清理。
+升级：下载新部署包解压到新目录 → 执行 bh.cmd install（BAIHUA_PKG_HOME 自动切换到新目录）
+      → bh start。数据在 %USERPROFILE%\.baihua，与包目录无关，升级/搬家不受影响。
+卸载：bh stop → bh uninstall（移除定位器）→ 删除解压目录；数据目录手动清理。
 "@
 Set-Content -Path (Join-Path $stage 'README.txt') -Value $readme -Encoding UTF8
 
-# 统一 CRLF：部署包仅在 Windows 使用。Linux CI 检出时，未在 .gitattributes 声明 eol 的文件
-# （.cmd / .example / .conf 及本脚本生成的入口文件）是 LF，而 cmd.exe 解析 .cmd 要求 CRLF。
+# ---- 4) CRLF/BOM 归一化（只处理文本文件，apps\ 二进制绝不碰）----
+# 部署包仅在 Windows 使用。Linux CI 检出时，未在 .gitattributes 声明 eol 的文件是 LF，
+# 而 cmd.exe 解析 .cmd 要求 CRLF。
 # ⚠ .ps1 必须写回 UTF-8 with BOM：bh.cmd 调的是 Windows PowerShell 5.1，
 #   无 BOM 会按 GBK 读中文注释（吞换行→解析全崩；v0.1.0 首版部署包即栽在这里，
-#   且 pwsh 7 下自测不出——7 默认 UTF-8）。其余文件（.cmd 纯 ASCII/.txt/.conf/.example）不带 BOM。
+#   且 pwsh 7 下自测不出——7 默认 UTF-8）。其余文本文件（.cmd 纯 ASCII / .md / .txt）不带 BOM。
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $utf8Bom = New-Object System.Text.UTF8Encoding($true)
+$appsRoot = Join-Path $stage 'apps'
 foreach ($f in (Get-ChildItem $stage -Recurse -File)) {
+    if ($f.FullName.StartsWith($appsRoot, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
     $enc = if ($f.Extension -ieq '.ps1') { $utf8Bom } else { $utf8NoBom }
     $text = [IO.File]::ReadAllText($f.FullName, $utf8NoBom) -replace "`r?`n", "`r`n"
     [IO.File]::WriteAllText($f.FullName, $text, $enc)
 }
 
+# ---- 5) 打 zip（手动建条目统一 '/' 分隔符：PS 5.1 的 ZipFile.CreateFromDirectory 用 '\'，
+#         Linux/跨平台解包工具会把 'apps\server\...' 当成一个文件名）----
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = Join-Path $OutDir ('baihua-deploy-' + $Version + '.zip')
 if (Test-Path $zip) { Remove-Item $zip -Force }
-Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
+$zipFs = [System.IO.File]::Open($zip, [System.IO.FileMode]::Create)
+$archive = New-Object System.IO.Compression.ZipArchive($zipFs, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    Get-ChildItem $stage -Recurse -File | ForEach-Object {
+        $rel = $_.FullName.Substring($stage.Length).TrimStart('\') -replace '\\', '/'
+        [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $_.FullName, $rel, [System.IO.Compression.CompressionLevel]::Optimal)
+    }
+} finally {
+    $archive.Dispose()
+    $zipFs.Dispose()
+}
 Remove-Item $stage -Recurse -Force
 
-Write-Host ('[deploy] 已生成：' + $zip)
-Write-Host ('[deploy] 镜像：luminsw/baihua-server:' + $Tag + '（默认经华为云 SWR；国内 Docker Hub 直连超时，已避开）')
+$sizeMb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+Write-Host ('[deploy] 已生成：' + $zip + '（' + $sizeMb + ' MB）')
+Write-Host ('[deploy] 形态：native win-x64（bh CLI + apps\ 自包含产物；数据 %USERPROFILE%\.baihua）')

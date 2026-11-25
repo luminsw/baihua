@@ -6,8 +6,8 @@
 
 ## 0. 前提事实（做镜像前先知道）
 
-- 本仓库**不含敏感文件**：`docker/.env.wslc`（含 PG_PASSWORD）、`backup/`（含备份密钥）、
-  `dist/` 等全部被 gitignore，git 内容可放心镜像到任何托管平台。
+- 本仓库**不含敏感文件**：`backup/`（含备份密钥）、`dist/` 等全部被 gitignore，
+  git 内容可放心镜像到任何托管平台。
 - **git 镜像带不走两样东西**：
   1. **Release 附件**——v0.1.0 的三个部署 zip 是 GitHub Release 资产，不是 git 对象；
   2. **CI**——`.github/workflows/` 只有 GitHub Actions 认，镜像端要跑 CI 得另配

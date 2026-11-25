@@ -1,24 +1,27 @@
 ﻿#Requires -Version 5.1
 <#
-  baihua - Windows + dotnet native CLI
-  Manages 2 .NET services (server/webui) as local processes.
+  baihua - Windows + dotnet native CLI（Windows 唯一形态，2026-11-25 起）
+  Manages 2 .NET services (server/webui) as local processes + SQLite（单库 db\baihua.db）.
 
-  Usage: bh <command> [args]（Windows native 默认形态；不带参数 = bh status）
-    build [svc...]      dotnet publish to out/native/（可指定服务，默认全部 2 个）
+  Usage: bh <command> [args]（不带参数 = bh status）
+    build [svc...]      dotnet publish to out/native/（开发仓库；部署包 apps\ 自包含产物不可 build）
     build-restart [svc...]  build + restart（编译后立即重启，可指定服务，默认全部）
     start [svc...]      start services（可指定服务，默认全部，按依赖顺序 server→webui）
     stop [svc...]       stop services（可指定服务，默认全部，逆依赖顺序）
     restart [svc...]    stop + start 指定服务（默认全部）
     update              git pull 最新代码 + 重建 + 重启（局域网机器一键升级）
-    status [--json]     状态总览（端口/进程/OVMS 形态/访问地址）；--json 供 DSH 桥插件
-    doctor [--json] [--fix]  本机体检：.NET / PG 登录 / 产物 / 端口 / OVMS（--json 给工具，--fix 自动修可修的）
+    status [--json]     状态总览（端口/进程/OVMS/open-webui/访问地址）；--json 供 DSH 桥插件
+    doctor [--json] [--fix]  本机体检：.NET / SQLite / 产物 / 端口 / lan / OVMS / open-webui
+    backup [目录]       冷备份数据目录（默认 ~\.baihua，排除 bin/logs/models/venv）→ zip + .sha256（需先 bh stop）
+    restore <zip> [-y]  恢复数据目录（旧目录改名 .pre-restore-<时间> 保留；需先 bh stop）
     autostart [on|off|status] 登录自启（用户级 Startup，执行 bh start；不需要管理员）
     logs <svc> [n]      tail 日志（默认 50 行；-f 跟随，-e 看 stderr）
     ovms [status|start|stop|restart|logs [n]]
                         本地模型服务 OVMS(:8000)：自动识别 wslc 容器 / Windows 服务 / 外部进程
+    open-webui [install|start|stop|restart|status|logs [n]]
+                        AI 对话页（wslc 容器 bh-open-webui，:8080；需 WSL >= 2.9.3，缺失仅降级）
     dashboard           open browser with cli-token auto-login
     open                open browser to http://localhost:5177
-    open-webui start|stop|status   manage Open WebUI (Python venv, port 8080)
     help                this help
 #>
 # 不用 param()/CmdletBinding：子命令选项（-f / -e / --json / -Prebuilt / -U …）要原样透传，
@@ -36,10 +39,17 @@ $Root = Split-Path -Parent $Root
 $Root = Split-Path -Parent $Root
 $Root = Split-Path -Parent $Root
 $Root = Split-Path -Parent $Root
-$OutDir = Join-Path $Root 'out\native'
+$AppsDir = Join-Path $Root 'apps'
+# 产物目录：部署包布局（<根>\apps\server\bh-server.exe，自包含 publish）优先，否则开发仓库 out\native
+$OutDir = if (Test-Path (Join-Path $AppsDir 'server\bh-server.exe')) { $AppsDir } else { Join-Path $Root 'out\native' }
+$IsPackageLayout = ($OutDir -eq $AppsDir)
 $PidDir = Join-Path $OutDir 'pids'
 $LogDir = Join-Path $OutDir 'logs'
-$DataHome = if ($env:BAIHUA_HOME) { $env:BAIHUA_HOME } else { Join-Path $HOME '.baihua' }
+# 数据目录：BAIHUA_DATA_HOME 可覆盖（默认 ~\.baihua）。不再读 BAIHUA_HOME——
+# 部署包 install 设 BAIHUA_PKG_HOME 做包定位，与数据目录语义解耦（2026-11-25）；
+# 服务进程内仍注入 BAIHUA_HOME=$DataHome（那是服务进程的数据目录语义，见 Start-One）。
+$DataHome = if ($env:BAIHUA_DATA_HOME) { $env:BAIHUA_DATA_HOME } else { Join-Path $HOME '.baihua' }
+$DbPath = Join-Path $DataHome 'db\baihua.db'
 
 # 合并后单一服务架构：server(8788) → webui(5177)
 # server 承载家庭/AI/知识库三模块（进程内直调，无模块间 HTTP）
@@ -50,7 +60,7 @@ $Services = @(
 )
 
 function Help-Text {
-    Get-Content $PSCommandPath | Select-Object -First 30 | Where-Object { $_ -match '^\s{4}[a-z]' } | ForEach-Object { $_.Trim() }
+    Get-Content $PSCommandPath | Select-Object -First 48 | Where-Object { $_ -match '^\s{4}[a-z]' } | ForEach-Object { $_.Trim() }
 }
 
 function Ensure-Dotnet {
@@ -63,6 +73,26 @@ function Ensure-Dotnet {
     }
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
     Write-Host '[deps] dotnet 安装完成'
+}
+
+function Get-HostLanIp {
+    # 取"默认路由所在网卡"的 IPv4 —— 手机/局域网设备要访问的是这个地址。
+    # 只按私有地址正则会把 WSL 的 vEthernet（172.30.208.1）误当成宿主 IP，必须排除虚拟网卡。
+    try {
+        $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
+            Sort-Object RouteMetric | Select-Object -First 1
+        if ($route) {
+            $ip = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $route.InterfaceIndex -ErrorAction Stop |
+                Select-Object -First 1).IPAddress
+            if ($ip -and $ip -notmatch '^127\.') { return $ip }
+        }
+    } catch { }
+    $ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {
+        $_.IPAddress -match '^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))\.' -and
+        $_.InterfaceAlias -notmatch 'WSL|Hyper-V|vEthernet|Loopback'
+    } | Select-Object -ExpandProperty IPAddress
+    if ($ips) { return $ips[0] }
+    return ''
 }
 
 # ---- 完整性标签守卫 ----
@@ -100,6 +130,9 @@ function Repair-LowIntegrityLabel([string]$path, [switch]$Quiet) {
 
 function Invoke-Build {
     param([string[]]$Names = @())
+    if ($IsPackageLayout) {
+        throw '[build] 部署包形态（apps\ 自包含产物）无需编译；更新请重新下载部署包并 bh install'
+    }
     Ensure-Dotnet
     $targets = @(Resolve-ServiceList $Names)
     if ($targets.Count -eq 0) { return }
@@ -148,18 +181,15 @@ function Update-Services {
             Write-Warning '[update] 放行防火墙 TCP 8788 失败（需要管理员权限），局域网算力池/互联可能不可达'
         }
     }
-    # open-webui（Python venv，:8080）不在 $Services 里，一键更新不会自动带上它。
-    # 已安装才自动拉起（避免更新时意外触发几分钟的 pip install）；未安装只提示。
-    $owuiExe = Join-Path $DataHome 'open-webui-venv\Scripts\open-webui.exe'
-    if (Test-Path $owuiExe) {
-        if (Test-PortOpen 8080) {
-            Write-Host '[update] open-webui 已在运行（:8080）'
-        } else {
-            Write-Host '[update] 启动 open-webui ...'
-            Invoke-OpenWebUI 'start'
-        }
+    # open-webui（wslc 容器 bh-open-webui，:8080）：容器已创建就保持运行；未安装只提示。
+    $owState = Get-OpenWebUiContainerState
+    if ($owState -eq 'running') {
+        Write-Host '[update] open-webui 已在运行（:8080）'
+    } elseif ($owState) {
+        Write-Host '[update] open-webui 容器未运行 → 启动'
+        Start-OpenWebUi
     } else {
-        Write-Warning '[update] 未安装 open-webui，跳过（需要时执行: bh open-webui install）'
+        Write-Warning '[update] open-webui 容器未安装，跳过（需要时执行: bh open-webui install）'
     }
     $LASTEXITCODE = 0
     Write-Host '[update] done'
@@ -249,17 +279,39 @@ function Get-WslcExe {
     return $script:WslcExe
 }
 
+# wslc 调用外壳：EAP 局部放宽（PS 5.1 会把 stderr 当终止错误），只按退出码判成败
+function Invoke-WslcAllowFail {
+    param([string[]]$WslcArgs)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $out = & wslc @WslcArgs 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    return [pscustomobject]@{ ExitCode = $code; Output = $out }
+}
+
+# 从 `wslc container inspect` 的 JSON 文本取容器状态：running / exited / created / ...
+# 注意：有 healthcheck 的容器（open-webui）输出里**第一个** `"Status"` 是 Health.Status（healthy/…），
+# 真正的状态在 State 块里（Running 布尔 + Status 字符串），必须先锚定 State 块再取。
+function Get-WslcContainerStateFromInspect {
+    param([string]$InspectText)
+    $stateBlock = if ($InspectText -match '(?s)"State"\s*:\s*\{(.*)') { $matches[1] } else { $InspectText }
+    if ($stateBlock -match '"Running"\s*:\s*true') { return 'running' }
+    if ($stateBlock -match '"Running"\s*:\s*false') {
+        if ($stateBlock -match '"Status"\s*:\s*"([a-zA-Z]+)"') { return $matches[1].ToLower() }
+        return 'exited'
+    }
+    return ''
+}
+
 # 容器状态：running / exited / created / paused / dead；'' = 没有这个容器
 # 不用 `wslc list --format json`：它把 Command 字段截断成非法 JSON（含孤立代理字符），
 # ConvertFrom-Json 会直接抛错；inspect 的输出是逐行 JSON 文本，用正则取状态最稳（且不受控制台代码页影响）。
 function Get-OvmsContainerState {
     if (-not (Get-WslcExe)) { return '' }
-    $out = (& wslc container inspect $OvmsContainerName 2>$null | Out-String)
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($out)) { return '' }
-    if ($out -match '"Status"\s*:\s*"([a-zA-Z]+)"') { return $matches[1].ToLower() }
-    if ($out -match '"Running"\s*:\s*true') { return 'running' }
-    if ($out -match '"Running"\s*:\s*false') { return 'exited' }
-    return ''
+    $r = Invoke-WslcAllowFail @('container', 'inspect', $OvmsContainerName)
+    if ($r.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($r.Output)) { return '' }
+    return Get-WslcContainerStateFromInspect $r.Output
 }
 
 function Get-OvmsModels {
@@ -343,7 +395,7 @@ function Start-Ovms {
             }
             # 固定接入 bh-net：server/open-webui 容器用容器名 http://ovms-gpu:8000 访问，
             # 不依赖每次启动都会变化的 WSL 宿主 IP（已连接时该命令会报错，忽略即可）
-            & wslc network connect bh-net $st.Container 2>$null | Out-Null
+            $null = Invoke-WslcAllowFail @('network', 'connect', 'bh-net', $st.Container)
             if (Wait-Port $OpenVinoPort 120) {
                 Write-Host ('[ovms] 就绪：' + $st.Url + '（模型：' + ((Get-OvmsModels) -join ', ') + '）')
             } else {
@@ -535,12 +587,17 @@ function Start-One($svc) {
         $envBlock['OpenObserve__Password'] = (Get-Content $ooPassFile -Raw).Trim()
     }
     if ($svc.Name -eq 'server') {
-        # PostgreSQL 单库 baihua（用户自行安装 PG，native cell 不管理）
-        $envBlock['PG_HOST'] = if ($env:PG_HOST) { $env:PG_HOST } else { '127.0.0.1' }
-        $envBlock['PG_USER'] = if ($env:PG_USER) { $env:PG_USER } else { 'postgres' }
-        $envBlock['PG_PASSWORD'] = $env:PG_PASSWORD
-        $envBlock['PG_DATABASE'] = if ($env:PG_DATABASE) { $env:PG_DATABASE } else { 'baihua' }
-        # OpenVINO OVMS（Windows 系统服务，REST :8000）
+        # 移动端扫码即授权（与容器时代一致）；用户可用环境变量显式覆盖
+        $envBlock['Baihua__AutoAuthorizeDevices'] = if ($env:Baihua__AutoAuthorizeDevices) { $env:Baihua__AutoAuthorizeDevices } else { 'true' }
+        # 二维码/局域网发现 baseUrl：BAIHUA_PUBLIC_BASE_URL 显式指定，否则按默认路由网卡 IP 推导
+        # （无端口、指向宿主 IP；server 侧留空也会自行探测，这里注入保证与容器时代行为一致）
+        $publicBase = $env:BAIHUA_PUBLIC_BASE_URL
+        if (-not $publicBase) {
+            $lanIp = Get-HostLanIp
+            if ($lanIp) { $publicBase = 'http://' + $lanIp }
+        }
+        if ($publicBase) { $envBlock['Baihua__PublicBaseUrl'] = $publicBase }
+        # OpenVINO OVMS（REST :8000；无本地推理则服务端自行降级）
         $envBlock['OpenVinoOms__BaseUrl'] = if ($env:OPENVINO_OMS_URL) { $env:OPENVINO_OMS_URL } else { 'http://127.0.0.1:8000' }
     }
     if ($svc.Name -eq 'webui') {
@@ -629,15 +686,6 @@ function Update-RealPid($svc) {
 
 function Start-Services {
     New-Item -ItemType Directory -Force -Path $DataHome | Out-Null
-    # 轻量前置检查：PostgreSQL 不可达 / 口令没设时先给结论，别让用户干等 60s 只看到「端口没起来」
-    $pgHost = if ($env:PG_HOST) { $env:PG_HOST } else { '127.0.0.1' }
-    if ($pgHost -in @('127.0.0.1', 'localhost')) {
-        if (-not (Test-PortOpen 5432)) {
-            Write-Warning "[start] PostgreSQL 未监听 :5432 —— server 大概率起不来（bh doctor 体检 / bh logs server 看原因）"
-        } elseif (-not $env:PG_PASSWORD) {
-            Write-Warning "[start] 环境变量 PG_PASSWORD 未设置，口令认证会失败（setx PG_PASSWORD `"<口令>`" 后重开终端）"
-        }
-    }
     foreach ($svc in $Services) { Start-One $svc }
     Write-Host "[start] waiting for health ..."
     $ok = $true
@@ -646,21 +694,16 @@ function Start-Services {
         else { Update-RealPid $svc; Write-Host "[$($svc.Name)] ready on $($svc.Port)" }
     }
     if ($ok) { Write-Host "[start] all services up. WebUI: http://localhost:5177" }
-    # AI 对话页：Baihua.Web 的 /open-webui 是个 iframe，后端指向 :8080（open-webui）
-    # —— 没装就不管（只提示），装了没跑就后台拉起（首启要 1-2 分钟，不阻塞 bh start）
-    $owuiExe = Join-Path $DataHome 'open-webui-venv\Scripts\open-webui.exe'
-    $owuiLauncher = Join-Path $Root 'scripts\start-open-webui.ps1'
-    if (-not (Test-Path $owuiExe)) {
-        Write-Host '[start] open-webui 未安装：AI 对话页（/open-webui）会空白（需要时 bh open-webui install）'
-    } elseif (Test-PortOpen 8080) {
+    # AI 对话页：wslc 容器 bh-open-webui（:8080）。容器已创建未运行 → 拉起；
+    # 未创建只提示（镜像拉取耗时，交给显式 bh open-webui install）。
+    $owState = Get-OpenWebUiContainerState
+    if ($owState -eq 'running') {
         Write-Host '[start] open-webui 已在运行（:8080）'
-    } elseif (Test-OpenWebUIStarting) {
-        # 注意顺序：-Detached 实例会一直 hold 着服务，tasks 状态常态就是 Running ——
-        # 所以必须先看端口，再看「是否启动中」，否则在跑的服务会被误判成启动中
-        Write-Host '[start] open-webui 正在启动中（后台），稍后用 bh open-webui status 确认'
-    } elseif (Test-Path $owuiLauncher) {
-        Write-Host '[start] open-webui（AI 对话页）未运行 → 后台启动（首启 1-2 分钟，bh open-webui status 查看）'
-        & $owuiLauncher -Async
+    } elseif ($owState) {
+        Write-Host '[start] open-webui 容器未运行 → 启动'
+        Start-OpenWebUi
+    } else {
+        Write-Host '[start] open-webui 容器未创建：AI 对话页（/open-webui）会空白（需要时 bh open-webui install）'
     }
 }
 
@@ -725,8 +768,8 @@ function Get-ServiceArgs {
 
 # ---- 特殊服务名 ----------------------------------------------------------------
 # status 会展示、卡片也会操作，但**不在 $Services 里**（它们不是 bh-server/bh-webui 那种
-# out/native 下的 dotnet 进程）：open-webui = Python venv（:8080，scripts/start-open-webui.ps1），
-# openvino = OVMS（:8000，装了 Windows 服务 ovms 才有启停手段，否则只是普通进程）。
+# 产物目录下的 dotnet 进程）：open-webui = wslc 容器 bh-open-webui（:8080），
+# openvino/ovms = OVMS（:8000，wslc 容器 ovms-gpu / Windows 服务 / 外部进程）。
 # 以前 `bh start|stop|restart open-webui` 会走 Resolve-ServiceList → 只打印
 # “unknown service: open-webui (server|webui)” 然后静默什么都不做，
 # 于是设置页卡片上这两个服务的按钮全是空操作（2026-09-17 实测）。
@@ -807,8 +850,12 @@ function Show-Status {
     $ovColor = if ($ov.PortOpen) { 'Green' } elseif ($ov.Engine -eq 'none') { 'DarkGray' } else { 'Yellow' }
     Write-Host ("{0,-8} port={1,-5} {2}" -f 'ovms', $OpenVinoPort, $ovState) -ForegroundColor $ovColor
     $owui = Get-OpenWebUIStatus
-    $owuiState = if ($owui.portOpen) { 'RUNNING' } else { 'stopped' }
-    $owuiColor = if ($owui.portOpen) { 'Green' } else { 'DarkGray' }
+    # 容器 running 且端口开才是真 RUNNING；端口开但容器没在跑 = 旧 venv 等容器外进程占着 :8080
+    $owuiState = if ($owui.portOpen -and $owui.containerState -eq 'running') { 'RUNNING (wslc:' + $OpenWebUiContainerName + ')' }
+                 elseif ($owui.portOpen) { 'PORT-OPEN (容器未运行，:8080 被容器外进程占用？)' }
+                 elseif ($owui.containerState) { 'stopped (wslc:' + $OpenWebUiContainerName + ' ' + $owui.containerState + ')' }
+                 else { 'not installed' }
+    $owuiColor = if ($owui.portOpen -and $owui.containerState -eq 'running') { 'Green' } elseif ($owui.containerState) { 'Yellow' } elseif ($owui.portOpen) { 'Yellow' } else { 'DarkGray' }
     Write-Host ("{0,-8} port={1,-5} {2}" -f 'open-webui', $owui.port, $owuiState) -ForegroundColor $owuiColor
     Write-Host ''
     Write-Host 'WebUI  http://localhost:5177      后端  http://127.0.0.1:8788（server 绑 0.0.0.0）'
@@ -927,54 +974,345 @@ function Open-Dashboard {
     }
 }
 
-# ---- Open WebUI（Python venv，端口 8080）----
+# ---- Open WebUI（AI 对话页，wslc 容器 bh-open-webui，:8080）--------------------
+# 2026-11-25 起由 wslc 容器承载（替代旧 Python venv 形态）：镜像 ghcr.io/open-webui/open-webui
+# 固定 v0.13.3（与旧 venv 版本一致，避免自动升级破坏 webui.db 数据格式），数据卷 bh-openwebui-data。
+# wslc.exe 缺失（无 WSL3）时降级提示：AI 对话页不可用，不影响核心功能。
+$OpenWebUiContainerName = 'bh-open-webui'
+$OpenWebUiPort = 8080
+$OpenWebUiNetwork = 'bh-net'
+$OpenWebUiVolume = 'bh-openwebui-data'
+$OpenWebUiImage = 'ghcr.io/open-webui/open-webui:v0.13.3'
+
+function Get-OpenWebUiContainerState {
+    # running / exited / created / ...；'' = 没有这个容器或没有 wslc（语义同 Get-OvmsContainerState）
+    if (-not (Get-WslcExe)) { return '' }
+    $r = Invoke-WslcAllowFail @('container', 'inspect', $OpenWebUiContainerName)
+    if ($r.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($r.Output)) { return '' }
+    return Get-WslcContainerStateFromInspect $r.Output
+}
+
+function Ensure-OpenWebUIImage {
+    # 返回镜像名；wslc 缺失 / 拉取失败返回 ''（调用方降级提示）
+    if (-not (Get-WslcExe)) {
+        Write-Warning '[open-webui] 未找到 wslc.exe（需要 WSL >= 2.9.3，wsl --update）；AI 对话页可选，不影响核心功能'
+        return ''
+    }
+    if ((Invoke-WslcAllowFail @('image', 'inspect', $OpenWebUiImage)).ExitCode -eq 0) { return $OpenWebUiImage }
+    Write-Host ('[open-webui] 拉取镜像 ' + $OpenWebUiImage + ' ...')
+    if ((Invoke-WslcAllowFail @('pull', $OpenWebUiImage)).ExitCode -eq 0) { return $OpenWebUiImage }
+    # 国内直连 ghcr.io 常超时：南大镜像站拉取后 retag 成官方名（镜像内容一致）
+    $mirror = $OpenWebUiImage -replace '^ghcr\.io/', 'ghcr.nju.edu.cn/'
+    Write-Host ('[open-webui] 直连失败，尝试镜像站 ' + $mirror + ' ...')
+    if ((Invoke-WslcAllowFail @('pull', $mirror)).ExitCode -ne 0) {
+        Write-Warning ('[open-webui] 镜像拉取失败：' + $OpenWebUiImage + '（网络/代理问题）；稍后重试 bh open-webui install')
+        return ''
+    }
+    $null = Invoke-WslcAllowFail @('tag', $mirror, $OpenWebUiImage)
+    return $OpenWebUiImage
+}
+
+function New-OpenWebUiContainer {
+    param([string]$Image)
+    # 网络 / 数据卷（幂等）
+    if ((Invoke-WslcAllowFail @('network', 'inspect', $OpenWebUiNetwork)).ExitCode -ne 0) {
+        Write-Host ('[open-webui] 创建网络 ' + $OpenWebUiNetwork)
+        $null = Invoke-WslcAllowFail @('network', 'create', $OpenWebUiNetwork)
+    }
+    if ((Invoke-WslcAllowFail @('volume', 'inspect', $OpenWebUiVolume)).ExitCode -ne 0) {
+        Write-Host ('[open-webui] 创建数据卷 ' + $OpenWebUiVolume)
+        $null = Invoke-WslcAllowFail @('volume', 'create', $OpenWebUiVolume)
+    }
+    # 本地推理端点：ovms-gpu 容器存在时经容器名互访（bh-net），否则不注入（open-webui 独立跑）
+    $ovEnv = @()
+    if (Get-OvmsContainerState) {
+        $ovmsApi = 'http://ovms-gpu:8000/v1'
+        $ovEnv = @('-e', 'ENABLE_OPENAI_API=true',
+            '-e', ('OPENAI_API_BASE_URL=' + $ovmsApi),
+            '-e', ('RAG_OPENAI_API_BASE_URL=' + $ovmsApi))
+    }
+    $owEnv = @('-e', 'ENABLE_OLLAMA_API=false', '-e', 'OLLAMA_BASE_URL=http://localhost:1',
+        '-e', 'OPENAI_API_KEY=dummy', '-e', 'RAG_OPENAI_API_KEY=dummy',
+        '-e', 'RAG_EMBEDDING_ENGINE=openai', '-e', 'RAG_EMBEDDING_MODEL=qwen3-embedding-0.6b',
+        '-e', 'HF_HUB_OFFLINE=1', '-e', 'TRANSFORMERS_OFFLINE=1', '-e', 'WEBUI_AUTH=false') + $ovEnv
+    $runArgs = @('run', '-d', '--name', $OpenWebUiContainerName, '--network', $OpenWebUiNetwork,
+        '--restart', 'always',
+        '-p', '127.0.0.1:8080:8080',
+        '-v', ($OpenWebUiVolume + ':/app/backend/data')) + $owEnv + @($Image)
+    Write-Host ('[open-webui] 创建容器 ' + $OpenWebUiContainerName + ' ...')
+    $r = Invoke-WslcAllowFail $runArgs
+    if ($r.ExitCode -ne 0) {
+        Write-Warning ('[open-webui] 创建容器失败：' + $r.Output.Trim())
+        return $false
+    }
+    # ovms-gpu 接入 bh-net：open-webui 容器经容器名访问本地推理（已连接时该命令报错，忽略）
+    if (Get-OvmsContainerState) {
+        $null = Invoke-WslcAllowFail @('network', 'connect', $OpenWebUiNetwork, 'ovms-gpu')
+    }
+    return $true
+}
+
+function Start-OpenWebUi {
+    if (-not (Get-WslcExe)) {
+        Write-Warning '[open-webui] 未找到 wslc.exe（需要 WSL >= 2.9.3，wsl --update）；AI 对话页可选，不影响核心功能'
+        return
+    }
+    $state = Get-OpenWebUiContainerState
+    if ($state -eq 'running' -and (Test-PortOpen $OpenWebUiPort)) {
+        Write-Host ('[open-webui] 已在运行 http://127.0.0.1:' + $OpenWebUiPort)
+        return
+    }
+    if ($state -eq 'running' -and -not (Test-PortOpen $OpenWebUiPort)) {
+        Write-Warning ('[open-webui] 容器在跑但 :' + $OpenWebUiPort + ' 未监听（启动中？稍候 bh open-webui status 确认）')
+        return
+    }
+    if (-not $state) {
+        Write-Host '[open-webui] 容器未创建，首次安装（拉镜像 + 建容器）...'
+        $img = Ensure-OpenWebUIImage
+        if (-not $img) { return }
+        if (-not (New-OpenWebUiContainer $img)) { return }
+    } else {
+        Write-Host ('[open-webui] 启动容器 ' + $OpenWebUiContainerName + ' ...')
+        $r = Invoke-WslcAllowFail @('container', 'start', $OpenWebUiContainerName)
+        if ($r.ExitCode -ne 0) {
+            Write-Warning ('[open-webui] 启动失败：' + $r.Output.Trim() + '（bh open-webui logs 看日志）')
+            return
+        }
+    }
+    if (Wait-Port $OpenWebUiPort 180) {
+        Write-Host ('[open-webui] 就绪 http://127.0.0.1:' + $OpenWebUiPort)
+    } else {
+        Write-Warning ('[open-webui] 180s 内 :' + $OpenWebUiPort + ' 未就绪（bh open-webui logs 看日志）')
+    }
+}
+
+function Stop-OpenWebUi {
+    if (-not (Get-OpenWebUiContainerState)) { Write-Host '[open-webui] 容器不存在'; return }
+    $null = Invoke-WslcAllowFail @('container', 'stop', $OpenWebUiContainerName)
+    $null = Invoke-WslcAllowFail @('container', 'remove', '-f', $OpenWebUiContainerName)
+    Write-Host ('[open-webui] 已停止并移除容器（数据卷 ' + $OpenWebUiVolume + ' 保留，重装不丢数据）')
+}
+
+function Show-OpenWebUiStatus {
+    if (-not (Get-WslcExe)) {
+        Write-Host '[open-webui] 未找到 wslc.exe：AI 对话页不可用（需要 WSL >= 2.9.3，wsl --update）'
+        return
+    }
+    $state = Get-OpenWebUiContainerState
+    $portOpen = Test-PortOpen $OpenWebUiPort
+    if ($state -eq 'running' -and $portOpen) {
+        Write-Host ('[open-webui] RUNNING http://127.0.0.1:' + $OpenWebUiPort + '（容器 ' + $OpenWebUiContainerName + '，数据卷 ' + $OpenWebUiVolume + '）')
+    } elseif ($state -eq 'running' -and -not $portOpen) {
+        Write-Host ('[open-webui] 容器 ' + $OpenWebUiContainerName + ' 运行中，:' + $OpenWebUiPort + ' 尚未就绪（启动中）')
+    } elseif ($state) {
+        Write-Host ('[open-webui] 容器 ' + $OpenWebUiContainerName + ' 状态 ' + $state + '（bh open-webui start 启动）')
+    } elseif ($portOpen) {
+        Write-Host ('[open-webui] :' + $OpenWebUiPort + ' 被容器外进程占用（旧 venv open-webui？scripts\start-open-webui.ps1 -Stop 停掉后再 bh open-webui start）')
+    } else {
+        Write-Host '[open-webui] 容器未创建（bh open-webui install 安装）'
+    }
+}
+
 function Invoke-OpenWebUI {
-    param([string]$SubCmd = 'start')
-    $script = Join-Path $Root 'scripts\start-open-webui.ps1'
-    if (-not (Test-Path $script)) { Write-Error "缺少 $script"; return }
-    switch ($SubCmd.ToLower()) {
-        'stop'    { & $script -Stop }
-        'status'  { & $script -Status }
-        'install' { & $script -Install }
-        default   { & $script }
+    param([string]$SubCmd = 'status')
+    switch (($SubCmd + '').ToLower()) {
+        'install' {
+            if (Get-OpenWebUiContainerState) { Write-Host ('[open-webui] 容器已存在（' + $OpenWebUiContainerName + '），直接 start'); Start-OpenWebUi; return }
+            $img = Ensure-OpenWebUIImage
+            if (-not $img) { return }
+            if (New-OpenWebUiContainer $img) { Start-OpenWebUi }
+        }
+        'start'   { Start-OpenWebUi }
+        'stop'    { Stop-OpenWebUi }
+        'restart' { Stop-OpenWebUi; Start-OpenWebUi }
+        'logs'    {
+            $n = 50
+            if ($Arg2) { $n = [int]$Arg2 }
+            $r = Invoke-WslcAllowFail @('logs', '--tail', ($n.ToString()), $OpenWebUiContainerName)
+            Write-Host $r.Output
+        }
+        default   { Show-OpenWebUiStatus }
     }
 }
 
 function Get-OpenWebUIStatus {
-    $port = 8080
-    $portOpen = Test-PortOpen $port
-    $dataHome = if ($env:BAIHUA_HOME) { $env:BAIHUA_HOME } else { Join-Path $HOME '.baihua' }
-    $pidFile = Join-Path $dataHome 'open-webui.pid'
-    $pidAlive = $false
-    if (Test-Path $pidFile) {
-        $pid2 = [int](Get-Content $pidFile)
-        $pidAlive = [bool](Get-Process -Id $pid2 -ErrorAction SilentlyContinue)
-    }
-    $running = $portOpen -and $pidAlive
-    $phase = if ($running) { 'Running' } elseif ($portOpen) { 'PortOpen' } elseif ($pidAlive) { 'ProcAlive' } else { 'Stopped' }
+    # status --json / Show-Status 复用；与旧 venv 版返回同一属性形状（DSH 卡片兼容）
+    $portOpen = Test-PortOpen $OpenWebUiPort
+    $state = Get-OpenWebUiContainerState
+    $phase = if ($portOpen) { 'Running' }
+             elseif ($state) { 'Stopped' }
+             else { 'NotInstalled' }
     return [pscustomobject]@{
         name = 'open-webui'
-        ready = if ($running) { 1 } else { 0 }
+        ready = if ($portOpen) { 1 } else { 0 }
         replicas = 1
-        image = 'venv'
+        image = 'wslc:' + $OpenWebUiContainerName
         age = ''
         restarts = 0
         phase = $phase
         imageCommit = ''
         upToDate = $true
-        port = $port
+        port = $OpenWebUiPort
         portOpen = $portOpen
+        containerState = $state
     }
 }
 
-function Test-OpenWebUIStarting {
-    # 已经在启动途中就别再触发一次：计划任务是以「-Detached 实例 wait 服务进程」的方式持活的，
-    # `Register-ScheduledTask -Force` 会把正在启动的实例打断，等于永远启动不完（实测会卡住调用方）。
-    $task = Get-ScheduledTask -TaskName 'baihua-open-webui-start' -ErrorAction SilentlyContinue
-    if ($task -and $task.State.ToString() -eq 'Running') { return $true }
-    $procs = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like '*start-open-webui.ps1*' })
-    return ($procs.Count -gt 0)
+# ---- backup / restore（数据目录冷备份/恢复）--------------------------------------
+# 语义对齐 Linux 原生形态（tools/bh/linux/native/bh.sh 的 backup_data/restore_data）：
+# 冷备份 = 服务停止后打包数据目录 → zip + .sha256；恢复 = 解包 staging →
+# 旧目录改名 .pre-restore-<时间> 保留 → 搬入新数据（不删旧数据，可手动回滚）。
+# 两者都要求先 bh stop：SQLite 运行中打包 WAL 会得到损坏的快照。
+# 排除 bin/logs（运行产物）、models（OVMS 模型，~11GB 可重新下载）、
+# open-webui-venv（已退役的 Python venv，~2.3GB 安装产物）——只备「数据」。
+
+function Assert-ServicesStoppedForDataOp {
+    $running = @()
+    foreach ($svc in $Services) {
+        if (Test-PortOpen $svc.Port) { $running += $svc.Name + '(:' + [string]$svc.Port + ')' }
+    }
+    if ($running.Count -gt 0) {
+        Write-Warning ('[backup/restore] 服务仍在运行: ' + ($running -join ', ') + ' —— SQLite 运行中打包会损坏数据，请先 bh stop')
+        return $false
+    }
+    return $true
+}
+
+function Invoke-Backup {
+    param([string[]]$CmdArgs = @())
+    if (-not (Assert-ServicesStoppedForDataOp)) { exit 1 }
+    if (-not (Test-Path $DataHome)) {
+        Write-Warning ('[backup] 数据目录不存在: ' + $DataHome)
+        exit 1
+    }
+    # 目标目录：第一个参数，默认 $Root\backup（仓库/部署包根下，仓库形态已 gitignore）
+    $destDir = if ($CmdArgs.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($CmdArgs[0])) { [string]$CmdArgs[0] } else { Join-Path $Root 'backup' }
+    $destFull = [System.IO.Path]::GetFullPath($destDir)
+    if ($destFull.StartsWith($DataHome.TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-Warning '[backup] 目标目录不能在数据目录内（会把备份卷进备份）'
+        exit 1
+    }
+    if (-not (Test-Path $destFull)) { New-Item -ItemType Directory -Force -Path $destFull | Out-Null }
+
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $zipName = 'baihua-backup-' + $stamp + '.zip'
+    $zipPath = Join-Path $destFull $zipName
+    $stage = Join-Path ([System.IO.Path]::GetTempPath()) ('bh-backup-stage-' + $stamp)
+    if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+
+    Write-Host ('[backup] 数据目录: ' + $DataHome)
+    Write-Host ('[backup] 暂存（排除 bin/logs/models/open-webui-venv）: ' + $stage)
+    # robocopy：/XD 目录名任意层级匹配；exit code 0-7 = 成功（1=有文件复制），>=8 才是失败
+    & robocopy $DataHome $stage /E /XD bin logs models open-webui-venv /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+    if ($LASTEXITCODE -ge 8) {
+        Write-Warning ('[backup] robocopy 失败（exit ' + $LASTEXITCODE + '），中止')
+        Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+        exit 1
+    }
+    $fileCount = @(Get-ChildItem $stage -Recurse -File -Force).Count
+    if ($fileCount -eq 0) {
+        Write-Warning '[backup] 数据目录为空（没有可备份的文件），中止'
+        Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+        exit 1
+    }
+
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    Write-Host ('[backup] 压缩 -> ' + $zipPath)
+    # 不用 ZipFile::CreateFromDirectory：它在 Windows 下用 '\' 做条目分隔符，
+    # Linux 解包工具会把 'db\baihua.db' 当成一个文件名。手动建条目、统一 '/'。
+    $zipFs = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::Create)
+    $archive = New-Object System.IO.Compression.ZipArchive($zipFs, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        Get-ChildItem $stage -Recurse -File -Force | ForEach-Object {
+            $rel = $_.FullName.Substring($stage.Length).TrimStart('\') -replace '\\', '/'
+            # CreateEntryFromFile 是扩展方法，PowerShell 里不能当实例方法调，走静态类
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $_.FullName, $rel, [System.IO.Compression.CompressionLevel]::Optimal)
+        }
+    } finally {
+        $archive.Dispose()
+        $zipFs.Dispose()
+    }
+    Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+
+    $hash = (Get-FileHash -Algorithm SHA256 -Path $zipPath).Hash
+    $shaPath = $zipPath + '.sha256'
+    Set-Content -Path $shaPath -Value ($hash.ToLower() + '  ' + $zipName) -Encoding ASCII
+
+    $sizeMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
+    Write-Host ('[backup] 完成: ' + $zipPath + '（' + $fileCount + ' 个文件，' + $sizeMb + ' MB）') -ForegroundColor Green
+    Write-Host ('[backup] 校验和: ' + $shaPath)
+    Write-Host '[backup] 恢复: bh restore <上面的 zip>'
+}
+
+function Invoke-Restore {
+    param([string]$ZipPath, [switch]$AssumeYes)
+    if ([string]::IsNullOrWhiteSpace($ZipPath)) {
+        Write-Warning '[restore] 用法: bh restore <backup.zip> [-y]'
+        exit 1
+    }
+    if (-not (Test-Path $ZipPath)) {
+        Write-Warning ('[restore] 备份文件不存在: ' + $ZipPath)
+        exit 1
+    }
+    if (-not (Assert-ServicesStoppedForDataOp)) { exit 1 }
+    $ZipPath = (Resolve-Path -LiteralPath $ZipPath).Path
+    if ($ZipPath.StartsWith($DataHome.TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        # zip 在数据目录里也能恢复（先解包到 staging 再改名，无递归风险），只提示一句
+        Write-Host '[restore] 注意: 备份文件位于数据目录内，恢复完成后它会留在 .pre-restore-* 旧目录里'
+    }
+
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $stage = Join-Path $HOME ('.baihua-restore-' + $stamp)
+    if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    Write-Host ('[restore] 解包 ' + $ZipPath + ' -> ' + $stage)
+    try {
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $stage)
+    } catch {
+        Write-Warning ('[restore] 解包失败: ' + $_.Exception.Message)
+        Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+        exit 1
+    }
+    # 容错：zip 里带一层根目录（手工打包常见）→ 下钻一层
+    $src = $stage
+    $top = @(Get-ChildItem $stage -Force)
+    if ($top.Count -eq 1 -and $top[0].PSIsContainer) {
+        $inner = Join-Path $stage $top[0].Name
+        if (Test-Path (Join-Path $inner 'db')) { $src = $inner }
+    }
+    if (-not (Test-Path (Join-Path $src 'db\baihua.db'))) {
+        Write-Warning ('[restore] 备份内容不像百花数据目录（缺 db\baihua.db）: ' + $src + ' —— 中止，未改动任何现有数据')
+        Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+        exit 1
+    }
+
+    if (-not $AssumeYes) {
+        Write-Host ''
+        Write-Host ('[restore] 目标数据目录: ' + $DataHome)
+        Write-Host ('[restore] 备份来源:     ' + $ZipPath)
+        if (Test-Path $DataHome) {
+            Write-Host ('[restore] 当前数据将改名保留为: ' + $DataHome + '.pre-restore-' + $stamp + '（不会删除）')
+        }
+        $ans = Read-Host '[restore] 确认继续? (yes/no)'
+        if ($ans -notin @('yes', 'y')) {
+            Write-Host '[restore] 已取消'
+            Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+            exit 1
+        }
+    }
+
+    if (Test-Path $DataHome) {
+        $old = $DataHome + '.pre-restore-' + $stamp
+        Move-Item -LiteralPath $DataHome -Destination $old
+        Write-Host ('[restore] 旧数据已保留: ' + $old)
+    } else {
+        New-Item -ItemType Directory -Force -Path $DataHome | Out-Null
+    }
+    Get-ChildItem $src -Force | Move-Item -Destination $DataHome
+    Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host ('[restore] 完成: ' + $DataHome) -ForegroundColor Green
+    Write-Host '[restore] 下一步: bh start（若数据不对可回滚：把 .pre-restore-* 目录改名回原数据目录）'
 }
 
 # ---- doctor（本机体检）--------------------------------------------------------
@@ -986,13 +1324,11 @@ function Add-DoctorCheck($list, [string]$name, [string]$status, [string]$detail,
 
 function Invoke-DoctorChecks {
     $checks = New-Object System.Collections.ArrayList
-    $pgHost = if ($env:PG_HOST) { $env:PG_HOST } else { '127.0.0.1' }
-    $pgUser = if ($env:PG_USER) { $env:PG_USER } else { 'postgres' }
-    $pgDb = if ($env:PG_DATABASE) { $env:PG_DATABASE } else { 'baihua' }
-    $isLocalPg = $pgHost -in @('127.0.0.1', 'localhost')
 
-    # 1) .NET SDK 10 —— publish/构建的前提
-    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    # 1) .NET SDK 10 —— 开发仓库 publish 的前提（部署包 apps\ 为自包含产物，不需要 .NET）
+    if ($IsPackageLayout) {
+        Add-DoctorCheck $checks '.NET SDK' 'ok' '部署包形态（apps\ 自包含产物），无需 .NET' ''
+    } elseif (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
         Add-DoctorCheck $checks '.NET SDK' 'fail' 'PATH 里没有 dotnet' 'winget install --id Microsoft.DotNet.SDK.10（bh build 也会自动装）'
     } else {
         $sdks = @(& dotnet --list-sdks 2>$null)
@@ -1011,10 +1347,11 @@ function Invoke-DoctorChecks {
         $exe = Join-Path $OutDir "$($svc.Name)\$($svc.Exe)"
         if (-not (Test-Path $exe)) { $missing += $svc.Name }
     }
+    $prodLabel = if ($IsPackageLayout) { '构建产物 apps\（部署包）' } else { '构建产物 out\native' }
     if ($missing.Count -gt 0) {
-        Add-DoctorCheck $checks '构建产物 out\native' 'fail' ('缺少：' + ($missing -join ', ')) 'bh build（首次 publish 需要几分钟）'
+        Add-DoctorCheck $checks $prodLabel 'fail' ('缺少：' + ($missing -join ', ')) 'bh build（首次 publish 需要几分钟）'
     } else {
-        Add-DoctorCheck $checks '构建产物 out\native' 'ok' 'server / webui 都在' ''
+        Add-DoctorCheck $checks $prodLabel 'ok' 'server / webui 都在' ''
     }
 
     # 3) 产物完整性标签（Low 标签 ⇒ 进程能读不能写，写 %TEMP%/~/.baihua 全 Access denied）
@@ -1029,59 +1366,21 @@ function Invoke-DoctorChecks {
         Add-DoctorCheck $checks '产物完整性标签' 'ok' 'Medium' ''
     }
 
-    # 4) PostgreSQL 服务
-    $pgSvcs = @(Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue)
-    $pgUp = @($pgSvcs | Where-Object { $_.Status -eq 'Running' })
-    if ($pgUp.Count -gt 0) {
-        Add-DoctorCheck $checks 'PostgreSQL 服务' 'ok' (($pgUp | ForEach-Object { "$($_.Name) $($_.Status)" }) -join ', ') ''
-    } elseif ($pgSvcs.Count -gt 0) {
-        Add-DoctorCheck $checks 'PostgreSQL 服务' 'fail' (($pgSvcs | ForEach-Object { "$($_.Name) $($_.Status)" }) -join ', ') ('Start-Service ' + $pgSvcs[0].Name + '（或 services.msc 手动启动）')
+    # 4) SQLite 数据库（单库 baihua.db；首次启动自动建库，缺失不算致命）
+    if (Test-Path $DbPath) {
+        $dbSize = '{0:N1} MB' -f ((Get-Item $DbPath).Length / 1MB)
+        Add-DoctorCheck $checks 'SQLite 数据库' 'ok' ($DbPath + '（' + $dbSize + '）') ''
     } else {
-        Add-DoctorCheck $checks 'PostgreSQL 服务' 'warn' '未检测到 postgresql* Windows 服务' 'PG 在别的机器就忽略；否则装 PostgreSQL 18 并建库 baihua'
+        Add-DoctorCheck $checks 'SQLite 数据库' 'warn' ('未找到 ' + $DbPath) '首次 bh start 会自动建库；从旧 PostgreSQL 迁移用 bh db-migrate（tools/db-migrate）'
     }
 
-    # 5) PostgreSQL 端口
-    if ($isLocalPg) {
-        if (Test-PortOpen 5432) {
-            Add-DoctorCheck $checks ('PostgreSQL 端口 ' + $pgHost + ':5432') 'ok' '可连接' ''
-        } else {
-            Add-DoctorCheck $checks ('PostgreSQL 端口 ' + $pgHost + ':5432') 'fail' '端口未监听' '先启动 PostgreSQL 服务；或把 PG_HOST 指到正确地址'
-        }
+    # 5) 知识库根目录（vaults；服务按需创建，缺失只提示）
+    $vaultsDir = Join-Path $DataHome 'vaults'
+    if (Test-Path $vaultsDir) {
+        $vaultCount = @(Get-ChildItem $vaultsDir -Directory -ErrorAction SilentlyContinue).Count
+        Add-DoctorCheck $checks '知识库目录 vaults' 'ok' ($vaultsDir + '（' + $vaultCount + ' 个子目录）') ''
     } else {
-        Add-DoctorCheck $checks 'PostgreSQL 端口' 'warn' ('PG_HOST=' + $pgHost + ' 是远端，未探测') ''
-    }
-
-    # 6) PostgreSQL 登录（用 psql -w：绝不弹口令提示，避免体检卡住）
-    $psql = ''
-    foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
-        if ($base -and (Test-Path $base) -and -not $psql) {
-            $hit = Get-ChildItem (Join-Path $base 'PostgreSQL\*\bin\psql.exe') -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
-            if ($hit) { $psql = $hit.FullName }
-        }
-    }
-    if (-not $psql) {
-        $c = Get-Command psql -ErrorAction SilentlyContinue
-        if ($c) { $psql = $c.Source }
-    }
-    if (-not $isLocalPg -or -not (Test-PortOpen 5432)) {
-        Add-DoctorCheck $checks 'PostgreSQL 登录' 'warn' '跳过（PG 不在本机或端口未监听）' ''
-    } elseif (-not $psql) {
-        Add-DoctorCheck $checks 'PostgreSQL 登录' 'warn' '没找到 psql.exe，跳过口令校验' '确认 PG_PASSWORD 与 PostgreSQL 用户口令一致（setx PG_PASSWORD "<口令>"）'
-    } else {
-        $prevPw = $env:PGPASSWORD
-        $env:PGPASSWORD = $env:PG_PASSWORD
-        try {
-            $out = & $psql -h $pgHost -p 5432 -U $pgUser -d $pgDb -w -tAc 'select 1' 2>&1 | Out-String
-            $code = $LASTEXITCODE
-        } finally { $env:PGPASSWORD = $prevPw }
-        if ($code -eq 0 -and $out.Trim() -match '^1$') {
-            Add-DoctorCheck $checks 'PostgreSQL 登录' 'ok' ($pgUser + '@' + $pgHost + '/' + $pgDb + ' 可登录') ''
-        } elseif ($out -match 'does not exist') {
-            Add-DoctorCheck $checks 'PostgreSQL 登录' 'fail' ('库 ' + $pgDb + ' 不存在') ('pwsh scripts/init-pg.ps1（或 psql -U ' + $pgUser + ' -c "CREATE DATABASE ' + $pgDb + '"）')
-        } else {
-            $line = ($out -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -First 1)
-            Add-DoctorCheck $checks 'PostgreSQL 登录' 'fail' ($pgUser + '@' + $pgHost + '/' + $pgDb + ' 登录失败：' + $line) '核对 PG_PASSWORD / PG_USER；设好口令后重开终端（setx PG_PASSWORD "<口令>"）'
-        }
+        Add-DoctorCheck $checks '知识库目录 vaults' 'warn' ('未找到 ' + $vaultsDir) '首次同步知识库时会自动创建'
     }
 
     # 7) 8788 / 5177 端口占用
@@ -1123,16 +1422,20 @@ function Invoke-DoctorChecks {
         }
     }
 
-    # AI 对话页依赖：Baihua.Web 的 /open-webui 是 iframe，后端是 open-webui(:8080)
-    $owuiExe = Join-Path $DataHome 'open-webui-venv\Scripts\open-webui.exe'
-    if (-not (Test-Path $owuiExe)) {
-        Add-DoctorCheck $checks 'AI 对话页 open-webui' 'warn' '未安装（/open-webui 页会空白）' 'bh open-webui install（Python venv，几分钟）'
-    } elseif (Test-PortOpen 8080) {
-        Add-DoctorCheck $checks 'AI 对话页 open-webui' 'ok' 'RUNNING :8080' ''
-    } elseif (Test-OpenWebUIStarting) {
-        Add-DoctorCheck $checks 'AI 对话页 open-webui' 'warn' '正在启动中（首启 1-2 分钟）' '稍后 bh open-webui status 确认'
+    # AI 对话页：wslc 容器 bh-open-webui（:8080）
+    if (-not (Get-WslcExe)) {
+        Add-DoctorCheck $checks 'AI 对话页 open-webui' 'warn' '未找到 wslc.exe（需要 WSL >= 2.9.3）' 'wsl --update；AI 对话页可选，不影响核心功能'
     } else {
-        Add-DoctorCheck $checks 'AI 对话页 open-webui' 'warn' '已安装但没在运行（/open-webui 页会空白）' 'bh open-webui start（首启 1-2 分钟）'
+        $ow = Get-OpenWebUIStatus
+        if ($ow.containerState -eq 'running' -and $ow.portOpen) {
+            Add-DoctorCheck $checks 'AI 对话页 open-webui' 'ok' ('RUNNING :8080（容器 ' + $OpenWebUiContainerName + '）') ''
+        } elseif ($ow.portOpen) {
+            Add-DoctorCheck $checks 'AI 对话页 open-webui' 'warn' ':8080 被容器外的进程占用（旧 venv open-webui？）' 'scripts\start-open-webui.ps1 -Stop 停掉旧实例后 bh open-webui start'
+        } elseif ($ow.containerState) {
+            Add-DoctorCheck $checks 'AI 对话页 open-webui' 'warn' ('容器 ' + $OpenWebUiContainerName + ' ' + $ow.containerState + '（:8080 未监听）') 'bh open-webui start'
+        } else {
+            Add-DoctorCheck $checks 'AI 对话页 open-webui' 'warn' '容器未安装（/open-webui 页会空白）' 'bh open-webui install（需 WSL3，可选组件）'
+        }
     }
 
     # 9) 数据目录可写（密钥、备份、日志都在这里）
@@ -1165,6 +1468,18 @@ function Invoke-DoctorChecks {
         Add-DoctorCheck $checks '防火墙 TCP 8788' 'ok' '已放行（局域网入口）' ''
     } else {
         Add-DoctorCheck $checks '防火墙 TCP 8788' 'warn' '未放行（本机访问不受影响）' 'bh update 会自动放行；或 netsh advfirewall firewall add rule name="Baihua Server 8788" dir=in action=allow protocol=TCP localport=8788'
+    }
+
+    # 11.5) 局域网统一入口（宿主 :80 -> :8788 portproxy；浏览器/移动端默认 80 无显式端号）
+    #   只认 "listenport=80 → connectaddress=127.0.0.1 connectport=8788" 的规则：
+    #   k3s 时代会留下 :80 -> <WSL IP>:80 的规则，指向已消失的 IP —— 连接被接受但永不响应。
+    $proxyOut = (netsh interface portproxy show v4tov4 2>$null | Out-String)
+    $proxyRows = @($proxyOut -split "`r?`n" | Where-Object { $_ -match '^\s*\S+\s+80\s+\S+\s+\d+' })
+    $goodProxy = @($proxyRows | Where-Object { $_ -match '127\.0\.0\.1\s+8788' })
+    if ($goodProxy.Count -gt 0) {
+        Add-DoctorCheck $checks '局域网入口 :80' 'ok' 'portproxy :80 -> 127.0.0.1:8788' ''
+    } else {
+        Add-DoctorCheck $checks '局域网入口 :80' 'warn' '未配置（本机访问不受影响；手机/局域网设备需要）' 'bh lan on（需要管理员授权）'
     }
 
     # 12) 一次性启动任务残留（bh start 用 schtasks 拉起服务；异常中断会留下 bh-start-*）
@@ -1267,30 +1582,11 @@ function Invoke-ElevatedCmdFile([string[]]$Lines) {
     }
 }
 
-function Get-PsqlExe {
-    $psql = ''
-    foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
-        if ($base -and (Test-Path $base) -and -not $psql) {
-            $hit = Get-ChildItem (Join-Path $base 'PostgreSQL\*\bin\psql.exe') -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
-            if ($hit) { $psql = $hit.FullName }
-        }
-    }
-    if (-not $psql) {
-        $c = Get-Command psql -ErrorAction SilentlyContinue
-        if ($c) { $psql = $c.Source }
-    }
-    return $psql
-}
-
 # ---- doctor --fix -------------------------------------------------------------
-# 只修「确定性、可回滚、不需要人判断」的项：完整性标签 / PG 服务 / 缺库 / 防火墙 /
-# 定位器 / OVMS 容器 / 构建产物。口令错误、数据目录权限这类只报不修。
+# 只修「确定性、可回滚、不需要人判断」的项：完整性标签 / 防火墙 / lan 入口 /
+# 定位器 / OVMS 容器 / open-webui 容器 / 构建产物。口令错误、数据目录权限这类只报不修。
 function Invoke-DoctorFix {
     $actions = New-Object System.Collections.ArrayList
-    $pgHost = if ($env:PG_HOST) { $env:PG_HOST } else { '127.0.0.1' }
-    $pgUser = if ($env:PG_USER) { $env:PG_USER } else { 'postgres' }
-    $pgDb = if ($env:PG_DATABASE) { $env:PG_DATABASE } else { 'baihua' }
-    $isLocalPg = $pgHost -in @('127.0.0.1', 'localhost')
 
     # 1) 产物完整性标签（Low ⇒ 进程能读不能写；普通用户即可修）
     foreach ($svc in $Services) {
@@ -1306,43 +1602,7 @@ function Invoke-DoctorFix {
         if ($ok) { Write-Host '[fix]   ok' -ForegroundColor Green } else { Write-Warning '[fix]   失败' }
     }
 
-    # 2) PostgreSQL 服务没运行 → 启动（必要时提权）
-    $stoppedPg = @(Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Where-Object { $_.Status -ne 'Running' })
-    foreach ($pgSvc in $stoppedPg) {
-        Write-Host ('[fix] PostgreSQL 服务未运行 → 启动 ' + $pgSvc.Name)
-        $ok = $false
-        try { Start-Service -Name $pgSvc.Name -ErrorAction Stop; $ok = $true } catch { $ok = $false }
-        if (-not $ok) { $ok = Invoke-ElevatedCmdFile @('@echo off', 'net start ' + $pgSvc.Name) }
-        if (-not $ok) {
-            $s = Get-Service -Name $pgSvc.Name -ErrorAction SilentlyContinue
-            if ($s -and $s.Status -eq 'Running') { $ok = $true }
-        }
-        $detail = ''
-        if (-not $ok) { $detail = '需要管理员：以管理员运行 net start ' + $pgSvc.Name }
-        [void]$actions.Add([pscustomobject]@{ action = '启动 PostgreSQL 服务 ' + $pgSvc.Name; ok = $ok; detail = $detail })
-        if ($ok) { Write-Host '[fix]   ok' -ForegroundColor Green }
-    }
-
-    # 3) 库不存在 → 建库（口令错就不动，交给 doctor 报）
-    $psql = Get-PsqlExe
-    if ($psql -and $isLocalPg -and (Test-PortOpen 5432)) {
-        $prevPw = $env:PGPASSWORD
-        $env:PGPASSWORD = $env:PG_PASSWORD
-        try {
-            $probe = & $psql -h $pgHost -p 5432 -U $pgUser -d $pgDb -w -tAc 'select 1' 2>&1 | Out-String
-            if ($LASTEXITCODE -ne 0 -and $probe -match 'does not exist') {
-                Write-Host ('[fix] 库 ' + $pgDb + ' 不存在 → 创建')
-                $null = & $psql -h $pgHost -p 5432 -U $pgUser -d postgres -w -tAc ('CREATE DATABASE "' + $pgDb + '"') 2>&1
-                $ok = ($LASTEXITCODE -eq 0)
-                $detail = ''
-                if (-not $ok) { $detail = '建库失败：确认 PG_PASSWORD 有建库权限，或手动 psql -U ' + $pgUser + ' -d postgres 建库' }
-                [void]$actions.Add([pscustomobject]@{ action = '创建数据库 ' + $pgDb; ok = $ok; detail = $detail })
-                if ($ok) { Write-Host '[fix]   ok' -ForegroundColor Green }
-            }
-        } finally { $env:PGPASSWORD = $prevPw }
-    }
-
-    # 4) 防火墙 TCP 8788（局域网/手机入口；需要管理员）
+    # 2) 防火墙 TCP 8788（局域网/手机入口；需要管理员）
     $null = netsh advfirewall firewall show rule name='Baihua Server 8788' 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Host '[fix] 防火墙未放行 TCP 8788 → 添加规则（可能弹 UAC）'
@@ -1357,7 +1617,28 @@ function Invoke-DoctorFix {
         if ($ok) { Write-Host '[fix]   ok' -ForegroundColor Green }
     }
 
-    # 5) bh 定位器（不在 PATH 时新终端里没有 bh 命令）
+    # 3) 局域网统一入口 :80 portproxy 未配置 → 重建（先清可能挂死的旧规则；需要管理员）
+    $proxyOut = (netsh interface portproxy show v4tov4 2>$null | Out-String)
+    $proxyRows = @($proxyOut -split "`r?`n" | Where-Object { $_ -match '^\s*\S+\s+80\s+\S+\s+\d+' })
+    if (@($proxyRows | Where-Object { $_ -match '127\.0\.0\.1\s+8788' }).Count -eq 0) {
+        Write-Host '[fix] 局域网入口 :80 未配置 → 添加 portproxy + 防火墙规则（可能弹 UAC）'
+        $ok = Invoke-ElevatedCmdFile @(
+            '@echo off',
+            'netsh interface portproxy delete v4tov4 listenport=80 listenaddress=0.0.0.0 >nul 2>&1',
+            'netsh interface portproxy add v4tov4 listenport=80 connectport=8788 connectaddress=127.0.0.1',
+            'netsh advfirewall firewall add rule name="Baihua LAN 80" dir=in action=allow protocol=TCP localport=80'
+        )
+        if ($ok) {
+            $proxy2 = (netsh interface portproxy show v4tov4 2>$null | Out-String)
+            $ok = (@(($proxy2 -split "`r?`n") | Where-Object { $_ -match '127\.0\.0\.1\s+8788' }).Count -gt 0)
+        }
+        $detail = ''
+        if (-not $ok) { $detail = '需要管理员：bh lan on（或手动 netsh interface portproxy add v4tov4 listenport=80 connectport=8788 connectaddress=127.0.0.1）' }
+        [void]$actions.Add([pscustomobject]@{ action = '配置局域网入口 :80 -> 127.0.0.1:8788'; ok = $ok; detail = $detail })
+        if ($ok) { Write-Host '[fix]   ok' -ForegroundColor Green }
+    }
+
+    # 4) bh 定位器（不在 PATH 时新终端里没有 bh 命令）
     $binDir = Join-Path $HOME '.local\bin'
     $locator = Join-Path $binDir 'bh.cmd'
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -1373,7 +1654,7 @@ function Invoke-DoctorFix {
         }
     }
 
-    # 6) OVMS 容器停着 → 拉起（只在容器已存在的前提下；没装交给 doctor 的 WARN）
+    # 5) OVMS 容器停着 → 拉起（只在容器已存在的前提下；没装交给 doctor 的 WARN）
     $ov = Get-OvmsState -SkipModels
     if ($ov.Engine -eq 'wslc' -and $ov.ContainerState -ne 'running') {
         Write-Host ('[fix] OVMS 容器 ' + $ov.Container + ' 停着 → 启动')
@@ -1382,16 +1663,17 @@ function Invoke-DoctorFix {
         [void]$actions.Add([pscustomobject]@{ action = '启动 OVMS 容器 ' + $ov.Container; ok = $ov2.PortOpen; detail = '' })
     }
 
-    # 7) AI 对话页（open-webui）装了没跑 → 后台拉起（不阻塞，首启慢）
-    $owuiExe = Join-Path $DataHome 'open-webui-venv\Scripts\open-webui.exe'
-    $owuiLauncher = Join-Path $Root 'scripts\start-open-webui.ps1'
-    if ((Test-Path $owuiExe) -and -not (Test-PortOpen 8080) -and -not (Test-OpenWebUIStarting) -and (Test-Path $owuiLauncher)) {
-        Write-Host '[fix] open-webui（AI 对话页）没在运行 → 后台启动'
-        & $owuiLauncher -Async
-        [void]$actions.Add([pscustomobject]@{ action = '启动 open-webui（AI 对话页）'; ok = $true; detail = '后台启动中，1-2 分钟后 bh open-webui status 确认' })
+    # 6) AI 对话页容器已创建未运行 → 拉起（容器不存在交给 doctor 的 WARN，不自动拉镜像）
+    if ((Get-WslcExe) -and -not (Test-PortOpen $OpenWebUiPort)) {
+        $owState = Get-OpenWebUiContainerState
+        if ($owState -and $owState -ne 'running') {
+            Write-Host '[fix] open-webui 容器未运行 → 启动'
+            Start-OpenWebUi
+            [void]$actions.Add([pscustomobject]@{ action = '启动 open-webui 容器'; ok = (Test-PortOpen $OpenWebUiPort); detail = '' })
+        }
     }
 
-    # 8) 清理遗留的一次性启动任务
+    # 7) 清理遗留的一次性启动任务
     $leftover = @(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like 'bh-start-*' })
     foreach ($t in $leftover) {
         Write-Host ('[fix] 删除遗留计划任务 ' + $t.TaskName)
@@ -1402,30 +1684,35 @@ function Invoke-DoctorFix {
         [void]$actions.Add([pscustomobject]@{ action = '删除遗留启动任务 ' + $t.TaskName; ok = $ok; detail = $detail })
     }
 
-    # 9) 构建产物缺失 → bh build（最慢，放最后）
+    # 8) 构建产物缺失 → bh build（最慢，放最后；部署包形态不能 build，只提示）
     $missing = @()
     foreach ($svc in $Services) {
         $exe = Join-Path $OutDir ($svc.Name + '\' + $svc.Exe)
         if (-not (Test-Path $exe)) { $missing += $svc.Name }
     }
     if ($missing.Count -gt 0) {
-        Write-Host ('[fix] 缺少构建产物（' + ($missing -join ', ') + '）→ 执行 bh build（首次要几分钟）')
-        # build 会先停掉在跑的服务（否则 exe 被占用）；记下来，构建成功后原样拉回去
-        $wereUp = @()
-        foreach ($svc in $Services) { if (Test-PortOpen $svc.Port) { $wereUp += $svc.Name } }
-        try {
-            Invoke-Build
-            $ok = $true
-            foreach ($svc in $Services) {
-                if (-not (Test-Path (Join-Path $OutDir ($svc.Name + '\' + $svc.Exe)))) { $ok = $false }
+        if ($IsPackageLayout) {
+            Write-Warning ('[fix] 部署包产物缺失（apps\：' + ($missing -join ', ') + '）：请重新下载部署包并解压')
+            [void]$actions.Add([pscustomobject]@{ action = '构建产物'; ok = $false; detail = '部署包形态不能 bh build；请重新下载部署包' })
+        } else {
+            Write-Host ('[fix] 缺少构建产物（' + ($missing -join ', ') + '）→ 执行 bh build（首次要几分钟）')
+            # build 会先停掉在跑的服务（否则 exe 被占用）；记下来，构建成功后原样拉回去
+            $wereUp = @()
+            foreach ($svc in $Services) { if (Test-PortOpen $svc.Port) { $wereUp += $svc.Name } }
+            try {
+                Invoke-Build
+                $ok = $true
+                foreach ($svc in $Services) {
+                    if (-not (Test-Path (Join-Path $OutDir ($svc.Name + '\' + $svc.Exe)))) { $ok = $false }
+                }
+                [void]$actions.Add([pscustomobject]@{ action = '构建产物（dotnet publish）'; ok = $ok; detail = '' })
+                if ($ok -and $wereUp.Count -gt 0) {
+                    Write-Host ('[fix] 构建前在跑的服务（' + ($wereUp -join ', ') + '）→ 重新拉起')
+                    Start-Services
+                }
+            } catch {
+                [void]$actions.Add([pscustomobject]@{ action = '构建产物（dotnet publish）'; ok = $false; detail = $_.Exception.Message })
             }
-            [void]$actions.Add([pscustomobject]@{ action = '构建产物（dotnet publish）'; ok = $ok; detail = '' })
-            if ($ok -and $wereUp.Count -gt 0) {
-                Write-Host ('[fix] 构建前在跑的服务（' + ($wereUp -join ', ') + '）→ 重新拉起')
-                Start-Services
-            }
-        } catch {
-            [void]$actions.Add([pscustomobject]@{ action = '构建产物（dotnet publish）'; ok = $false; detail = $_.Exception.Message })
         }
     }
 
@@ -1447,18 +1734,18 @@ function Get-BhShimPath {
 function Show-Autostart {
     $lnk = Join-Path $StartupDir 'baihua-native.lnk'
     $cmdFile = Join-Path $StartupDir 'baihua-native.cmd'
-    Write-Host '[autostart] 百花 dev(native) 登录自启（用户级 Startup 目录，不需要管理员）'
+    Write-Host '[autostart] 百花（native）登录自启（用户级 Startup 目录，不需要管理员）'
     if (Test-Path $lnk) {
         Write-Host '[autostart] 状态: 已启用（无窗口：.lnk → bh-launch.exe）' -ForegroundColor Green
         Write-Host ('[autostart] 文件: ' + $lnk)
     } elseif (Test-Path $cmdFile) {
         Write-Host '[autostart] 状态: 已启用（旧式 .cmd，登录时会闪一个最小化控制台）' -ForegroundColor Yellow
-        Write-Host ('[autostart] 文件: ' + $cmdFile + '  ← 重新执行 bh dev autostart on 可换成无窗口的 .lnk')
+        Write-Host ('[autostart] 文件: ' + $cmdFile + '  ← 重新执行 bh autostart on 可换成无窗口的 .lnk')
     } else {
         Write-Host '[autostart] 状态: 未启用' -ForegroundColor DarkGray
-        Write-Host '[autostart] 开启: bh dev autostart on'
+        Write-Host '[autostart] 开启: bh autostart on'
     }
-    Write-Host '[autostart] 动作: 登录时执行 bh dev start（幂等：已在跑的服务不会重复起）'
+    Write-Host '[autostart] 动作: 登录时执行 bh start（幂等：已在跑的服务不会重复起）'
     $ps1Shim = if (Test-Path (Join-Path $HOME '.local\bin\bh.ps1')) { Join-Path $HOME '.local\bin\bh.ps1' } else { Join-Path $Root 'tools\bh\bh.ps1' }
     Write-Host ('[autostart] 入口: ' + $ps1Shim)
     if (Test-Path (Join-Path $HOME '.local\bin\bh.cmd')) {
@@ -1471,7 +1758,7 @@ function Show-Autostart {
     } else {
         Write-Host '[autostart] OVMS: 没有开机自启项（需要时参考 %BAIHUA_HOME%\ovms\README.md）'
     }
-    Write-Host '[autostart] 说明: 只启动 out\native 下已构建的产物；改了代码要先 bh build；日志见 bh logs server|webui'
+    Write-Host '[autostart] 说明: 只启动已构建的产物（仓库 out\native / 部署包 apps\）；仓库形态改了代码要先 bh build；日志见 bh logs server|webui'
 }
 
 function Get-BhPs1ShimPath {
@@ -1486,13 +1773,13 @@ function Enable-Autostart {
     $launcher = Get-BhLauncherExe
     $ps1Shim = Get-BhPs1ShimPath
     if ($launcher) {
-        # .lnk → bh-launch.exe（GUI 子系统，无控制台）→ powershell -File bh.ps1 dev start
+        # .lnk → bh-launch.exe（GUI 子系统，无控制台）→ powershell -File bh.ps1 start
         # 必须用 .lnk 而不是 .cmd：Explorer 跑 .cmd 一定会分配一个控制台窗口（start /min 只是最小化）
         $lnk = Join-Path $StartupDir 'baihua-native.lnk'
         $shell = New-Object -ComObject WScript.Shell
         $sc = $shell.CreateShortcut($lnk)
         $sc.TargetPath = $launcher
-        $sc.Arguments = '--ps1 "' + $ps1Shim + '" dev start'
+        $sc.Arguments = '--ps1 "' + $ps1Shim + '" start'
         $sc.WorkingDirectory = Split-Path -Parent $ps1Shim
         $sc.WindowStyle = 7
         $sc.Description = 'baihua dev autostart (silent)'
@@ -1504,9 +1791,9 @@ function Enable-Autostart {
         $shim = Get-BhShimPath
         $lines = @(
             '@echo off',
-            'rem baihua native autostart - generated by: bh dev autostart on',
-            'rem action: bh dev start (idempotent). disable with: bh dev autostart off',
-            ('start "baihua" /min "' + $shim + '" dev start')
+            'rem baihua native autostart - generated by: bh autostart on',
+            'rem action: bh start (idempotent). disable with: bh autostart off',
+            ('start "baihua" /min "' + $shim + '" start')
         )
         Set-Content -Path (Join-Path $StartupDir 'baihua-native.cmd') -Value $lines -Encoding ASCII
         Write-Warning '[autostart] 没能生成 bh-launch.exe，退回 .cmd（登录时会有个最小化控制台窗口）'
@@ -1514,7 +1801,7 @@ function Enable-Autostart {
     if (-not (Test-Path (Join-Path $HOME '.local\bin\bh.ps1'))) {
         Write-Warning '[autostart] 用的是仓库内入口；建议先 bh install（装定位器），仓库搬家后才不用重开自启'
     }
-    Write-Host '[autostart] 下次登录生效（现在想看效果：bh dev start）'
+    Write-Host '[autostart] 下次登录生效（现在想看效果：bh start）'
 }
 
 function Disable-Autostart {
@@ -1534,10 +1821,10 @@ switch ($Command.ToLower()) {
     'build'     { Invoke-Build (Get-ServiceArgs) }
     'build-restart' {
         $names = Get-ServiceArgs
-        # open-webui / openvino 是本仓库之外的东西（Python venv / 外部 OVMS），没有编译目标，
+        # open-webui / openvino 是本仓库之外的东西（wslc 容器 / 外部 OVMS），没有编译目标，
         # 明确提示而不是走 Resolve-ServiceList 打一句 unknown 就静默退出。
         foreach ($s in Get-SpecialList $names) {
-            $why = if ($s -eq 'open-webui') { 'Python venv，非本仓库构建' } else { '外部 OVMS，非本仓库构建' }
+            $why = if ($s -eq 'open-webui') { 'wslc 容器，非本仓库构建' } else { '外部 OVMS，非本仓库构建' }
             Write-Warning "[build-restart] $s 没有编译目标（$why）；如需重启请用: bh restart $s"
         }
         $regular = if ($names.Count -eq 0) { @() } else { @($names | Where-Object { $SpecialServices -notcontains $_.ToLower() }) }
@@ -1611,6 +1898,20 @@ switch ($Command.ToLower()) {
     }
     'update'    { Update-Services }
     'status'    { if ($Arg1 -eq '--json') { Show-StatusJson } else { Show-Status } }
+    'backup'    { Invoke-Backup (Get-ServiceArgs) }
+    'restore'   {
+        # 用法: bh restore <backup.zip> [-y|--yes]；-y 跳过确认（脚本/CI 用）
+        $rArgs = @(Get-ServiceArgs)
+        $zip = ''
+        $assumeYes = $false
+        foreach ($a in $rArgs) {
+            if ([string]::IsNullOrWhiteSpace($a)) { continue }
+            if ($a -in @('-y', '--yes')) { $assumeYes = $true }
+            elseif (-not $zip) { $zip = $a }
+            else { Write-Warning ("[restore] 忽略多余参数: $a") }
+        }
+        Invoke-Restore $zip -AssumeYes:$assumeYes
+    }
     'doctor'    {
         # --fix 先自动修「可确定修的项」，再照常体检（体检失败 => 退出码 1，便于脚本/CI 判断）
         $docArgs = @(Get-ServiceArgs)

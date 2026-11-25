@@ -3,16 +3,17 @@
   bh - 百花 CLI（Windows）
 
   环境边界（2026-11-22 约定）：只支持纯 Windows / 纯 Linux，不支持在 WSL 里开发。
-  Windows 有两种互斥运行方式（同占 8788/5177）：
-    bh <command>       → wslc 容器（默认，面向最终用户：postgres/server/webui/nginx）
-    bh dev <command>   → native dotnet 进程（开发/调试：VS F5、快速 publish）
-  wslc 依赖 WSL3 自带的 wslc.exe 作为运行时，但这不等于 WSL 开发环境。
+  Windows 只有一种运行形态（2026-11-25 起）：
+    bh <command>       → native：dotnet 进程 + SQLite（bh-server 8788 / bh-webui 5177）
+    bh dev <command>   → 等价别名（历史保留，转发同一实现）
+  wslc 容器形态已退役（2026-11）：bh wslc / bh docker 会明确报错。
+  可选容器组件（仍走 WSL3 自带 wslc.exe，不需要 Docker Desktop）：
+    ovms-gpu（本地推理 :8000）、bh-open-webui（AI 对话页 :8080），由 bh ovms / bh open-webui 管理。
   Linux 只有原生 systemd + SQLite 形态（tools/bh/linux/native/bh.sh）。
 
   用法:
-    bh <command> [args]          wslc 形态（默认）
-    bh dev <command> [args]      native 开发形态
-    bh lan [on|off|status]       局域网入口（仅 native/dev：宿主 :80 -> :8788 portproxy）
+    bh <command> [args]          native 形态（默认）
+    bh lan [on|off|status]       局域网入口（宿主 :80 -> :8788 portproxy）
     bh install                   复制定位器到 %USERPROFILE%\.local\bin（加入用户 PATH）
     bh uninstall                 移除定位器与 PATH 项
 #>
@@ -23,7 +24,7 @@ $All = @($args)
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSCommandPath          # tools/bh
-$Repo = Split-Path -Parent (Split-Path -Parent $Root)   # 仓库根
+$Repo = Split-Path -Parent (Split-Path -Parent $Root)   # 仓库根 / 部署包根
 # 提权子进程首选 PowerShell 7（pwsh），没有就退回 Windows PowerShell
 $ShellExe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
 
@@ -32,42 +33,42 @@ $Arg1 = if ($All.Count -gt 0) { $All[0] } else { '' }
 # 后续 @splat 会把字符串拆成字符数组，必须包成 object[]
 $CmdArgs = @($All)
 
+# 判断当前根是否为开发仓库（部署包不含 services/ 源码）
+$IsDevRepo = Test-Path (Join-Path $Repo 'services\Baihua.Server\Baihua.Server.csproj')
+
 function Show-Help {
-    Write-Host 'bh - 百花 CLI（Windows）'
+    Write-Host 'bh - 百花 CLI（Windows，native 形态：dotnet 进程 + SQLite）'
     Write-Host ''
     Write-Host '用法:'
-    Write-Host '  bh                           状态总览（wslc 形态）'
-    Write-Host '  bh <command> [args]          wslc 形态命令（Windows 用户默认）'
-    Write-Host '  bh dev <command> [args]      native 形态命令（开发/调试用：VS F5、快速 publish）'
-    Write-Host '  bh doctor [--json]           体检当前形态（wslc / dev）'
+    Write-Host '  bh                           状态总览'
+    Write-Host '  bh <command> [args]          native 形态命令（默认）'
+    Write-Host '  bh dev <command> [args]      等价别名（历史保留，同一实现）'
+    Write-Host '  bh doctor [--json] [--fix]   体检（SQLite / 产物 / lan / 容器组件）'
     Write-Host '  bh autostart [on|off|status] 登录自启（用户级 Startup，不需要管理员）'
-    Write-Host '  bh lan [on|off|status]       局域网入口（仅 native/dev：宿主 :80 -> :8788 portproxy）'
-    Write-Host '  bh ovms [status|start|stop|restart|logs [n]]   本地模型服务 OVMS(:8000)，两种形态通用'
-    Write-Host '  bh open-webui <start|stop|status|install>      AI 对话页后端（Windows venv）'
+    Write-Host '  bh lan [on|off|status]       局域网入口（宿主 :80 -> :8788 portproxy）'
+    Write-Host '  bh ovms [status|start|stop|restart|logs [n]]   本地模型服务 OVMS(:8000，wslc 容器 ovms-gpu)'
+    Write-Host '  bh open-webui <start|stop|status|install>      AI 对话页（wslc 容器 bh-open-webui）'
+    Write-Host '  bh backup [目录] / restore <zip> [-y]          数据冷备份 / 恢复（~/.baihua）'
     Write-Host '  bh install / uninstall       安装 / 移除 定位器与用户 PATH'
     Write-Host ''
-    Write-Host 'wslc 命令: build / pull / start / stop [svc] / restart / status [--json] / logs / exec / ps'
-    Write-Host '           update / dashboard / open / env / doctor [--json] / autostart'
-    Write-Host '           backup [目录] / restore <备份目录>（数据卷冷备份与恢复）'
-    Write-Host '           全容器（postgres/server/webui/nginx，WSL3 自带 wslc.exe，不需要 Docker Desktop）'
-    Write-Host '           依赖: WSL >= 2.9.3（wsl --update）'
+    Write-Host '常用命令: build / build-restart / start / stop [svc] / restart / update / logs / status [--json]'
+    Write-Host '          dashboard / open / env / doctor / autostart / backup / restore'
     Write-Host ''
-    Write-Host 'dev 命令（native）: build / build-restart / start / stop / restart / update / logs / status [--json]'
-    Write-Host '           doctor [--json] [--fix] / autostart / dashboard / open'
-    Write-Host '           依赖: .NET SDK 10、本机 PostgreSQL（Windows 服务）；不依赖容器'
+    Write-Host '服务: bh-server 8788（唯一后端，绑 0.0.0.0）、bh-webui 5177（回环）'
+    Write-Host '数据: %USERPROFILE%\.baihua（BAIHUA_DATA_HOME 可覆盖；SQLite 单库 db\baihua.db）'
+    Write-Host '依赖: .NET SDK 10（开发仓库 bh build 需要；部署包 apps\ 为自包含产物，无需 .NET）'
+    Write-Host '可选: ovms-gpu / bh-open-webui 容器需 WSL >= 2.9.3（wslc.exe），缺失仅本地推理/AI 对话页降级'
     Write-Host ''
-    Write-Host '两种形态互斥（同占 8788/5177）：切换前先 bh stop（wslc）或 bh dev stop（native）'
-    Write-Host '环境边界：Windows = wslc / dev(native)；Linux = 原生 systemd + SQLite；不支持在 WSL 里开发'
+    Write-Host '已退役: wslc 容器栈（2026-11）、Docker Desktop 形态、k3s/k8s、PostgreSQL（旧库用 bh db-migrate 迁 SQLite）'
     Write-Host ''
     Write-Host '完整说明见 tools/bh/README.md'
 }
 
 function Invoke-Install {
     # 复制自包含定位器到 %USERPROFILE%\.local\bin，并把该目录加入用户 PATH。
-    # 定位器每次调用时自动定位仓库根（BAIHUA_HOME > 常见路径 > 向上查找），
-    # 仓库改名/移动后无需重装。
-    # k3s 已退役：install 不再装 bh-k3s，并主动清理旧版安装的 bh-k3s 定位器
-    # （源文件已从仓库删除，旧装机残留只会报"找不到脚本"）。
+    # 定位器每次调用时自动定位根（BAIHUA_PKG_HOME > BAIHUA_HOME > 常见路径 > 向上查找），
+    # 仓库/部署包改名、移动后无需重装。
+    # k3s 已退役：install 不再装 bh-k3s，并主动清理旧版安装的 bh-k3s 定位器。
     $bin = Join-Path $HOME '.local\bin'
     New-Item -ItemType Directory -Force -Path $bin | Out-Null
     $files = @(
@@ -100,14 +101,20 @@ function Invoke-Install {
         [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
         Write-Host "[install] 已加入用户 PATH: $bin"
     }
-    # 广播环境变量变更（explorer 与后续进程可见）
-    # 瘦部署包（无 services/）安装后，定位器依赖 BAIHUA_HOME 才能找到包目录。
-    # ⚠ 必须设 $Repo（含 tools\bh 的根），不是 $Root（tools\bh 本身）——
-    #   定位器按 "<BAIHUA_HOME>\tools\bh\bh.ps1" 查找，设成 tools\bh 会被静默忽略，
-    #   新装机上 bh 会报"未找到 baihua 仓库"；csproj 检查同理要用 $Repo。
-    if (-not (Test-Path (Join-Path $Repo 'services\Baihua.Server\Baihua.Server.csproj'))) {
-        [Environment]::SetEnvironmentVariable('BAIHUA_HOME', $Repo, 'User')
-        Write-Host "[install] 已设置 BAIHUA_HOME=$Repo（部署包定位）"
+
+    # 部署包（无 services/ 源码）安装后，定位器依赖 BAIHUA_PKG_HOME 才能找到包目录。
+    # ⚠ 包定位用 BAIHUA_PKG_HOME（2026-11-25 起）；BAIHUA_HOME 语义是**数据目录**（服务读
+    #   %USERPROFILE%\.baihua），两者解耦，不再把包根塞进 BAIHUA_HOME。
+    #   旧版包安装遗留的 BAIHUA_HOME=<包根> 同步清除（值精确匹配本根才动，不误伤用户自设值）。
+    # 必须设 $Repo（含 tools\bh 的根），不是 $Root（tools\bh 本身）。
+    if (-not $IsDevRepo) {
+        [Environment]::SetEnvironmentVariable('BAIHUA_PKG_HOME', $Repo, 'User')
+        Write-Host "[install] 已设置 BAIHUA_PKG_HOME=$Repo（部署包定位）"
+        $legacyHome = [Environment]::GetEnvironmentVariable('BAIHUA_HOME', 'User')
+        if ($legacyHome -and ($legacyHome.TrimEnd('\') -ieq $Repo.TrimEnd('\'))) {
+            [Environment]::SetEnvironmentVariable('BAIHUA_HOME', $null, 'User')
+            Write-Host "[install] 已清除旧版包安装遗留的 BAIHUA_HOME=$Repo（定位改用 BAIHUA_PKG_HOME）"
+        }
     }
     Add-Type -Namespace Win32 -Name Native -MemberDefinition @'
 [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
@@ -116,7 +123,7 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
     $null = [Win32.Native]::SendMessageTimeout([IntPtr]::Zero, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]([UIntPtr]::Zero))
     Write-Host '[install] 完成。新开终端后可直接使用: bh <command>'
     Write-Host '         当前会话请用: .\tools\bh\bh.ps1 <command>'
-    Write-Host '[install] 定位器自动查找: $env:BAIHUA_HOME > 常见路径 > 当前目录向上；仓库改名/移动后无需重新安装'
+    Write-Host '[install] 定位器自动查找: $env:BAIHUA_PKG_HOME > $env:BAIHUA_HOME > 常见路径 > 当前目录向上；改名/移动后无需重新安装'
 }
 
 function Invoke-Uninstall {
@@ -134,23 +141,29 @@ function Invoke-Uninstall {
         Remove-Item (Join-Path $bin $n) -Force -ErrorAction SilentlyContinue
     }
     Write-Host '[uninstall] 已移除 %USERPROFILE%\.local\bin\bh.ps1 / bh.cmd（含 k3s 遗留 bh-k3s.* 如有）'
-    # 部署包形态的 install 设过用户级 BAIHUA_HOME=$Repo（见 Invoke-Install），uninstall 是逆操作，应清除。
-    # 守卫①：本根不是 dev 仓库（无 services\Baihua.Server）——dev 仓库的 install 从不设 BAIHUA_HOME；
-    # 守卫②：当前用户级值确实指向本根才删——用户手动设的其它值（如 native 形态的 ~/.baihua）不误伤。
-    if (-not (Test-Path (Join-Path $Repo 'services\Baihua.Server\Baihua.Server.csproj'))) {
-        $bah = [Environment]::GetEnvironmentVariable('BAIHUA_HOME', 'User')
-        if ($bah -and ($bah.TrimEnd('\') -ieq $Repo.TrimEnd('\'))) {
+    # 部署包形态的 install 设过用户级 BAIHUA_PKG_HOME=$Repo（见 Invoke-Install），uninstall 是逆操作。
+    # 守卫①：本根不是 dev 仓库（无 services\Baihua.Server）——dev 仓库的 install 从不设 BAIHUA_PKG_HOME；
+    # 守卫②：当前用户级值确实指向本根才删——用户手动设的其它值不误伤。
+    # 兼容：旧版包安装设的是 BAIHUA_HOME=<包根>，同样按值匹配清除。
+    if (-not $IsDevRepo) {
+        $pkgHome = [Environment]::GetEnvironmentVariable('BAIHUA_PKG_HOME', 'User')
+        if ($pkgHome -and ($pkgHome.TrimEnd('\') -ieq $Repo.TrimEnd('\'))) {
+            [Environment]::SetEnvironmentVariable('BAIHUA_PKG_HOME', $null, 'User')
+            Write-Host "[uninstall] 已清除用户级 BAIHUA_PKG_HOME=$Repo（部署包定位）"
+        }
+        $legacyHome = [Environment]::GetEnvironmentVariable('BAIHUA_HOME', 'User')
+        if ($legacyHome -and ($legacyHome.TrimEnd('\') -ieq $Repo.TrimEnd('\'))) {
             [Environment]::SetEnvironmentVariable('BAIHUA_HOME', $null, 'User')
-            Write-Host "[uninstall] 已清除用户级 BAIHUA_HOME=$Repo（部署包定位）"
+            Write-Host "[uninstall] 已清除旧版包安装遗留的 BAIHUA_HOME=$Repo"
         }
     }
-    # 广播环境变量变更（PATH 移除 / BAIHUA_HOME 清除对 explorer 新开终端立即生效）
+    # 广播环境变量变更（PATH 移除 / 定位变量清除对 explorer 新开终端立即生效）
     Add-Type -Namespace Win32 -Name Native -MemberDefinition @'
 [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
 public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
 '@ -ErrorAction SilentlyContinue
     $null = [Win32.Native]::SendMessageTimeout([IntPtr]::Zero, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]([UIntPtr]::Zero))
-    Write-Host '[uninstall] 完成。容器/数据卷/镜像不受影响（需要时: bh stop 后删部署目录，数据卷另行手动清理）'
+    Write-Host '[uninstall] 完成。数据目录 %USERPROFILE%\.baihua 不受影响（需要时手动清理）'
 }
 
 # ---- 共享工具函数 ----
@@ -184,49 +197,46 @@ if ($Arg1 -in @('help', '-h', '--help')) { Show-Help; exit 0 }
 # 旧写法 bh k8s <cmd> / bh-k3s <cmd>：k3s 只属于 Linux，给出明确指引而非静默失败
 if ($Arg1 -eq 'k8s') {
     Write-Warning "[bh] 'k8s' 不是 Windows 子命令：k3s 只在 Linux（tools/bh/linux/k8s/bh.sh）。"
-    Write-Warning "[bh] Windows 只有 bh（wslc）/ bh dev（native）两种运行方式；不支持在 WSL 里开发或跑 k3s。"
+    Write-Warning "[bh] Windows 只有 native 形态（dotnet 进程 + SQLite）；不支持在 WSL 里开发或跑 k3s。"
     exit 1
 }
-# ==================== native（开发形态：bh dev <cmd>） ====================
-# 2026-11-16 起：Windows 默认形态切到 wslc；native 降级为开发/调试形态，收进 bh dev。
-# 理由：容器形态自带生命周期管理（重启/日志/卷），native 的启动链路需要三层拼装才能
-# 关终端不被杀、不弹窗口；但 native 的开发内环（VS F5、publish 秒级）依然值钱，保留。
-$nativeScript = Join-Path $Root 'win\native\bh.ps1'
+
+# 'dev' / 'native' 前缀：历史别名，native 现已是默认形态，剥掉前缀继续分派即可。
 if ($Arg1 -in @('dev', 'native')) {
-    if (-not (Test-Path $nativeScript)) { Write-Error "[bh dev] 缺少 $nativeScript"; exit 1 }
-    if ($Arg1 -eq 'native') {
-        Write-Warning "[bh] 'native' 已改名：Windows 默认已是 wslc，native 是开发形态 → bh dev <cmd>"
-    }
-    $rest = @($CmdArgs | Select-Object -Skip 1)
-    if ($rest.Count -eq 0) { $rest = @('status') }
+    $CmdArgs = @($CmdArgs | Select-Object -Skip 1)
+    $Arg1 = if ($CmdArgs.Count -gt 0) { $CmdArgs[0] } else { '' }
     # --json 时不能往 stdout 混横幅（DSH 插件要解析纯 JSON）
-    if (-not ($rest -contains '--json')) {
-        Write-Host '[bh dev] native 开发形态（dotnet 进程 + 本机 PostgreSQL；与 wslc 互斥）' -ForegroundColor DarkGray
+    if (-not ($CmdArgs -contains '--json')) {
+        Write-Host '[bh] dev/native 已等价于 bh（native 自 2026-11-25 起为 Windows 默认形态）' -ForegroundColor DarkGray
     }
-    & $nativeScript @rest
-    exit $LASTEXITCODE
 }
 
-# ==================== wslc（Windows 默认形态：WSL3 容器） ====================
-# 2026-11-16 起 bh 默认 = wslc：<command> 直落这里；`bh wslc <cmd>` 保留为显式写法（脚本/文档兼容）。
-if ($Arg1 -in @('wslc', 'container')) {
-    $cell = Join-Path $Root 'win\wslc\bh.ps1'
-    if (-not (Test-Path $cell)) { Write-Error "[wslc] 缺少 $cell"; exit 1 }
-    $rest = @($CmdArgs | Select-Object -Skip 1)
-    if ($rest.Count -eq 0) { $rest = @('help') }
-    & $cell @rest
-    exit $LASTEXITCODE
-}
-# 旧写法：Windows 容器形态不再用 Docker Desktop，统一走 wslc
-if ($Arg1 -eq 'docker') {
-    Write-Warning "[bh] Windows 容器形态已改用 WSL 自带的 wslc.exe（不需要 Docker Desktop）：bh wslc <cmd>"
-    Write-Warning "[bh] 例：bh wslc status / bh wslc start"
+# wslc / docker 容器形态已退役（2026-11）：Windows 统一 native + SQLite
+if ($Arg1 -in @('wslc', 'container', 'docker')) {
+    Write-Warning "[bh] wslc 容器形态已退役（2026-11）：Windows 统一 native + SQLite（dotnet 进程，数据 %USERPROFILE%\.baihua）。"
+    Write-Warning "[bh] 历史数据迁移：旧 PostgreSQL 用 bh db-migrate（tools/db-migrate）迁入 SQLite。"
+    Write-Warning "[bh] 当前命令请直接用: bh build / bh start / bh status"
     exit 1
 }
 
-# ==================== 形态无关的命令（两种形态都要能跑） ====================
-# lan：dev/native 用宿主 :80 -> :8788 portproxy；wslc 形态由 nginx 容器直接占 :80
-#      （wslc 下执行 bh lan on 会提示改用 nginx，见下面分支里的检测）
+$nativeScript = Join-Path $Root 'win\native\bh.ps1'
+
+# ==================== 形态无关命令（实现在 native cell） ====================
+# ovms / openvino：OVMS(:8000) wslc 容器 ovms-gpu，逻辑与形态无关
+if ($Arg1 -in @('ovms', 'openvino')) {
+    if (-not (Test-Path $nativeScript)) { Write-Error "[bh] 缺少 $nativeScript"; exit 1 }
+    & $nativeScript @CmdArgs
+    exit $LASTEXITCODE
+}
+# open-webui：AI 对话页（wslc 容器 bh-open-webui，2026-11-25 起由 native cell 管理）
+if ($Arg1 -eq 'open-webui') {
+    if (-not (Test-Path $nativeScript)) { Write-Error "[bh] 缺少 $nativeScript"; exit 1 }
+    & $nativeScript @CmdArgs
+    exit $LASTEXITCODE
+}
+
+# ==================== lan：宿主 :80 -> :8788 portproxy ====================
+# native 形态的局域网入口（浏览器 + 花记移动端统一入口；移动端默认 80 端口无显式端号）。
 # lan 结果实测：提权子进程被 UAC 取消时也可能走"成功"路径，必须用 netsh 复核
 function Test-LanPortProxy {
     $proxy = (netsh interface portproxy show v4tov4 2>$null | Out-String)
@@ -242,17 +252,6 @@ if ($Arg1 -eq 'lan') {
     $sub = if ($CmdArgs.Count -gt 1) { $CmdArgs[1] } else { 'status' }
     switch ($sub) {
         'on' {
-            # wslc 形态自带 nginx 容器占宿主 :80（浏览器 + 花记移动端统一入口），不需要 portproxy
-            $wslcNginx = $false
-            if (Get-Command wslc -ErrorAction SilentlyContinue) {
-                & wslc container inspect bh-nginx 2>$null | Out-Null
-                $wslcNginx = ($LASTEXITCODE -eq 0)
-            }
-            if ($wslcNginx) {
-                Write-Warning '[lan] 当前是 wslc 形态：nginx 容器已占宿主 :80（/mg、/api → 后端，其余 → WebUI），无需 bh lan on'
-                Write-Warning '[lan] 若之前建过 portproxy，请执行 bh lan off 清理（否则 nginx 无法绑定 :80）'
-                exit 0
-            }
             $lanIp = Get-HostLanIp
             if (-not $lanIp) { Write-Host '[lan] 未识别到宿主局域网 IP'; exit 0 }
             Write-Host '[lan] 设置宿主 :80 -> :8788 转发（需要管理员授权）...'
@@ -322,25 +321,9 @@ if ($Arg1 -eq 'lan') {
     exit 0
 }
 
-# ==================== 其余命令：两种形态的兼容入口 ====================
-# ovms / openvino：OVMS(:8000) 的启停两种形态通用（实现放在 native cell，逻辑与形态无关）
-if ($Arg1 -in @('ovms', 'openvino')) {
-    if (-not (Test-Path $nativeScript)) { Write-Error "[bh] 缺少 $nativeScript"; exit 1 }
-    & $nativeScript @CmdArgs
-    exit $LASTEXITCODE
-}
-# open-webui：wslc 形态是容器 bh-open-webui；native(dev) 形态仍是 Windows venv（dev 分支已优先处理）
-if ($Arg1 -eq 'open-webui') {
-    $wslcCellOw = Join-Path $Root 'win\wslc\bh.ps1'
-    if (-not (Test-Path $wslcCellOw)) { Write-Error "[wslc] 缺少 $wslcCellOw"; exit 1 }
-    & $wslcCellOw @CmdArgs
-    exit $LASTEXITCODE
-}
-
-# ==================== 默认：wslc（Windows 用户形态） ====================
-$wslcCell = Join-Path $Root 'win\wslc\bh.ps1'
-if (-not (Test-Path $wslcCell)) { Write-Error "[wslc] 缺少 $wslcCell"; exit 1 }
+# ==================== 默认：native（Windows 唯一形态） ====================
+if (-not (Test-Path $nativeScript)) { Write-Error "[bh] 缺少 $nativeScript"; exit 1 }
 $rest = @($CmdArgs)
 if ($rest.Count -eq 0) { $rest = @('status') }
-& $wslcCell @rest
+& $nativeScript @rest
 exit $LASTEXITCODE

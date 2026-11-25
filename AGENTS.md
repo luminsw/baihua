@@ -72,14 +72,14 @@ C:\Users\lumin\src\
 
 | 项目 | Linux/Mac | Windows |
 |------|-----------|---------|
-| 百花 | `./tools/bh/bh.sh`（Linux 原生 systemd + SQLite） | `bh`（wslc 容器，默认）；`bh dev <cmd>`（native 开发形态）；cmd 下同名 `.cmd` |
+| 百花 | `./tools/bh/bh.sh`（Linux 原生 systemd + SQLite） | `bh`（native：dotnet 进程 + SQLite）；cmd 下同名 `.cmd` |
 | 花阁 | `./hg` | `.\hg.ps1` |
 
-> 百花 CLI 在 Windows 上有**两种互斥形态**（都占 8788/5177，同时只能跑一种）：
-> - `bh <cmd>` = **wslc（默认）**：WSL 3 自带的 `wslc.exe` 跑 server/webui/nginx/open-webui 容器，宿主机不需要 .NET；
-> - `bh dev <cmd>` = **native（开发）**：dotnet 进程跑在 Windows（.NET SDK 10）。
+> 百花 CLI 在 Windows 上只有**一种形态（2026-11-25 起）**：
+> - `bh <cmd>` = **native**：dotnet 进程跑在 Windows（开发仓库需 .NET SDK 10；部署包 `apps\` 为自包含产物，无需 .NET）；
+>   可选容器组件 ovms-gpu / bh-open-webui 走 WSL 3 自带 `wslc.exe`，缺失仅对应功能降级。
 >
-> `bh wslc <cmd>` 是 `bh <cmd>` 的等价显式写法。
+> `bh dev <cmd>` / `bh native <cmd>` 是历史别名（等价于 `bh <cmd>`）。
 > **Linux 上 `bh` 只有一种形态：原生 systemd 服务 + SQLite**（`tools/bh/linux/native/bh.sh`，见 `docs/LINUX_NATIVE.md`）。
 > 首次运行与完整命令见 `tools/bh/README.md`。
 
@@ -96,7 +96,7 @@ C:\Users\lumin\src\
 > 表结构由 `Baihua.Data.DatabaseInitializer` 按上下文统一建表/补表；连接串见 `Baihua.Data.DbConnections.Baihua`。
 > 启动时统一设置 WAL / `busy_timeout` / 外键。PostgreSQL 已退役：从旧库迁移用 `bh db-migrate`
 > （`tools/db-migrate`，只读源库、逐表摘要校验、支持 `--rewrite-prefix` 重写路径），详见 `docs/LINUX_NATIVE.md`。
-> Windows 的 wslc/dev 脚本里残留的 `PG_*` 与 postgres 容器属于**待清理项**，服务端不再读写 PostgreSQL。
+> bh 工具链已不再包含 `PG_*` / postgres 容器逻辑，服务端不读写 PostgreSQL。
 
 ## 助手 / 自动化约定
 
@@ -167,7 +167,7 @@ C:\Users\lumin\src\
 - `services/Baihua.Core/`：共享服务层（含 VaultSettingsService、DeviceService 等；跨模块接口在 `Baihua.Core/Modules/`）
 - `services/Baihua.Data/`：共享 EF Core 数据层（单库多 DbContext + `DatabaseInitializer`）
 - `services/BaiHua.slnx`：服务端解决方案（包含所有 services/ 项目及 libs/MobileContract）
-- `tools/bh/`：百花 CLI（Windows：`bh` = `win/wslc` 容器（默认），`bh dev` = `win/native` dotnet 进程；Linux：`linux/native/` = systemd + SQLite，`bh` 即入口）
+- `tools/bh/`：百花 CLI（Windows：`bh` = `win/native` dotnet 进程 + SQLite（唯一形态）；Linux：`linux/native/` = systemd + SQLite，`bh` 即入口）
 - `libs/BaihuaSdk/`：跨平台移动端 SDK（net9.0;net10.0，零 MAUI 依赖，主要 target net10.0）
 - `libs/MobileContract/`：移动端契约（DTO、接口定义）
 - `clients/Huapu/`：花圃（BaiHua.Nursery）— 移动端技术实验与验证工具（非正式发布 App，详见下方说明）
@@ -210,8 +210,8 @@ dotnet build services/BaiHua.slnx -c Release
 | Baihua.Server | 8788 | 唯一后端 HTTP API（家庭/亲子、AI、知识库三模块合一；含 MCP `/mcp`） |
 | Baihua.Web | 5177 | HTTP Blazor Server（仍是独立进程） |
 | OVMS（本地推理） | 8000 | OpenAI 兼容；Windows 为 wslc 容器 `ovms-gpu`，Linux 用 compose `--profile inference` 的 `openvino` 容器或自行部署 |
-| Open WebUI | 8080 | AI 对话页（独立应用，**可选**）：wslc 形态仍是容器 `bh-open-webui`（数据卷 `bh-openwebui-data`，native/dev 为 Windows venv）；Linux 不在默认部署里，Web 的 `/open-webui` 是入口页（打开链接 + 部署步骤），需要时自行 docker run |
-| 局域网入口 | 80 | Windows wslc 的 nginx 容器 / Linux 系统 nginx（`bh proxy install`） |
+| Open WebUI | 8080 | AI 对话页（独立应用，**可选**）：Windows 统一为 wslc 容器 `bh-open-webui`（数据卷 `bh-openwebui-data`，镜像固定 v0.13.3）；Linux 不在默认部署里，Web 的 `/open-webui` 是入口页（打开链接 + 部署步骤），需要时自行 docker run |
+| 局域网入口 | 80 | Windows native 用 `bh lan on` 的 portproxy（:80 → 127.0.0.1:8788）/ Linux 系统 nginx（`bh proxy install`） |
 
 **路由命名（合并后）**：单进程下 `api/AI/*` 与 `api/ai/*` 在 ASP.NET Core 大小写不敏感路由下冲突，
 助手域（ask / chat / chat-stream / providers / prompt-templates / generate-missing-note / functions-call）
@@ -241,32 +241,29 @@ dotnet build services/BaiHua.slnx -c Release
 > 仅作为 HttpClient 名字保留兼容别名，实际都指向唯一的 `BaihuaServer:BaseUrl`）。
 
 **开发环境边界（强制约定，2026-11-22）**：只支持 **纯 Windows** 与 **纯 Linux** 两种开发环境，**不提供"在 WSL 里开发"的路径**。
-- **纯 Windows**：两种**运行方式**，互斥（同占 8788/5177）——`bh`（wslc 容器，默认，面向最终用户）/ `bh dev`（native dotnet 进程，开发调试）。
-  wslc 依赖 WSL 3 自带的 `wslc.exe` 作为运行时，但这属于 Windows 侧的运行实现，**不等于 WSL 开发环境**。
+- **纯 Windows**：只有 native 一种运行形态（2026-11-25 起）——`bh`（dotnet 进程 + SQLite）。
+  可选容器组件（ovms-gpu / bh-open-webui）依赖 WSL 3 自带的 `wslc.exe` 作为运行时，但这属于 Windows 侧的运行实现，**不等于 WSL 开发环境**。
 - **纯 Linux**：只有原生 systemd + SQLite 一种（`tools/bh/linux/native/bh.sh`，`bh` 即入口）。
 - **禁止再引入/建议**：把仓库与工具链迁到 WSL 发行版里开发、在 WSL 内跑 k3s、Windows 侧 `bh-k3s` / Docker Desktop 等形态。
 - 新增部署方式前先确认能落进这两格，落不进就不做。
 
-**部署形态**（Windows：wslc = `bh`（默认）/ native = `bh dev`（开发）；Linux：原生 systemd + SQLite）：
-- **最终用户部署包**：`scripts/make-deploy-package.ps1` 生成 `dist/baihua-deploy-<ver>.zip`（不含 C# 源码，只含 bh CLI + nginx 配置 + env 模板；脚本内统一转 CRLF，Linux CI 也能安全打包）；Release workflow 打 tag 时自动生成部署包并附到 GitHub Release；镜像默认从华为云 SWR 拉取（`BAIHUA_IMAGE_REGISTRY` 默认 `swr.cn-north-4.myhuaweicloud.com`，国内匿名拉取已验证；Docker Hub 国内直连超时不可用作默认，可改 ACR 或留空走 Docker Hub），`BAIHUA_IMAGE_SOURCE=auto` 在无源码时即 registry，`BAIHUA_IMAGE_TAG` 选版本；CI 在打 tag 时构建推送三平台镜像。
-  打包两条硬规矩（2026-11-23 实机首启验证发现，首版 v0.1.0 附件包即栽在前一条）：
-  ① CRLF 归一化时 `.ps1` 必须写回 **UTF-8 with BOM**——`bh.cmd` 走 Windows PowerShell 5.1，无 BOM 按 GBK 读中文注释会吞换行、解析全崩（pwsh 7 下自测不出）；
-  ② `BAIHUA_IMAGE_TAG` 必须在打包时**预置** `docker/.env.wslc`（从 `.example` 派生，`Get-EnvMap` 只补缺失键会保留它）——否则实际拉 `latest`，未来发新版后旧包会被新 latest 带跑；`VAULTS_DIR` 不预置（首启按最终用户 `$HOME` 生成）。
-- **native（Windows 开发形态 `bh dev`）**：`bh-server.exe`（8788）+ `bh-webui.exe`（5177）以 dotnet 进程跑在 Windows，
-  不依赖容器；数据库为 SQLite（`%BAIHUA_HOME%\db\baihua.db`），无需安装 PostgreSQL。
-  `bh dev build` → `bh dev start`（启动经计划任务 + GUI 启动器，无控制台窗口）。
-  （脚本里仍有 `PG_*` 检查/提示，属于待清理的遗留项，不影响服务运行。）
-- **wslc（Windows 默认形态）**：`bh <cmd>` 用 WSL 3 自带的 `wslc.exe`（**不需要 Docker Desktop**）
-  跑 `server`（8788）+ `webui`（5177）+ `nginx`（宿主 :80，浏览器/移动端统一入口）等容器，
-  自定义网络 `bh-net`，镜像由 `docker/Dockerfile.server|webui` 构建；
-  命名卷 `bh-data`（SQLite 与配置文件）、`bh-logs`，知识库目录 `VAULTS_DIR` 绑定挂载；
-  （`bh-pgdata` 与 postgres 容器为待清理遗留项）；OVMS 为独立容器 `ovms-gpu`，`bh start` 探测宿主 IP 后注入 `OpenVinoOms__BaseUrl`。
-  与 native 互斥（同占 8788/5177）。配置见 `docker/.env.wslc`（gitignore）。
-  `bh backup [目录]` / `bh restore <备份目录>`：数据卷冷备份/恢复（`bh-pgdata`/`bh-data`/`bh-openwebui-data` + `docker/.env.wslc` 成对备份；
-  备份自动停栈→tar 卷→**恢复演练**（scratch 卷起一次性 postgres 验证）→重启，产物在 `backup/baihua-backup-<时间>/`（gitignore）；
-  restore 删卷重建后还原配置，需输 `yes` 确认。真机验收手册：`docs/WSLC_BACKUP_RESTORE_TEST.md`。
-  局域网入口由 nginx 容器发布到宿主 `BAIHUA_NGINX_PORT`（默认 80），**不需要 `bh lan on`**；:80 被占用时改该变量后 `bh restart`。
-  拉不到 `mcr.microsoft.com/dotnet/sdk` 时用 `bh build -Prebuilt`（宿主机 publish + `aspnet:10.0` 运行时镜像）。
+**部署形态**（Windows：native；Linux：原生 systemd + SQLite）：
+- **native（Windows 唯一形态，开发与最终用户同一套）**：`bh-server.exe`（8788）+ `bh-webui.exe`（5177）以 dotnet 进程跑在 Windows，
+  不依赖容器；数据库为 SQLite（`%USERPROFILE%\.baihua\db\baihua.db`，`BAIHUA_DATA_HOME` 可覆盖），无需安装 PostgreSQL。
+  `bh build`（dotnet publish 到 `out\native`）→ `bh start`（启动经计划任务 + GUI 启动器，无控制台窗口）。
+  `bh backup [目录]` / `bh restore <zip> [-y]`：数据目录冷备份/恢复（排除 bin/logs/models/open-webui-venv →
+  zip + .sha256；restore 把旧目录改名 `.pre-restore-<时间>` 保留，可回滚）；两者都要求先 `bh stop`（SQLite WAL 运行中打包会损坏）。
+  局域网入口：`bh lan on` 设置宿主 `:80 -> 127.0.0.1:8788` portproxy（netsh）+ 防火墙。
+- **最终用户部署包**：`scripts/make-deploy-package.ps1` 生成 `dist/baihua-deploy-<ver>.zip`——
+  bh CLI + `apps\{server,webui}\`（self-contained win-x64 publish，最终用户**无需 .NET**）+ README.txt/VERSION.txt，
+  镜像仓库结构（包根下 `tools\bh\` + `apps\`，native cell 的 `apps\` 检测自动生效）；脚本内文本统一转 CRLF，Linux CI 也能安全打包。
+  Release workflow 打 tag 时自动生成部署包并附到 GitHub Release。
+  打包硬规矩（2026-11-23 实机首启验证发现，首版 v0.1.0 附件包即栽在这条）：
+  CRLF 归一化时 `.ps1` 必须写回 **UTF-8 with BOM**——`bh.cmd` 走 Windows PowerShell 5.1，无 BOM 按 GBK 读中文注释会吞换行、解析全崩（pwsh 7 下自测不出）；`apps\` 二进制绝不参与归一化。
+- **wslc（Windows，已退役 2026-11-25）**：`bh <cmd>` 曾用 WSL 3 `wslc.exe` 跑 server/webui/nginx 容器（`docker/.env.wslc` 配置、
+  `bh backup` tar 数据卷 + 恢复演练，验收手册 `docs/WSLC_BACKUP_RESTORE_TEST.md` 已随之删除）。
+  `bh wslc` / `bh docker` 现在明确报错退出；遗留的 wslc 数据卷 `bh-data`/`bh-openwebui-data`/镜像仍保留，
+  `bh-openwebui-data` 由 open-webui 容器继续使用。历史数据已迁入 native SQLite（`bh db-migrate`）。
 - **原生 Linux（Linux 唯一形态，`tools/bh/linux/native/`）**：systemd 用户实例
   `baihua-server@<user>.service`（8788）+ `baihua-webui@<user>.service`（5177），产物 `bh build` 发布到
   `$BAIHUA_HOME/bin/{server,webui}`（默认 `~/.baihua`），数据 `$BAIHUA_HOME/db/baihua.db`（SQLite 单文件）。
@@ -279,14 +276,18 @@ dotnet build services/BaiHua.slnx -c Release
   旧 PostgreSQL 数据用 `bh db-migrate` 一次性迁入 SQLite（源库只读）。
 - **compose 对应关系**（可选形态）：`docker/docker-compose.yml`（服务名 `server` / `webui` / `nginx` /
   `openvino`（profile `inference`）/ `openobserve`（profile `observability`）；数据库为数据卷内的 SQLite 文件，无 postgres 服务）。
-  Windows 容器形态走 `bh wslc`（wslc 没有 compose，由 cell 直接建网络/卷/容器）。
+  Windows 已不走容器栈（native 唯一形态），compose 仅供 Linux 自行部署参考。
 - 已退役：合并前 `family`/`ai`/`vault` 三容器、`docker-ai` profile、`host.docker.internal:8791` 跨进程访问、
-  Windows Docker Desktop 形态（`bh docker`）、Linux 的 k3s/k8s 形态与 PostgreSQL 数据库；
-  `tools/bh/linux/native` 由"备选 cell"升为 Linux 唯一形态。
+  Windows Docker Desktop 形态（`bh docker`）、Windows wslc 容器栈（`bh wslc`，2026-11-25）、
+  Linux 的 k3s/k8s 形态与 PostgreSQL 数据库；
+  `tools/bh/linux/native` 由"备选 cell"升为 Linux 唯一形态，`tools/bh/win/native` 由"开发形态"升为 Windows 唯一形态。
 - **OpenVINO 推理**与后端进程分离：Windows 用 wslc 容器 `ovms-gpu`（REST :8000，`bh ovms start|status|logs` 管理；
   `scripts/install-openvino-ovms-service.ps1` 仅作回滚到 Windows 服务的备选），Linux 用 compose `--profile inference`
   的 `openvino` 容器（:8000）或自行部署；
   后端经 `OpenVinoOms__BaseUrl` 访问（默认 `http://127.0.0.1:8000`，OpenAI 兼容路径 `/v1`）。
+- **AI 对话页（open-webui）**：Windows 统一为 wslc 容器 `bh-open-webui`（:8080，`bh open-webui install|start|stop|status|logs`；
+  镜像固定 `v0.13.3` 防自动升级破坏 webui.db，数据卷 `bh-openwebui-data` 保留 wslc 时代聊天记录）；
+  Linux 不在默认部署里，Web 的 `/open-webui` 是入口页（打开链接 + 部署步骤），需要时自行 docker run。
 
 **OpenObserve 凭据约定**（默认口令 `Complexpass#123` 已废弃，appsettings 中不再有默认值）：
 - `openobserve` 为可选观测栈（compose profile `observability`）；
