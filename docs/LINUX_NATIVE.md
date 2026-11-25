@@ -204,6 +204,8 @@ bh build && bh start
 | `database is locked` | 只应有一个 server 实例；WAL + `busy_timeout=15s` 已由启动流程设置 |
 | 知识库全部"路径不存在" | `~/.baihua/vaults` 软链指向的目录是否还在；迁移是否做了 `--rewrite-prefix` |
 | 配对二维码地址不对 | `config/server.env` 的 `Baihua__PublicBaseUrl`（`bh proxy install` 会自动写） |
+| 扫码后 WebUI「待授权设备」一直为空 / 不刷新 | `config/server.env` 的 `BAIHUA_ADMIN_ALLOWED_NETS` 必须包含家庭局域网网段：浏览器连 `/hubs/*` 走的是管理 API 访问控制，只放行 loopback 时能打开页面但收不到实时推送（日志会打印 `[AccessControl] Blocked non-local request ... /hubs/devices`）。`bh install` / `bh proxy install` 会自动写入 LAN 网段；手改后 `bh restart server` |
+| 手机推送 WebSocket 无反应 | 同上，并确认 nginx `/ws/devices` 已转发到 8788 |
 | 局域网 :80 打不开 | `nginx -t`、`/etc/nginx/sites-enabled/baihua.conf`、`/api/auth/` 是否转发到 5177 |
 | AI API Key 失效 | `db/.baihua-key` 是否随库迁移；`/api/ai/config/providers` 的 `hasApiKey` |
 

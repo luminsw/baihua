@@ -173,6 +173,24 @@ human_bytes() {
     fi
 }
 
+# 家庭局域网网段（排除 docker / k3s 网桥），用于放行 WebUI 的 /hubs/* 与管理 API
+lan_cidr() {
+    local ip_prefix
+    ip_prefix="$(ip -4 -o addr show scope global 2>/dev/null \
+        | awk '$2 !~ /^(docker|br-|cni|flannel|veth|virbr)/ {print $4; exit}')"
+    [ -n "$ip_prefix" ] || return 1
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$ip_prefix" <<'PYCODE'
+import ipaddress, sys
+print(ipaddress.ip_interface(sys.argv[1]).network)
+PYCODE
+    else
+        # 回退：家庭局域网绝大多数是 /24
+        local ip="${ip_prefix%/*}"
+        printf '%s.0/24\n' "${ip%.*}"
+    fi
+}
+
 db_size() {
     [ -f "$DB_PATH" ] || { printf '0\n'; return; }
     stat -c '%s' "$DB_PATH" 2>/dev/null || printf '0\n'
@@ -229,12 +247,20 @@ install_services() {
     if [ -f "$CONFIG_DIR/server.env" ]; then
         info "已存在 $CONFIG_DIR/server.env（不会被覆盖）"
     else
-        cat > "$CONFIG_DIR/server.env" <<'ENVEOF'
+        local admin_nets; admin_nets="$(lan_cidr 2>/dev/null || true)"
+        {
+            cat <<'ENVEOF'
 # 百花后端（baihua-server@<user>.service）环境变量
 # 每行 KEY=VALUE；改完执行 bh restart
 # 配对二维码/移动端入口：留空时按本机 IP + 8788 自动探测；走 nginx 时设为 http://<host>
 #Baihua__PublicBaseUrl=http://192.168.1.10
 ENVEOF
+            if [ -n "$admin_nets" ]; then
+                printf '\n# 家庭局域网访问管理 API / WebUI 实时推送（/hubs/*）；收紧时改成更小网段或删掉\nBAIHUA_ADMIN_ALLOWED_NETS=%s\n' "$admin_nets"
+            else
+                printf '\n# 家庭局域网访问管理 API / WebUI 实时推送（/hubs/*）的放行网段\n#BAIHUA_ADMIN_ALLOWED_NETS=192.168.1.0/24\n'
+            fi
+        } > "$CONFIG_DIR/server.env"
         chmod 0600 "$CONFIG_DIR/server.env"
     fi
 
@@ -674,6 +700,18 @@ configure_proxy() {
     mkdir -p "$CONFIG_DIR"
     touch "$env_file"
     chmod 0600 "$env_file" 2>/dev/null || true
+
+    # WebUI 浏览器的 /hubs/*（设备待授权、任务进度等实时推送）走管理 API 的访问控制：
+    # 只放行 loopback 时，局域网页面能打开但收不到推送（表现为"扫码后待授权一直是空的"）。
+    if ! grep -q '^BAIHUA_ADMIN_ALLOWED_NETS=' "$env_file"; then
+        local cidr; cidr="$(lan_cidr 2>/dev/null || true)"
+        if [ -n "$cidr" ]; then
+            printf '\n# 家庭局域网访问管理 API / WebUI 实时推送（/hubs/*）\nBAIHUA_ADMIN_ALLOWED_NETS=%s\n' "$cidr" >> "$env_file"
+            info "已写入 BAIHUA_ADMIN_ALLOWED_NETS=$cidr（WebUI 实时推送需要）"
+        else
+            warn "未探测到局域网网段，请手工在 $env_file 设置 BAIHUA_ADMIN_ALLOWED_NETS"
+        fi
+    fi
     if [ -n "$lan_ip" ]; then
         if grep -q '^Baihua__PublicBaseUrl=' "$env_file"; then
             info "保留已有 Baihua__PublicBaseUrl（$(grep '^Baihua__PublicBaseUrl=' "$env_file" | tail -n1)）"
