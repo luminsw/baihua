@@ -273,3 +273,6 @@ docker/.env.wslc
 
 # bh backup 默认产物目录（数据卷冷备份，勿入库）
 backup/
+
+# Security scan tool local config
+.security/
