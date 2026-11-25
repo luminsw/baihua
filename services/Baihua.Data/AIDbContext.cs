@@ -3,7 +3,7 @@ using Baihua.Data.Entities;
 
 namespace Baihua.Data;
 /// <summary>
-/// AI 研究域数据库上下文（PostgreSQL 单库，连接串见 <see cref="DbConnections.Baihua"/>）
+/// AI 研究域数据库上下文（共享 SQLite 单库，连接串见 <see cref="DbConnections.Baihua"/>）
 /// </summary>
 public class AIDbContext : DbContext
 {
@@ -19,12 +19,13 @@ public class AIDbContext : DbContext
     public DbSet<AiUsageMetric> AiUsageMetrics => Set<AiUsageMetric>();
     public DbSet<EmbeddingConfig> EmbeddingConfigs => Set<EmbeddingConfig>();
     public DbSet<ComfyArtworkEntity> ComfyArtworks => Set<ComfyArtworkEntity>();
+    public DbSet<CodeAgentSession> CodeAgentSessions => Set<CodeAgentSession>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
         {
-            optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.Baihua);
+            Baihua.Data.DbConnections.Configure(optionsBuilder);
         }
     }
 
@@ -48,8 +49,8 @@ public class AIDbContext : DbContext
             entity.Property(e => e.IsEnabled).HasDefaultValue(true);
             entity.Property(e => e.IsMain).HasDefaultValue(false);
             entity.Property(e => e.Tier).HasDefaultValue(0);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
         modelBuilder.Entity<AiUsageMetric>(entity =>
@@ -66,7 +67,7 @@ public class AIDbContext : DbContext
             entity.Property(e => e.ModelId).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Operation).HasMaxLength(50).IsRequired();
             entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
-            entity.Property(e => e.CalledAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CalledAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
         modelBuilder.Entity<EmbeddingConfig>(entity =>
@@ -80,8 +81,8 @@ public class AIDbContext : DbContext
             entity.Property(e => e.BaseUrl).HasMaxLength(500).IsRequired();
             entity.Property(e => e.EncryptedApiKey).HasMaxLength(2000);
             entity.Property(e => e.IsEnabled).HasDefaultValue(true);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
         modelBuilder.Entity<ComfyArtworkEntity>(entity =>
@@ -101,9 +102,26 @@ public class AIDbContext : DbContext
             entity.Property(e => e.FileType).HasMaxLength(20).HasDefaultValue("output");
             entity.Property(e => e.PromptId).HasMaxLength(64).IsRequired();
             entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
+        modelBuilder.Entity<CodeAgentSession>(entity =>
+        {
+            entity.ToTable("CodeAgentSessions");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.IsPipeline);
+
+            entity.Property(e => e.Prompt).HasMaxLength(8000).IsRequired();
+            entity.Property(e => e.Language).HasMaxLength(100);
+            entity.Property(e => e.ProviderId).HasMaxLength(50);
+            entity.Property(e => e.Model).HasMaxLength(100);
+            entity.Property(e => e.ToolMode).HasMaxLength(20).IsRequired().HasDefaultValue("All");
+            entity.Property(e => e.IsPipeline).HasDefaultValue(false);
+            entity.Property(e => e.PlanPro).HasDefaultValue(false);
+            entity.Property(e => e.FileName).HasMaxLength(300);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+        });
 
     }
 

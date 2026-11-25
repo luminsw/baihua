@@ -10,7 +10,8 @@
 | [DSH_DEV_SETUP.md](DSH_DEV_SETUP.md) | DSH 开发环境配置（新机器/新开发者的安装与配置清单） |
 | [COMPUTE_POOL_DRAW.md](COMPUTE_POOL_DRAW.md) | 算力池文生图/文生视频（ComfyUI 网关）使用 |
 | [LAN_COMPUTE_POOL.md](LAN_COMPUTE_POOL.md) | 局域网算力池整体架构 |
-| [CONFIG_STORAGE_ARCHITECTURE.md](CONFIG_STORAGE_ARCHITECTURE.md) | 配置与存储架构（单库 PostgreSQL / 密钥加密 / 数据目录） |
+| [LINUX_NATIVE.md](LINUX_NATIVE.md) | Linux 原生部署（systemd + SQLite）、PostgreSQL 迁移、备份/排障 |
+| [CONFIG_STORAGE_ARCHITECTURE.md](CONFIG_STORAGE_ARCHITECTURE.md) | 配置与存储架构（单文件 SQLite / 密钥加密 / 数据目录） |
 | [sync_protocol.md](sync_protocol.md) | 移动端与后端同步协议（manifest → 文件 → 本地写入） |
 | [mobile_vault_distribution.md](mobile_vault_distribution.md) | 移动端知识库分发/导入（多库 vaultId 隔离） |
 | [openclaw-openvino-integration.md](openclaw-openvino-integration.md) | OpenClaw 本地 AI（OVMS / llama.cpp / Ollama / LM Studio）集成 |
@@ -21,6 +22,6 @@
 
 - 项目概览与启动：根目录 `README.md`
 - CLI 与排障：`tools/bh/README.md`
-- Linux k3s 部署：`k8s/README.md`
+- Linux 原生部署：`docs/LINUX_NATIVE.md`
 - 开发约定（架构 / 命名 / 测试）：`AGENTS.md`
 - 移动端：`arkts/docs/`（鸿蒙）、`kotlin/docs/`（安卓）

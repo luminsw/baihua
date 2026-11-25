@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================
-# 百花 Docker 一键停止脚本（postgres + server + webui + nginx [+ openvino/openobserve]）
+# 百花 Docker 一键停止脚本（server + webui + nginx [+ openvino/openobserve]）
 # 用法：./stop.sh [--clean]  (--clean 同时清理镜像)
 # ============================================
 

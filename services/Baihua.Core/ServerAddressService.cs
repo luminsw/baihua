@@ -126,7 +126,7 @@ namespace Baihua.Core.Services
             }
             catch (Exception ex)
             {
-                // PostgreSQL：schema 由 EF EnsureCreated 统一创建，不再用裸 SQL 兜底
+                // Schema creation is handled centrally by DatabaseInitializer.
                 _logger.LogError(ex, "更新服务器地址配置失败");
                 throw;
             }

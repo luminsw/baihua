@@ -8,9 +8,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace Baihua.Family.Tests.TestDoubles;
 
 /// <summary>
-/// SQLite 测试库辅助。
-/// 产品已迁移 PostgreSQL（默认值 SQL 为 PG 的 now()），SQLite 原生不认识 now()，
-/// 测试统一在此注册自定义 now() 函数（返回与 datetime('now') 一致的 "yyyy-MM-dd HH:mm:ss"）。
+/// SQLite 测试库辅助。产品与测试使用同一套 SQLite 语义（默认值为 CURRENT_TIMESTAMP），
+/// 不再需要为 PostgreSQL 的 now() 注册自定义函数。
 /// </summary>
 public static class TestSqliteDb
 {
@@ -30,16 +29,18 @@ public static class TestSqliteDb
     public static DbContextOptions<FamilyDbContext> FamilyOptions(string dbPath)
         => new DbContextOptionsBuilder<FamilyDbContext>()
             .UseSqlite($"Data Source={dbPath};Foreign Keys=True;Default Timeout=10;")
+            .AddInterceptors(SqlitePragmasInterceptor.Instance)
             .Options;
 
-    /// <summary>只用于建表（EnsureCreated）的选项：不涉及 now() 默认值</summary>
+    /// <summary>只用于建表（EnsureCreated）的选项</summary>
     public static DbContextOptions<VaultDbContext> VaultOptions(string dbPath)
         => new DbContextOptionsBuilder<VaultDbContext>()
             .UseSqlite($"Data Source={dbPath};Foreign Keys=True;Default Timeout=10;")
+            .AddInterceptors(SqlitePragmasInterceptor.Instance)
             .Options;
 
     /// <summary>
-    /// 把 host 的 DbContext 注册从 PostgreSQL 替换为 SQLite（WebApplicationFactory 测试用）。
+    /// 把 host 的 DbContext 注册替换为测试用的 SQLite（WebApplicationFactory 测试用）。
     /// 覆盖顺序：WebApplicationFactory 的 ConfigureServices 在 Program 注册之后执行。
     /// 注意：EF 的 AddDbContextFactory(optionsAction) 会把 IDbContextOptionsConfiguration 注册为
     /// scoped，单例工厂从 root provider 解析 CreateDbContext 会抛 "Cannot resolve scoped service"；
@@ -74,8 +75,7 @@ public static class TestSqliteDb
 
     /// <summary>
     /// 固定库文件的纯工厂：不经 EF options 配置，可从 root provider 安全解析。
-    /// 每个工厂持有一个已注册 now() 的常开连接，供其创建的所有上下文复用
-    /// —— 否则 SQLite 下 PG 的 now() 默认值会报 "unknown function: now()"。
+    /// 每个工厂持有一个常开连接，供其创建的所有上下文复用（内存库需要保持连接）。
     /// </summary>
     private sealed class PlainSqliteFactory<T>(string dbPath) : IDbContextFactory<T> where T : DbContext
     {
@@ -85,8 +85,10 @@ public static class TestSqliteDb
         {
             var connection = new SqliteConnection($"Data Source={path};Foreign Keys=True;Default Timeout=10;");
             connection.Open();
-            RegisterNow(connection);
-            return new DbContextOptionsBuilder<T>().UseSqlite(connection).Options;
+            return new DbContextOptionsBuilder<T>()
+                .UseSqlite(connection)
+                .AddInterceptors(SqlitePragmasInterceptor.Instance)
+                .Options;
         }
 
         public T CreateDbContext()

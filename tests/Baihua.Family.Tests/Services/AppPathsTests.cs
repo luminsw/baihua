@@ -5,6 +5,7 @@ using Xunit;
 
 namespace Baihua.Family.Tests.Services;
 
+[Collection(ProcessEnvCollection.Name)]
 public class AppPathsTests
 {
     private static readonly string[] _knownEnvVars = new[] { "BAIHUA_DATA_DIR", "BAIHUA_HOME" };

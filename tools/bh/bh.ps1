@@ -7,7 +7,7 @@
     bh <command>       → wslc 容器（默认，面向最终用户：postgres/server/webui/nginx）
     bh dev <command>   → native dotnet 进程（开发/调试：VS F5、快速 publish）
   wslc 依赖 WSL3 自带的 wslc.exe 作为运行时，但这不等于 WSL 开发环境。
-  Linux 只有 k3s 形态（tools/bh/linux/k8s/bh.sh）。
+  Linux 只有原生 systemd + SQLite 形态（tools/bh/linux/native/bh.sh）。
 
   用法:
     bh <command> [args]          wslc 形态（默认）
@@ -57,7 +57,7 @@ function Show-Help {
     Write-Host '           依赖: .NET SDK 10、本机 PostgreSQL（Windows 服务）；不依赖容器'
     Write-Host ''
     Write-Host '两种形态互斥（同占 8788/5177）：切换前先 bh stop（wslc）或 bh dev stop（native）'
-    Write-Host '环境边界：Windows = wslc / dev(native)；Linux = k3s；不支持在 WSL 里开发'
+    Write-Host '环境边界：Windows = wslc / dev(native)；Linux = 原生 systemd + SQLite；不支持在 WSL 里开发'
     Write-Host ''
     Write-Host '完整说明见 tools/bh/README.md'
 }

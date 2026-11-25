@@ -1,0 +1,35 @@
+[Unit]
+Description=Baihua WebUI (Baihua 界面，5177，user %I)
+Documentation=https://github.com/luminsw/baihua
+After=network-online.target baihua-server@%i.service
+Wants=network-online.target
+# 后端不在就没有界面：后端停止/失败时一起停
+Requires=baihua-server@%i.service
+
+[Service]
+Type=simple
+User=%I
+# 发布目录作为 WorkingDirectory：appsettings.json / wwwroot 都按 ContentRoot 解析
+WorkingDirectory=%h/.baihua/bin/webui
+Environment=BAIHUA_HOME=%h/.baihua
+# WebUI 的 webui.settings.json 落在数据目录，而不是发布目录
+Environment=WEBUI_CONFIG_DIR=%h/.baihua
+Environment=ASPNETCORE_URLS=http://0.0.0.0:5177
+Environment=BaihuaServer__BaseUrl=http://127.0.0.1:8788/
+Environment=DOTNET_NOLOGO=1
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+EnvironmentFile=-%h/.baihua/config/webui.env
+ExecStartPre=-/usr/bin/mkdir -p %h/.baihua/config %h/.baihua/logs
+ExecStart=%h/.baihua/bin/webui/bh-webui
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=baihua-webui
+
+[Install]
+WantedBy=multi-user.target

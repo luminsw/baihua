@@ -68,8 +68,8 @@ public class DeviceBackupService
             Directory.CreateDirectory(deviceDir);
 
             var timestamp = DateTime.UtcNow;
-            // 毫秒精度避免同一秒内多次上传互相覆盖
-            var fileName = $"huaji_backup_{timestamp:yyyyMMdd_HHmmss_fff}.zip";
+            // 100ns 级（ticks）时间戳：毫秒在快速连续上传时会撞名，后者直接覆盖前者 → 备份丢一份
+            var fileName = $"huaji_backup_{timestamp:yyyyMMdd_HHmmss_fffffff}.zip";
             var fullPath = Path.Combine(deviceDir, fileName);
 
             await File.WriteAllBytesAsync(fullPath, bytes, cancellationToken);

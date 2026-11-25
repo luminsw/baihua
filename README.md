@@ -28,13 +28,15 @@ services/
   Baihua.Contracts/ Baihua.Core/ Baihua.Data/   共享契约 / 服务层 / EF Core
 libs/                BaihuaSdk（移动端 SDK）、MobileContract（契约）
 clients/Huapu/       花圃（MAUI 技术验证客户端）
-docker/ k8s/         Windows 容器配方 / Linux k3s 清单
+docker/             容器配方（可选；Linux 主推原生 systemd）
 tools/bh/            百花 CLI（见 tools/bh/README.md）
 scripts/ tests/      脚本 / 测试
 ```
 
-数据库：单一 PostgreSQL 库（默认 `baihua`，`PG_DATABASE` 可覆盖），各模块各自 `DbContext`，
-建表由 `Baihua.Data.DatabaseInitializer` 统一完成。存储细节见 [docs/CONFIG_STORAGE_ARCHITECTURE.md](docs/CONFIG_STORAGE_ARCHITECTURE.md)。
+数据库：单一 SQLite 文件（默认 `$BAIHUA_HOME/db/baihua.db`，`BAIHUA_DATABASE_PATH` 可覆盖），
+各模块各自 `DbContext`，建表由 `Baihua.Data.DatabaseInitializer` 统一完成。
+从旧 PostgreSQL 迁移用 `bh db-migrate`；存储细节见 [docs/LINUX_NATIVE.md](docs/LINUX_NATIVE.md) 与
+[docs/CONFIG_STORAGE_ARCHITECTURE.md](docs/CONFIG_STORAGE_ARCHITECTURE.md)。
 
 ## 启动（Windows）
 
@@ -43,12 +45,21 @@ scripts/ tests/      脚本 / 测试
 ```powershell
 bh doctor                   # 体检：wslc/镜像/卷/容器/端口冲突/OVMS/AI 对话页
 bh build; bh start          # 默认：wslc 容器（WSL3 自带 wslc.exe，无需 Docker Desktop / .NET SDK / 本机 PG）
-bh dev build; bh dev start  # 开发：dotnet 进程 + 本机 PostgreSQL（需 .NET SDK 10），改代码秒级
+bh dev build; bh dev start  # 开发：dotnet 进程（需 .NET SDK 10），改代码秒级
 bh autostart on             # 登录自启（用户级 Startup，不需要管理员）
 bh dashboard                # 打开 WebUI（自动登录）
 ```
 
-Linux：`bh` = k3s 形态，见 `k8s/README.md`。命令与排障见 `tools/bh/README.md`。
+Linux：原生 systemd + SQLite（无 k8s / PostgreSQL）：
+
+```bash
+bh install          # 装 CLI + systemd 单元
+bh build            # 发布到 ~/.baihua/bin
+bh start            # 启动 server → webui
+bh status / bh doctor / bh logs server 100
+```
+
+详见 [docs/LINUX_NATIVE.md](docs/LINUX_NATIVE.md)；命令与排障见 `tools/bh/README.md`。
 
 ## 端口
 
@@ -58,7 +69,7 @@ Linux：`bh` = k3s 形态，见 `k8s/README.md`。命令与排障见 `tools/bh/R
 | 5177 | Web 界面（Blazor Server） |
 | 8000 | OVMS 本地推理（OpenAI 兼容 `/v1`） |
 | 8080 | Open WebUI（AI 对话页后端，独立应用） |
-| 80 | 局域网统一入口（wslc 的 nginx / k8s 的 Traefik） |
+| 80 | 局域网统一入口（Windows wslc 的 nginx 容器 / Linux 系统 nginx） |
 
 ## 访问授权
 
@@ -71,7 +82,7 @@ Linux：`bh` = k3s 形态，见 `k8s/README.md`。命令与排障见 `tools/bh/R
 Intel OVMS 承载本地推理，OpenAI 兼容（`/v1/chat/completions`、`/v1/embeddings`）。
 
 - Windows：`bh ovms status|start|stop|restart|logs`（容器 `ovms-gpu`，见 `%BAIHUA_HOME%\ovms\README.md`）
-- Linux：`bh openvino <on|off|status>`（k8s Deployment `bh-openvino`）
+- Linux：用 compose `--profile inference` 的 `openvino` 容器（或自行部署 OVMS，:8000）
 
 ## 算力池绘图
 
@@ -93,5 +104,5 @@ Intel OVMS 承载本地推理，OpenAI 兼容（`/v1/chat/completions`、`/v1/em
 
 - [docs/README.md](docs/README.md) — 文档索引
 - `tools/bh/README.md` — CLI 与排障
-- `k8s/README.md` — Linux k3s 部署
+- [docs/LINUX_NATIVE.md](docs/LINUX_NATIVE.md) — Linux 原生部署（systemd + SQLite）与 PostgreSQL 迁移
 - [AGENTS.md](AGENTS.md) — 开发约定（架构 / 命名 / 测试）

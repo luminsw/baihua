@@ -85,6 +85,14 @@ server {
         proxy_buffering off;
     }
 
+    # WebUI 登录用 CLI token（bh dashboard / 浏览器 ?cli-token=）：
+    # /api/auth/* 由 WebUI(5177) 签发，必须放在 /api/ 之前（nginx 取最长前缀，
+    # 缺少这条会被转发到后端 8788 → 404，dashboard 拿不到 token）
+    location /api/auth/ {
+        proxy_pass http://127.0.0.1:5177/api/auth/;
+        include /etc/nginx/server-proxy-headers.conf;
+    }
+
     # 管理侧 API + /api/ai/chat（AI 对话 SSE 必须关缓冲）
     location /api/ {
         proxy_pass http://127.0.0.1:8788/api/;

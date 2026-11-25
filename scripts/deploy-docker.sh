@@ -2,7 +2,8 @@
 # 百花 Docker 化部署脚本（远端 Linux 服务器，全容器栈）
 #
 # 合并前这里会分别构建 family / ai / vault / webui 四个镜像并逐个做健康检查；
-# 合并为单进程 + 单库后，栈里只剩：postgres + server + webui + nginx（+ 可选 openvino/openobserve）。
+# 合并为单进程 + 单文件库后，栈里只剩：server + webui + nginx（+ 可选 openvino/openobserve）。
+# 数据库是 SQLite 单文件（/opt/baihua/data/db/baihua.db），没有独立数据库容器。
 #
 # 用法:
 #   ./scripts/deploy-docker.sh <user@host> [--skip-build]
@@ -10,9 +11,10 @@
 # 前置：
 #   1) 目标机已装 docker + docker compose plugin
 #   2) 本机可免密 ssh 到目标机
-#   3) docker/.env 中已填 PG_PASSWORD（compose 必填），该文件会随源码一并同步
+#   3) docker/.env 可选（端口 / 知识库路径 / OpenObserve 口令等），随源码一并同步
 #
-# 说明：k8s 部署请改用 `bh-k3s deploy`（tools/bh/linux/k8s/bh.sh）——那是当前主推形态。
+# 说明：Linux 主推形态是原生 systemd + SQLite：`bh deploy`（tools/bh/bh.sh）。
+#      compose 形态仅作为可选方案保留。
 set -euo pipefail
 
 SERVER="${1:-}"
@@ -30,8 +32,7 @@ COMPOSE_DIR="/opt/baihua/compose"
 echo "=== 百花 Docker 部署 → ${SERVER} ==="
 
 if [[ ! -f "${ROOT}/docker/.env" ]]; then
-    echo "[!] 缺少 docker/.env（compose 需要 PG_PASSWORD）。请先: cp docker/.env.example docker/.env 并填写。"
-    exit 1
+    echo "[!] 未找到 docker/.env，将使用默认配置（需要时 cp docker/.env.example docker/.env 后修改）。"
 fi
 
 # 1) 远端目录
@@ -75,7 +76,7 @@ echo ""
 echo "=== 部署完成 ==="
 echo "  后端（唯一）: http://${HOST_ONLY}:8788"
 echo "  WebUI:        http://${HOST_ONLY}:5177"
-echo "  数据库:       ${HOST_ONLY}:5432（库 baihua）"
+echo "  数据库:       /opt/baihua/data/db/baihua.db（SQLite 单文件）"
 echo ""
-echo "提示：首次部署若需迁移旧的 family/vault/ai 三库，请在目标机执行"
-echo "      scripts/migrate-to-single-db.ps1（或在目标机手动 pg_dump/psql 导入 baihua 库）。"
+echo "提示：从旧 PostgreSQL 迁移数据请在目标机执行："
+echo "      PG_PASSWORD=... bh db-migrate   （或 tools/db-migrate 直接指定 --target）"

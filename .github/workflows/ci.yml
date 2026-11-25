@@ -71,22 +71,7 @@ jobs:
     name: Playwright E2E
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # 合并后为单一 PostgreSQL 数据库（DbConnections 默认值与下方凭据对齐：
-    # PG_USER=baihua / PG_PASSWORD=Baihua2026Pg! / PG_DATABASE=baihua），无需额外环境变量
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_USER: baihua
-          POSTGRES_PASSWORD: Baihua2026Pg!
-          POSTGRES_DB: baihua
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U baihua"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    # 数据库是 SQLite 单文件（BAIHUA_HOME/db/baihua.db），无需数据库服务
     steps:
       - uses: actions/checkout@v4
 

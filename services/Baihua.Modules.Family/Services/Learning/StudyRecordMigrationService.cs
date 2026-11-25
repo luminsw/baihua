@@ -77,7 +77,7 @@ public class StudyRecordMigrationService : BackgroundService
                     continue;
                 }
 
-                // 修复：TryParseExact 产出 Kind=Unspecified，写入 PostgreSQL timestamptz 会抛
+                // Normalize parsed values before persistence so timestamps have consistent UTC semantics.
                 // "only UTC is supported"；统一转成 UTC 当日零点，查询与写入均用 UTC。
                 var dateUtc = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
 

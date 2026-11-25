@@ -5,26 +5,31 @@
 ## 目录结构
 
 ```
-$BAIHUA_HOME/                    # 百花数据根目录
-├── db/                          # 数据（密钥、WebUI 配置等本地文件）
+$BAIHUA_HOME/                    # 百花数据根目录（默认 ~/.baihua）
+├── bin/                         # bh build 发布的 server/ webui 产物
+├── db/                          # 数据库与本地文件
+│   ├── baihua.db                # 唯一数据库（SQLite 单文件，WAL）
 │   ├── .baihua-key              # AES-256 加密密钥文件（自动生成）
-│   ├── webui.settings.json      # WebUI 后端 URL 配置
-│   └── user_preferences.json    # 用户偏好（字体、主题）
-├── vaults/                      # 知识库文件
+│   ├── prompt-templates.json    # 提示词模板
+│   └── vault-index-snapshots.json
+├── config/                      # systemd EnvironmentFile（server.env / webui.env）
+├── vaults/                      # 知识库文件（允许软链到已有目录）
 │   └── local/{行业}/{知识库名}/
-└── logs/                        # 运行日志
+├── webui.settings.json          # WebUI 后端 URL 配置
+└── logs/                        # 运行日志（journald 之外的第二份）
 ```
 
-**数据库**：**整个百花只有一个 PostgreSQL 库** —— 默认库名 `baihua`（`PG_DATABASE` 可覆盖），
-一个 `public` schema；各模块保留自己的 `DbContext`（`FamilyDbContext` / `VaultDbContext` / `AIDbContext`），
-表结构由 `Baihua.Data.DatabaseInitializer` 按上下文统一建表（不再 `EnsureCreated`）。
-连接串统一由 `Baihua.Data.DbConnections.Baihua` 生成（`Baihua.Data.DbConnections.Build(name)` 仅供工具/脚本按库名拼串），
-读取 `PG_HOST` / `PG_USER` / `PG_PASSWORD`（+ `PG_DATABASE`）。
-k8s 部署由 configmap + Secret 注入；本地开发默认 `localhost` 上的 `baihua` 库。
+**数据库**：**整个百花只有一个 SQLite 文件** —— 默认 `$BAIHUA_HOME/db/baihua.db`（`BAIHUA_DATABASE_PATH` 可覆盖）；
+各模块保留自己的 `DbContext`（`FamilyDbContext` / `VaultDbContext` / `AIDbContext`），
+表结构由 `Baihua.Data.DatabaseInitializer` 按上下文统一建表/补表。
+连接串统一由 `Baihua.Data.DbConnections.Baihua` 生成（`DbConnections.Build(path)` 供工具/脚本指向别的文件），
+启动时确保 `journal_mode=WAL`；`busy_timeout=15000` 与 `synchronous=NORMAL` 由连接拦截器
+（`SqlitePragmasInterceptor`）在每个连接上设置；外键由连接串 `ForeignKeys=true` 打开。
 
-（历史：曾用三个 SQLite 文件 → 2026-08 迁移为 `family` / `vault` / `ai` 三库（一服务一库）→ commit `aa053f1`
-合并为单一 `baihua` 库。旧三库合并脚本：`scripts/migrate-to-single-db.ps1`（只读源库、不改旧库，
-旧库保留在磁盘上可回滚；已跑通 39 张表）。）
+（历史：曾用三个 SQLite 文件 → 2026-08 迁移为 `family` / `vault` / `ai` 三个 PostgreSQL 库 → commit `aa053f1`
+合并为单一 `baihua` 库 → 2026-11 放弃 PostgreSQL 与 k8s，改为 SQLite 单文件（Linux 用原生 systemd 部署）。
+旧 PostgreSQL 数据用 `bh db-migrate` 一次性迁移：只读源库、逐表摘要校验、支持 `--rewrite-prefix` 重写路径。
+详见 [LINUX_NATIVE.md](LINUX_NATIVE.md)。)
 
 **跨盘映射**：通过 OS 级 symlink/junction 实现，代码无感。
 ```powershell
@@ -45,14 +50,14 @@ cmd /c mklink /J "C:\Users\lumin\.baihua" "D:\BaihuaData"
 > 合并前需要为 ai(8791) / vault(8790) / family(8788) 三个进程分别设置监听地址；现在只有 `Baihua.Server`(8788)
 > 与 `Baihua.Web`(5177) 两个进程。
 
-### 数据库（PostgreSQL，单库）
+### 数据库（SQLite，单文件）
 
 | 变量 | 用途 | 默认值 |
 |------|------|--------|
-| `PG_DATABASE` | 数据库名（**整个百花只有一个库**） | `baihua` |
-| `PG_HOST` | PostgreSQL 主机 | `localhost` |
-| `PG_USER` | 用户名 | `baihua` |
-| `PG_PASSWORD` | 口令 | `Baihua2026Pg!`（生产请覆盖） |
+| `BAIHUA_DATABASE_PATH` | 数据库文件路径（**整个百花只有一个库**） | `$BAIHUA_HOME/db/baihua.db` |
+
+> PostgreSQL 相关变量（`PG_HOST` / `PG_USER` / `PG_PASSWORD` / `PG_DATABASE`）已不再被服务端读取；
+> 仅迁移工具 `tools/db-migrate` 用它们连接旧库。
 
 ### AI 请求参数
 
@@ -123,17 +128,17 @@ API Key 明文
 
 | 存储位置 | 数据内容 | 读写方 |
 |----------|----------|--------|
-| PostgreSQL `baihua` 库 · `FamilyDbContext` 实体 | 家庭任务、成就、设备授权、Onboarding 状态、记账、病历本等 | `Baihua.Modules.Family` |
-| PostgreSQL `baihua` 库 · `VaultDbContext` 实体 | 知识库配置、同步状态、搜索索引 | `Baihua.Modules.Vault` |
-| PostgreSQL `baihua` 库 · `AIDbContext` 实体 | AI Provider 配置（加密 API Key）、Embedding 配置、模型列表 | `Baihua.Modules.Ai` |
+| SQLite `baihua.db` · `FamilyDbContext` 实体 | 家庭任务、成就、设备授权、Onboarding 状态、记账、病历本等 | `Baihua.Modules.Family` |
+| SQLite `baihua.db` · `VaultDbContext` 实体 | 知识库配置、同步状态、搜索索引 | `Baihua.Modules.Vault` |
+| SQLite `baihua.db` · `AIDbContext` 实体 | AI Provider 配置（加密 API Key）、Embedding 配置、模型列表 | `Baihua.Modules.Ai` |
 | `.baihua-key` | AES-256 加密密钥 | AiConfigService |
 | `webui.settings.json` | WebUI 后端 URL 配置（唯一后端键 `BaihuaServer:BaseUrl`） | WebUI |
 | `user_preferences.json` | 用户偏好（字体、主题） | WebUI |
 | `appsettings.json` | 服务默认配置（端口、超时等） | `Baihua.Server` / `Baihua.Web` |
 | 环境变量 | 部署级覆盖配置 | 两个进程 |
 
-> 三个模块**共用同一个库、同一个 `public` schema**，按"实体归属哪个 DbContext"划分边界（不再是物理分库）。
-> 合并前的 `family` / `vault` / `ai` 三库可保留在磁盘上作回滚，但新写入只进 `baihua` 库。
+> 三个模块**共用同一个 SQLite 文件**，按"实体归属哪个 DbContext"划分边界（不再是物理分库）。
+> 旧 PostgreSQL 库可保留在磁盘上作回滚，但新写入只进 `baihua.db`。
 
 ## 服务端口
 
@@ -147,23 +152,21 @@ API Key 明文
 
 ## 备份与恢复
 
-### 数据库（PostgreSQL 单库）
-
-整个百花只有一个库（默认 `baihua`），备份/恢复只需处理一个库：
+### 数据库（SQLite 单文件）
 
 ```bash
-# 备份（自定义格式，含 schema + 数据）
-pg_dump -h "$PG_HOST" -U "$PG_USER" -d "${PG_DATABASE:-baihua}" -F c \
-        -f "baihua_$(date +%Y%m%d_%H%M%S).dump"
+# Linux 原生形态：冷备份整个数据目录（db / config / vaults / logs；排除可重建的 bin）
+bh stop
+bh backup ~/backup        # 产物 ~/backup/baihua-backup-<时间>.tar.gz
+bh start
 
-# 恢复（覆盖目标库现有对象）
-pg_restore -h "$PG_HOST" -U "$PG_USER" -d "${PG_DATABASE:-baihua}" --clean --if-exists <dump 文件>
+# 只要数据库文件时（服务已停止，WAL 已合并）
+cp ~/.baihua/db/baihua.db ~/baihua-$(date +%Y%m%d).db
+# 注意：.baihua-key 必须一起备份，否则库里的加密 API Key 解不开
 ```
 
-- 从旧的**三库**部署升级：先执行 `pwsh scripts/migrate-to-single-db.ps1`
-  （**只读**源库 `family` / `vault` / `ai`，新建并导入 `baihua`；旧库原样保留在磁盘上可回滚。
-  目标库已存在时脚本默认拒绝执行，`-Force` 才先删后建）。
-- 合并前需要为 `family` / `vault` / `ai` 各做一次备份与恢复；现在只需一个库。
+- 运行中不要 `cp` 数据库文件（WAL 可能不一致）；在线备份用 `sqlite3 baihua.db ".backup out.db"`。
+- 从旧 PostgreSQL 升级：`bh db-migrate`（只读源库，详见 [LINUX_NATIVE.md](LINUX_NATIVE.md)）。
 
 ### 备份格式（应用级 zip 备份）
 

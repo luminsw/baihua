@@ -1,0 +1,33 @@
+[Unit]
+Description=Baihua Server (Baihua 后端，8788，user %I)
+Documentation=https://github.com/luminsw/baihua
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%I
+# 发布目录作为 WorkingDirectory：appsettings.json / wwwroot 都按 ContentRoot 解析
+WorkingDirectory=%h/.baihua/bin/server
+Environment=BAIHUA_HOME=%h/.baihua
+Environment=BAIHUA_DATABASE_PATH=%h/.baihua/db/baihua.db
+Environment=ASPNETCORE_URLS=http://0.0.0.0:8788
+Environment=DOTNET_NOLOGO=1
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+# 用户可在此覆盖任意配置（例如 Baihua__PublicBaseUrl）；放在 Environment 之后，文件优先
+EnvironmentFile=-%h/.baihua/config/server.env
+ExecStartPre=-/usr/bin/mkdir -p %h/.baihua/db %h/.baihua/logs %h/.baihua/config
+ExecStart=%h/.baihua/bin/server/bh-server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+# 数据库含家庭隐私数据：进程创建的文件默认仅本人可读写
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=baihua-server
+
+[Install]
+WantedBy=multi-user.target

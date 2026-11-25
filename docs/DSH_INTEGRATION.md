@@ -223,20 +223,18 @@ DSH 0.2.x 重做了「插件」页与设置表单，0.1.x 的客户端 API **整
 > 由 `Baihua.Server` 内置 `/mcp` 端点提供（工具名 `mcp__baihua__*`），绘图统一经 `drawGatewayUrl` 网关。
 > 插件行由各包 `dsh.bundle` 自动插入（`dsh plugin add` 后挂入 profile 组合层），
 > 用户级补丁里**不要重复 `insert` 同名行**，只按 id 覆盖 `config` 即可。
-> k8s ClusterIP 可用 `kubectl get svc -n baihua bh-server -o jsonpath='{.spec.clusterIP}'` 查询
-> （合并前需分别查 `bh-family` / `bh-ai` / `bh-vault`，现在只有一个 `bh-server`）；
-> 服务重建后可能变化，需同步更新。
+> 本机原生部署直接用 `http://127.0.0.1:8788`（离线/本机场景）；跨机填对方的 `http://<ip>:8788` 或 nginx `http://<ip>`。
 
-## 4. 百花 Web（k8s）对接
+## 4. 百花 Web 对接
 
-ConfigMap `baihua-config`（`baihua` 命名空间）注入：
+Linux 原生部署写 `~/.baihua/config/server.env`（后端）与 `~/.baihua/config/webui.env`（WebUI）：
 
-```yaml
-DshApi__BaseUrl: http://192.168.3.13:3081   # 宿主机 lanListen 地址
-DshApi__Token: <与插件相同的 token>
+```ini
+DshApi__BaseUrl=http://192.168.3.13:3081   # 宿主机 lanListen 地址
+DshApi__Token=<与插件相同的 token>
 ```
 
-改后 `kubectl rollout restart deploy bh-webui -n baihua`。`/dsh` 页显示"DSH 在线"即通。
+改后 `bh restart`（或只重启 webui：`bh restart webui`）。`/dsh` 页显示"DSH 在线"即通。
 
 ## 5. 桥接接口一览（/dsh-bridge/*，除 /status 外均需 token）
 
@@ -252,7 +250,7 @@ DshApi__Token: <与插件相同的 token>
 ## 6. 运维界面
 
 百花 → DSH 智能体（`/dsh`）→ 右上「🧰 运维」：服务状态表 + 启停/重启/编译并重启/编译/更新/部署/日志（打开后每 10s 自动刷新）。
-底层是 `bh status --json` / `bh start|stop|restart <svc>`（Linux/k3s 下 `bh` 与 `bh-k3s` 同义；实现见 `tools/bh/linux/k8s/bh.sh`）。
+底层是 `bh status --json` / `bh start|stop|restart <svc>`（Linux 实现见 `tools/bh/linux/native/bh.sh`）。
 
 **DSH 设置页卡片**：DSH Web UI → 设置 → 插件 →「百花服务状态」卡片，只读展示百花各服务状态并自动刷新（`baihua-dsh-plugin` 的浏览器侧客户端模块，数据源 `/dsh-bridge/bh/status-ui`）。
 
@@ -332,12 +330,12 @@ pkill -f "dsh web"; npx @deepseek-ai/dsh web
 |---|---|
 | `~/.dsh/cordis.patch.yml` | DSH 侧插件 config（桥接 token / drawToken），用户目录、非 git 仓库 |
 | `services/Baihua.Web/appsettings.json`（本地工作区） | `DshApi__Token` 本地值；该文件带 **skip-worktree** 标记，本地改动不进入 git（git 内版本恒为 `""`） |
-| `out/native/webui/appsettings.json` | 构建产物注入，`out/` 已被 .gitignore 忽略 |
-| `k8s/02-secret.yaml` → `baihua-secret` → `BAIHUA_AI_EXTERNAL_TOKEN` | **跨机**算力池/绘图/AI shim 鉴权；设置后跨机需 token，本机(10.0.0.0/8)仍免鉴权；留空=局域网信任。经 `bh-server` 的 `envFrom` 自动注入 |
+| `~/.baihua/config/webui.env` | Linux 原生部署的 WebUI 环境变量（systemd EnvironmentFile） |
+| `~/.baihua/config/server.env` → `BAIHUA_AI_EXTERNAL_TOKEN` | **跨机**算力池/绘图/AI shim 鉴权；设置后跨机需 token，本机(10.0.0.0/8)仍免鉴权；留空=局域网信任。由 systemd `EnvironmentFile` 注入 |
 
 > 本机 DSH 零配置：三个插件 apply/启动时调用 `/api/dsh/config` 自举拓扑（本机免鉴权），`/api/dsh/pool`
 > 返回 peer 能力目录，`baihua_draw(target=节点名)` 即可跨机按名调用。若要启用「跨机需 token」，在
-> `k8s/02-secret.yaml` 填 `BAIHUA_AI_EXTERNAL_TOKEN` 并 `bh deploy`；DSH 侧会自动从 `/api/dsh/config`
+> `~/.baihua/config/server.env` 填 `BAIHUA_AI_EXTERNAL_TOKEN` 并 `bh restart`；DSH 侧会自动从 `/api/dsh/config`
 > 拿到该 token（`drawToken`/`poolToken`）使用，本机仍免鉴权。
 
 防泄密机制：

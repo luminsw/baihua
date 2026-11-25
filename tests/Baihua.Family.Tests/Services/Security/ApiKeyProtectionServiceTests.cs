@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Baihua.Family.Tests.Services.Security;
 
+[Collection(ProcessEnvCollection.Name)]
 public class ApiKeyProtectionServiceTests
 {
     [Fact]

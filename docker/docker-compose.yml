@@ -1,27 +1,9 @@
 services:
   # ==============================================================
-  # 单一数据库：整个百花只有一个 PostgreSQL 库（默认 baihua）
-  # 合并前 family / vault / ai 三库 → 迁移脚本 scripts/migrate-to-single-db.ps1
+  # 数据库：单文件 SQLite，位于数据卷 /opt/baihua/data/db/baihua.db
+  # 没有独立数据库容器/进程：备份就是打包 /opt/baihua/data。
+  # （多容器 compose 只作为可选形态；Linux 主推 tools/bh 原生 systemd 部署）
   # ==============================================================
-  postgres:
-    image: postgres:18-alpine
-    container_name: bh-postgres
-    restart: unless-stopped
-    # 仅绑定宿主机回环：业务容器走 host 网络经 127.0.0.1 访问，不暴露到局域网
-    ports:
-      - "127.0.0.1:5432:5432"
-    volumes:
-      - /opt/baihua/data/postgres:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: ${PG_DATABASE:-baihua}
-      POSTGRES_USER: ${PG_USER:-baihua}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:?请设置 PG_PASSWORD 环境变量}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-baihua} -d ${PG_DATABASE:-baihua}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
 
   # ==============================================================
   # 百花服务器（唯一后端：家庭 / AI / 知识库 三模块合一，8788）
@@ -37,7 +19,7 @@ services:
     image: bh-server:latest
     container_name: bh-server
     restart: unless-stopped
-    # host 网络：mDNS 局域网服务发现需要；同时可直连 127.0.0.1 上的 postgres / OVMS
+    # host 网络：mDNS 局域网服务发现需要；同时可直连 127.0.0.1 上的 OVMS
     network_mode: host
     user: "${USER_UID:-0}:${USER_GID:-0}"
     volumes:
@@ -52,11 +34,8 @@ services:
       - BAIHUA_HOME=/app/data
       - BAIHUA_SKIP_MUTEX=true
       - ASPNETCORE_URLS=http://0.0.0.0:8788
-      # 单一数据库（host 网络 → 127.0.0.1）
-      - PG_HOST=${PG_HOST:-127.0.0.1}
-      - PG_USER=${PG_USER:-baihua}
-      - PG_PASSWORD=${PG_PASSWORD:?请设置 PG_PASSWORD 环境变量}
-      - PG_DATABASE=${PG_DATABASE:-baihua}
+      # 单文件数据库（默认 $BAIHUA_HOME/db/baihua.db = /app/data/db/baihua.db）
+      # - BAIHUA_DATABASE_PATH=/app/data/db/baihua.db
       # 知识库根路径（容器内挂载点）
       - BAIHUA_VAULT_ROOT=/vaults
       - BAIHUA_ENCRYPTION_KEY=${BAIHUA_ENCRYPTION_KEY:-}
@@ -71,9 +50,6 @@ services:
       - OpenObserve__WebUrl=http://127.0.0.1:5082/
       - OpenObserve__Enabled=${OPENOBSERVE_ENABLED:-true}
       - OpenObserve__Password=${OPENOBSERVE_PASSWORD:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8788/health"]
       interval: 30s
@@ -152,7 +128,7 @@ services:
 
   # ==============================================================
   # 本地推理（Intel OVMS，官方 openvino/model_server 镜像）
-  # 全容器化部署用 --profile inference 启用；k8s 部署见 k8s/22a-openvino.yaml
+  # 全容器化部署用 --profile inference 启用
   # ==============================================================
   openvino:
     profiles: ["inference"]
@@ -182,7 +158,7 @@ services:
     volumes:
       - /opt/baihua/models:/models
       - ./openvino-config.json:/models/config.json:ro
-      # Intel GPU（真机 /dev/dri；WSL2 见 k8s/22a-openvino.yaml 的 /dev/dxg + /usr/lib/wsl 做法）
+      # Intel GPU（真机 /dev/dri）
       - /dev/dri:/dev/dri
 
   openobserve:

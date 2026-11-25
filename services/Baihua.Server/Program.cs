@@ -127,35 +127,29 @@ builder.Services.AddSignalR()
 // 表结构由 Baihua.Data.DatabaseInitializer 统一初始化（一个库，多上下文）
 builder.Services.AddDbContext<FamilyDbContext>(options =>
 {
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    DbConnections.Configure(options);
 }, ServiceLifetime.Scoped, ServiceLifetime.Singleton);
 builder.Services.AddDbContextFactory<FamilyDbContext>(options =>
 {
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    DbConnections.Configure(options);
 }, ServiceLifetime.Singleton);
 
 builder.Services.AddDbContext<VaultDbContext>(options =>
 {
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    DbConnections.Configure(options);
 }, ServiceLifetime.Scoped, ServiceLifetime.Singleton);
 builder.Services.AddDbContextFactory<VaultDbContext>(options =>
 {
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    DbConnections.Configure(options);
 }, ServiceLifetime.Singleton);
 
 builder.Services.AddDbContext<AIDbContext>(options =>
 {
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    DbConnections.Configure(options);
 }, ServiceLifetime.Scoped, ServiceLifetime.Singleton);
 builder.Services.AddDbContextFactory<AIDbContext>(options =>
 {
-    options.UseNpgsql(DbConnections.Baihua)
-           .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+    DbConnections.Configure(options);
 }, ServiceLifetime.Singleton);
 
 // ---------------- 共享服务（Core，各模块均可注入） ----------------
@@ -220,7 +214,7 @@ builder.Services.AddMcpServer()
 // ---------------- 限流 / 健康检查 / CORS ----------------
 // 配对码防暴力破解。
 // 分区键优先用 X-Device-Id（客户端签名的同时会带上该头），没有才退回来源 IP —— 原因：
-// 经反向代理/端口转发部署时（本机 k3s 走 Traefik，WSL 前面还有 netsh portproxy），
+// 经反向代理/端口转发部署时（Linux 系统 nginx、Windows 前面还有 netsh portproxy），
 // RemoteIpAddress 可能是代理/节点地址而非真实客户端 IP，若按 IP 分区，家里所有手机
 // 会共用一个 5 次/小时的桶：每台设备每次同步结束都会调 /mg/register-device，
 // 多设备家庭很容易在第 6 次被 429。按设备分区后，限流真正落在"每个设备"上。
@@ -608,8 +602,7 @@ foreach (var module in modules)
 }
 
 // ---------------- 数据库与模块初始化 ----------------
-// 带重试：k8s/compose 下后端与 PostgreSQL 是并行启动的（没有启动顺序保证），
-// 数据库晚就绪几秒就永久留下"没建表"的半残状态，因此启动期必须重试而不是一次性尝试。
+// SQLite 文件初始化期间可能因磁盘或文件锁暂时失败，启动期重试并显式记录错误。
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
 // 启动最早处自检：进程完整性级别 + 临时目录写探针。
@@ -618,24 +611,40 @@ Baihua.Core.Security.WindowsIntegrityGuard.LogSelfCheck(
     logger, app.Services.GetRequiredService<IHostEnvironment>().ContentRootPath);
 
 {
-    const int maxAttempts = 20;
+    // SQLite 是本地文件：启动期失败通常只有"文件被占用/权限/磁盘满"几类，重试几次足够。
+    // 全部失败时**直接退出**（systemd 会记为 failed），而不是带着没有表的库对外服务。
+    const int maxAttempts = 5;
+    var initialized = false;
     for (var attempt = 1; attempt <= maxAttempts; attempt++)
     {
         try
         {
             using var scope = app.Services.CreateScope();
             var report = await DatabaseInitializer.InitializeAsync(scope.ServiceProvider, logger);
-            logger.LogInformation("数据库 {Database} 初始化（第 {Attempt} 次尝试）：{Results}",
-                DbConnections.DatabaseName, attempt, string.Join("；", report.Messages));
+            logger.LogInformation("数据库 {Database}（{Path}）初始化（第 {Attempt} 次尝试）：{Results}",
+                DbConnections.DatabaseName, DbConnections.DatabasePath, attempt, string.Join("；", report.Messages));
 
-            // 三个上下文全军覆没 = 数据库还没就绪（连接被拒），重试；部分成功则记警告继续（避免死循环）
-            if (report.AllFailed && attempt < maxAttempts)
+            if (report.AllFailed)
             {
-                var retryDelay = TimeSpan.FromSeconds(Math.Min(2 * attempt, 5));
-                logger.LogWarning("数据库 {Database} 尚未就绪（第 {Attempt}/{Max} 次），{Delay}s 后重试",
-                    DbConnections.DatabaseName, attempt, maxAttempts, retryDelay.TotalSeconds);
-                await Task.Delay(retryDelay);
-                continue;
+                if (attempt < maxAttempts)
+                {
+                    var retryDelay = TimeSpan.FromSeconds(attempt);
+                    logger.LogWarning("数据库 {Database} 初始化全部失败（第 {Attempt}/{Max} 次），{Delay}s 后重试：{Messages}",
+                        DbConnections.DatabaseName, attempt, maxAttempts, retryDelay.TotalSeconds,
+                        string.Join("；", report.Messages));
+                    await Task.Delay(retryDelay);
+                    continue;
+                }
+
+                throw new InvalidOperationException(
+                    $"数据库 {DbConnections.DatabasePath} 初始化失败：{string.Join("；", report.Messages)}");
+            }
+
+            initialized = true;
+            if (!report.AllSucceeded)
+            {
+                logger.LogWarning("数据库 {Database} 部分表结构未就绪（服务继续启动）：{Messages}",
+                    DbConnections.DatabaseName, string.Join("；", report.Messages));
             }
 
             // API Key 历史数据迁移（幂等）
@@ -652,15 +661,16 @@ Baihua.Core.Security.WindowsIntegrityGuard.LogSelfCheck(
         }
         catch (Exception ex) when (attempt < maxAttempts)
         {
-            var delay = TimeSpan.FromSeconds(Math.Min(2 * attempt, 5));
+            var delay = TimeSpan.FromSeconds(attempt);
             logger.LogWarning("数据库初始化异常（第 {Attempt}/{Max} 次）：{Message}；{Delay}s 后重试",
                 attempt, maxAttempts, ex.Message, delay.TotalSeconds);
             await Task.Delay(delay);
         }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "数据库初始化失败（已重试 {Max} 次）", maxAttempts);
-        }
+    }
+
+    if (!initialized)
+    {
+        throw new InvalidOperationException($"数据库 {DbConnections.DatabasePath} 未能初始化，进程退出。");
     }
 }
 
@@ -695,7 +705,7 @@ logger.LogInformation("Start time: {StartTime}", startupMonitor.StartTime.ToStri
 logger.LogInformation("PID: {ProcessId}", Environment.ProcessId);
 logger.LogInformation("Content Root: {ContentRoot}", app.Services.GetRequiredService<IHostEnvironment>().ContentRootPath);
 logger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);
-logger.LogInformation("Database: {Database}", DbConnections.DatabaseName);
+logger.LogInformation("Database: {Database} ({Path})", DbConnections.DatabaseName, DbConnections.DatabasePath);
 logger.LogInformation("Health: /health    Swagger: /swagger    MCP: /mcp");
 logger.LogInformation("===========================================");
 

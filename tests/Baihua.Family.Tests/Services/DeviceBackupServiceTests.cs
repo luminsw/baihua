@@ -11,6 +11,7 @@ namespace Baihua.Family.Tests.Services;
 /// 上传（Base64 解码 / 大小限制）/ 列表 / 下载路径解析 / 删除 / 滚动保留。
 /// 使用临时 BAIHUA_HOME 隔离，不触碰真实数据目录。
 /// </summary>
+[Collection(ProcessEnvCollection.Name)]
 public class DeviceBackupServiceTests : IDisposable
 {
     private readonly string _tempHome;

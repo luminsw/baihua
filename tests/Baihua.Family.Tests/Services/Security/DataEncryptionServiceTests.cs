@@ -10,6 +10,7 @@ namespace Baihua.Family.Tests.Services.Security;
 /// <summary>
 /// DataEncryptionService 单元测试 — 覆盖 GCM 加密/解密、CBC 向后兼容、篡改检测
 /// </summary>
+[Collection(ProcessEnvCollection.Name)]
 public class DataEncryptionServiceTests
 {
     private readonly DataEncryptionService _service;

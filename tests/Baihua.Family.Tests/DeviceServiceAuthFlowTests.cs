@@ -25,7 +25,6 @@ public class DeviceServiceAuthFlowTests : IDisposable
     public DeviceServiceAuthFlowTests()
     {
         // SQLite 内存库（真实约束：DeviceId UNIQUE），每个测试独立连接；
-        // 产品已用 PG now() 默认值，SQLite 需注册 now() 函数（见 TestSqliteDb）
         _sqlite = TestSqliteDb.OpenInMemory();
         var options = new DbContextOptionsBuilder<FamilyDbContext>()
             .UseSqlite(_sqlite)

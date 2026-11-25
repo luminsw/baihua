@@ -28,9 +28,9 @@ var jsonOptions = new JsonSerializerOptions
 // ── 最小 DI：与 Server 相同的 DbContext 注册 + DatabaseInitializer 建表 ──
 var services = new ServiceCollection();
 services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
-services.AddDbContext<FamilyDbContext>(o => o.UseNpgsql(DbConnections.Baihua));
-services.AddDbContext<VaultDbContext>(o => o.UseNpgsql(DbConnections.Baihua));
-services.AddDbContext<AIDbContext>(o => o.UseNpgsql(DbConnections.Baihua));
+services.AddDbContext<FamilyDbContext>(o => DbConnections.Configure(o));
+services.AddDbContext<VaultDbContext>(o => DbConnections.Configure(o));
+services.AddDbContext<AIDbContext>(o => DbConnections.Configure(o));
 
 using var provider = services.BuildServiceProvider();
 var logger = provider.GetRequiredService<ILogger<Program>>();

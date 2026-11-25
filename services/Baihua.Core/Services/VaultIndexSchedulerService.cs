@@ -96,6 +96,19 @@ namespace Baihua.Core.Services
                     {
                         _logger.LogInformation("首次为知识库 {VaultName} 建立索引（无快照，整库重建）", vault.Name);
                     }
+                    else if (previous.Count > 0)
+                    {
+                        // 快照存在但 FTS 表是空的：数据库迁移/恢复/换库后最常见（旧 PostgreSQL 的索引
+                        // 不会随库迁移，快照却还在）——此时必须整库重建，否则搜索永远返回空。
+                        var stats = await indexer.GetIndexStatsAsync(vault.Id, stoppingToken);
+                        if (stats.Count == 0)
+                        {
+                            _logger.LogWarning(
+                                "知识库 {VaultName} 的 FTS 索引为空但快照非空（数据库迁移/恢复后常见），本次整库重建",
+                                vault.Name);
+                            previous = null;
+                        }
+                    }
 
                     var result = await indexer.IndexVaultChangesAsync(vault.Id, vault.Path, previous, stoppingToken);
 

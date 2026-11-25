@@ -250,7 +250,7 @@ public class QuizBankService
 
     /// <summary>
     /// 删除题库（不可撤销）：连同其知识条目、题目与答题记录一并清理。
-    /// <para>显式逐级删除而不依赖数据库级级联：InMemory（测试）与 PostgreSQL 行为一致，
+    /// <para>显式逐级删除而不依赖数据库级级联：InMemory（测试）与 SQLite 行为一致，
     /// 且能返回精确的删除计数供 UI 核对。</para>
     /// <para>行业在本库删除后已无任何题库时一并删除，避免生成页下拉出现孤立行业。</para>
     /// </summary>

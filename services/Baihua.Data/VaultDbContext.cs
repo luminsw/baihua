@@ -20,7 +20,7 @@ public class VaultDbContext : DbContext
     {
         if (!optionsBuilder.IsConfigured)
         {
-            optionsBuilder.UseNpgsql(Baihua.Data.DbConnections.Baihua);
+            Baihua.Data.DbConnections.Configure(optionsBuilder);
         }
     }
 
@@ -37,7 +37,7 @@ public class VaultDbContext : DbContext
             // 未删除的知识库：路径与名称都必须唯一。
             // 没有这两个约束时，并发的「扫描磁盘登记知识库」（启动编排 + /vault-settings/vaults/sync）
             // 会各自读到空快照后重复插入，界面上同一条知识库出现两张卡片。
-            // 部分唯一索引（PostgreSQL）只约束未删除行，回收站允许多条同名/同路径。
+            // 部分唯一索引只约束未删除行，回收站允许多条同名/同路径。
             entity.HasIndex(e => e.Path)
                 .IsUnique()
                 .HasDatabaseName("UX_Vaults_Path_Active")
@@ -59,8 +59,8 @@ public class VaultDbContext : DbContext
             entity.Property(e => e.PushedAt).IsRequired(false);
             entity.Property(e => e.IsDeleted).HasDefaultValue(false);
             entity.Property(e => e.DeletedAt).IsRequired(false);
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
 
         modelBuilder.Entity<NoteEmbedding>(entity =>
@@ -71,8 +71,8 @@ public class VaultDbContext : DbContext
 
             entity.Property(e => e.VaultId).HasMaxLength(50).IsRequired();
             entity.Property(e => e.NotePath).HasMaxLength(500).IsRequired();
-            entity.Property(e => e.CreatedAt).HasDefaultValueSql("now()");
-            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("now()");
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
         });
     }
 

@@ -1,17 +1,19 @@
-# bh — 百花 CLI（Windows）
+# bh — 百花 CLI
 
 > **环境边界（2026-11-22 约定）**：只支持两种开发环境——**纯 Windows** 与 **纯 Linux**，**不考虑 WSL 开发环境**。
-> Windows 有两种互斥运行方式：`bh`（wslc，默认）与 `bh dev`（native）；Linux 只有 k3s（`linux/k8s/bh.sh`）。
+> Windows 有两种互斥运行方式：`bh`（wslc，默认）与 `bh dev`（native）；
+> Linux 只有**原生 systemd + SQLite**一种（`linux/native/bh.sh`，`bh` 即入口，见 `docs/LINUX_NATIVE.md`）。
 > wslc 依赖 WSL3 自带的 `wslc.exe` 作为运行时，这属于 Windows 侧实现，**不等于在 WSL 里开发**。
 
 两种互斥形态，都占 8788/5177，同一时间只跑一种：
 
 | 命令 | 形态 | 跑在哪 | 依赖 | 用途 |
 |---|---|---|---|---|
-| `bh <cmd>` | **wslc（默认）** | WSL3 容器：postgres / server / webui / nginx | WSL ≥ 2.9.3（自带 `wslc.exe`） | 日常使用 |
-| `bh dev <cmd>` | native（开发） | Windows dotnet 进程 + 本机 PostgreSQL | .NET SDK 10、PostgreSQL | 写代码：VS 调试、秒级 publish |
+| `bh <cmd>` | **wslc（默认）** | WSL3 容器：server / webui / nginx | WSL ≥ 2.9.3（自带 `wslc.exe`） | 日常使用 |
+| `bh dev <cmd>` | native（开发） | Windows dotnet 进程 | .NET SDK 10 | 写代码：VS 调试、秒级 publish |
 
-`bh wslc <cmd>` 等价于 `bh <cmd>`（脚本兼容写法）。Linux 上 `bh` 只有 k3s 形态，见 `k8s/README.md`。
+`bh wslc <cmd>` 等价于 `bh <cmd>`（脚本兼容写法）。Linux 上 `bh` 只有原生 systemd + SQLite 形态（见本文末尾「Linux」）。
+（Windows 脚本里的 postgres 容器与 `PG_*` 是遗留项：服务端已改用 SQLite，数据库文件落在 `bh-data` 卷，清理它们不影响数据。）
 
 ## 首次运行
 
@@ -29,7 +31,7 @@ bh autostart on                   # 登录自启（不需要管理员）
 ```powershell
 # dev（开发形态）
 winget install --id Microsoft.DotNet.SDK.10
-# 本机 PostgreSQL（服务 postgresql-x64-18）+ 库 baihua + setx PG_PASSWORD "<口令>"
+# 数据库为 SQLite（%BAIHUA_HOME%\db\baihua.db），不再需要本机 PostgreSQL
 bh stop                           # 先停 wslc（端口互斥）
 bh dev build; bh dev start
 bh dev doctor
@@ -85,8 +87,8 @@ bh dev doctor
 
 ## 数据与环境
 
-- wslc：命名卷 `bh-pgdata` / `bh-data` / `bh-logs`；配置 `docker/.env.wslc`（首次自动生成，含随机 `PG_PASSWORD`）
-- dev：本机 PostgreSQL + `%BAIHUA_HOME%`（默认 `~/.baihua`）；读 `PG_HOST` / `PG_USER` / `PG_PASSWORD` / `PG_DATABASE`
+- wslc：命名卷 `bh-data`（SQLite + 配置）/ `bh-logs` / `bh-openwebui-data`；配置 `docker/.env.wslc`（首次自动生成）
+- dev：`%BAIHUA_HOME%`（默认 `~/.baihua`），数据库 `db\baihua.db`
 - 两种形态**数据不互通**，切换不会搬数据
 
 ## 注意
@@ -107,13 +109,22 @@ pwsh -File scripts/verify-bh-wslc.ps1       # wslc：默认路由 / doctor / aut
 
 只读脚本，改了 `tools/bh/*.ps1` 后跑一遍（`dotnet test` 覆盖不到 PowerShell 入口）。
 
-## Linux
+## Linux（原生 systemd + SQLite）
 
 ```bash
-bash tools/bh/bh.sh install    # 普通用户 → ~/.local/bin；root → /usr/local/bin
-bh doctor                      # k3s / service / namespace / Deployment / PVC / 端口 / AI pod
-sudo bh backup                 # 数据卷冷备份（缩容→tar hostPath→pg_controldata 演练→扩容回去）
-sudo bh restore <备份目录> [-y] # 从备份恢复（旧目录挪 *.pre-restore-<时间>；覆盖需确认）
+bash tools/bh/bh.sh install --no-enable   # 装 CLI + systemd 单元（不 enable 便于先迁移数据）
+bh build                                  # 发布到 ~/.baihua/bin（会先停对应服务）
+bh start                                  # 启动 baihua-server@<user> / baihua-webui@<user>
+bh status [--json]                        # 状态 + HTTP 健康 + 数据库大小（--json 供 DSH 插件）
+bh logs server 100 [-f]                   # journald 日志
+bh doctor                                 # systemd/dotnet/单元/端口/磁盘/数据库/FTS5/nginx
+bh backup ~/backup                        # 冷备份数据目录（要求服务已停止）
+bh restore <archive> [-y]                 # 恢复（旧目录改名保留；恢复后需 bh build）
+bh proxy install                          # 系统 nginx :80（/api/auth/ 转发到 5177）
+bh db-migrate --rewrite-prefix /app/data/vaults=$HOME/.baihua/vaults   # PostgreSQL → SQLite
 ```
 
-部署细节见 `k8s/README.md`；`bh` 在 Linux 上就是 k3s 形态（`tools/bh/linux/k8s/bh.sh`）。
+- 数据目录 `~/.baihua`（`BAIHUA_HOME` 覆盖）；`bh install` 会把单元里的 `%h/.baihua` 渲染成实际路径；
+- 端口由 appsettings 的 Kestrel 端点决定，改端口在 `config/server.env` 写
+  `Kestrel__Endpoints__Http__Url=http://0.0.0.0:<port>`（`ASPNETCORE_URLS` 对已配置端点的应用不生效）；
+- 更完整的迁移/备份/排障：`docs/LINUX_NATIVE.md`。

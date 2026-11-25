@@ -23,7 +23,7 @@ namespace Baihua.Server.Filters
             var requestPath = context.HttpContext.Request.Path;
             var requestMethod = context.HttpContext.Request.Method;
 
-            // 记录结构化日志（展开内部异常，便于诊断 DbUpdateException → PostgresException）
+            // 记录结构化日志（展开内部异常，便于诊断数据库更新失败）
             var inner = exception.InnerException;
             _logger.LogError(
                 exception,

@@ -5,14 +5,14 @@ namespace Baihua.Web.Services;
 /// <summary>
 /// /open-webui 入口页：AI 对话由独立部署的 Open WebUI 提供。
 ///
-/// 本仓库的 Linux k8s 部署不再内置 Open WebUI（镜像在 ghcr.io，压缩后约 1.5 GB，
+/// 本仓库的 Linux 部署不再内置 Open WebUI（镜像在 ghcr.io，压缩后约 1.5 GB，
 /// 国内直连拉取很慢；最终用户也不该为此配代理），因此页面从 302 跳转改为入口页：
 /// 给出「打开 AI 对话页」链接 + 自行部署步骤 + 接入百花模型网关的地址。
 /// 用户按步骤部署完，点本页按钮即可打开，不需要改代码。
 ///
 /// 地址解析（全部是「浏览器侧视角」，与容器网络无关）：
 ///   OpenWebUi:BaseUrl（环境变量 OpenWebUi__BaseUrl）显式配置优先；
-///   未配置时取 Baihua:PublicBaseUrl 的主机名（k8s ConfigMap 已注入），再加 :8080；
+///   未配置时取 Baihua:PublicBaseUrl 的主机名（部署配置已注入），再加 :8080；
 ///   再退到当前请求的 Host。写死 localhost 会让局域网其它设备打不开（localhost 指向设备自己）。
 /// 模型网关地址：
 ///   Baihua:PublicBaseUrl（Traefik :80 统一入口）→ /mg/ai/v1；未配置则用当前请求的 scheme+host。
@@ -154,9 +154,8 @@ docker pull ghcr.nju.edu.cn/open-webui/open-webui:main</pre>
   ghcr.io/open-webui/open-webui:main</pre>
         <ul>
           <li>装在本服务器上最省事：本页按钮默认就指向 <code>__BASE_URL__</code>，装完即可点开。</li>
-          <li>本机是 k3s（没有 docker）时，也可以直接 apply 仓库里的可选清单：
-            <code>sudo k3s kubectl apply -f k8s/optional/open-webui.yaml</code>
-            （同样发布到宿主 :8080；首次部署会预填百花网关和 OVMS 直连；已有数据卷可能需手动添加 OVMS）。</li>
+          <li>百花 Linux 原生部署本身不依赖 docker；如果这台机器没有 docker，
+            参考官方文档用其它方式部署 Open WebUI 即可，百花只要求它能访问到 8788。</li>
           <li>装在另一台机器也行，见第 5 步。</li>
         </ul>
       </li>
@@ -175,9 +174,10 @@ API Key:             随便填一个非空值（如 baihua）</pre>
             容器里的 <code>localhost</code> 指向容器自己，不能填 localhost。</li>
         </ul>
       </li>
-      <li><strong>（可选，k8s 内）添加 OVMS 直连</strong>：如需给本机视觉模型发送图片，
-        在「连接 → OpenAI API」中添加一个新的连接，地址填 <code>http://bh-openvino:8000/v3</code>，API Key 留空。
-        该地址只在 k8s 集群内可达；模型 ID 带 <code>ovms.</code> 前缀。当前模型支持文本和图片，不提供音频、视频或 embedding。</li>
+      <li><strong>（可选）添加 OVMS 直连</strong>：如需给本机视觉模型发送图片，
+        在「连接 → OpenAI API」中添加一个新的连接，地址填 <code>http://&lt;本机IP&gt;:8000/v3</code>，API Key 留空。
+        需要本机已部署 OVMS（compose `--profile inference` 的 openvino 容器等）；模型 ID 带 <code>ovms.</code> 前缀。
+        当前模型支持文本和图片，不提供音频、视频或 embedding。</li>
       <li><strong>装在别的机器 / 换端口时</strong>：把百花 WebUI 的配置
         <code>OpenWebUi:BaseUrl</code>（环境变量 <code>OpenWebUi__BaseUrl</code>）改成
         <code>http://&lt;那台机器的IP&gt;:&lt;端口&gt;</code>，重启 webui 后本页按钮立即指向它。
@@ -334,7 +334,7 @@ docker volume rm open-webui         # 连数据一起删（不可恢复，先导
         if (!string.IsNullOrWhiteSpace(configuredBaseUrl))
             return configuredBaseUrl.Trim().TrimEnd('/');
 
-        // Baihua:PublicBaseUrl 是「局域网入口」的规范地址（k8s ConfigMap 注入，如 http://192.168.3.9）。
+        // Baihua:PublicBaseUrl 是「局域网入口」的规范地址（Linux 由 bh proxy install 写入，如 http://192.168.3.9）。
         // 用它推导出的 :8080 对局域网内任何设备都可用；退化到请求 Host 时至少服务器本机能用。
         var host = ExtractHost(publicBaseUrl);
         if (host is null)

@@ -7,11 +7,8 @@ using Microsoft.Extensions.Logging;
 namespace Baihua.Data;
 
 /// <summary>
-/// 单一数据库的表结构初始化。
-///
-/// 合并前每个服务各占一个库、各自 <c>EnsureCreated()</c>；合并后三个 DbContext 共用一个库，
-/// 而 <c>EnsureCreated()</c> 在"库已存在"时直接返回，会导致后两个上下文的表永远建不出来。
-/// 这里改为：先确保库存在，再对每个上下文按自己的模型判断并建表。
+/// Shared SQLite database schema initialization. Each module context is initialized
+/// independently because all contexts share one database file.
 /// </summary>
 public static class DatabaseInitializer
 {
@@ -34,7 +31,7 @@ public static class DatabaseInitializer
     }
 
     /// <summary>
-    /// 初始化百花数据库：建库（不存在时）+ 为每个上下文建表（该上下文的表一张都不存在时）。
+    /// Create the database directory/file as needed and initialize each context's tables.
     /// 单个上下文失败不会抛出（按上下文隔离记录），由调用方根据 <see cref="InitResult.Failed"/> 决定重试。
     /// </summary>
     public static async Task<InitResult> InitializeAsync(
@@ -42,6 +39,8 @@ public static class DatabaseInitializer
         ILogger logger,
         CancellationToken cancellationToken = default)
     {
+        Directory.CreateDirectory(Path.GetDirectoryName(DbConnections.DatabasePath)!);
+
         var results = new List<string>();
         var succeeded = 0;
         var failed = 0;
@@ -65,8 +64,12 @@ public static class DatabaseInitializer
                 if (!await creator.ExistsAsync(cancellationToken))
                 {
                     await creator.CreateAsync(cancellationToken);
-                    logger.LogInformation("已创建数据库 {Database}", DbConnections.DatabaseName);
+                    logger.LogInformation("已创建 SQLite 数据库 {Database}", DbConnections.DatabasePath);
                 }
+
+                // 单文件数据库没有服务端配置：并发语义（WAL / 忙等待 / 外键）必须在连接上显式设置。
+                // WAL 持久化在库文件里，重复执行无副作用；其它 PRAGMA 是连接级的，每次启动都要设。
+                await ConfigureSqliteAsync(context, logger, cancellationToken);
 
                 var tables = context.Model.GetEntityTypes()
                     .Select(e => e.GetTableName())
@@ -93,8 +96,7 @@ public static class DatabaseInitializer
 
                 if (existing.Count > 0)
                 {
-                    // 半成品表结构（典型成因：首次启动时数据库短暂不可用，建表中断）：
-                    // 用 EF 生成的建表脚本把"缺的那几张"补齐，而不是放弃 —— 否则后端会一直缺表报 42P01。
+                    // 半成品表结构：用 EF 生成的建表脚本补齐缺表，而不是放弃初始化。
                     var missing = tables.Except(existing, StringComparer.OrdinalIgnoreCase).ToList();
                     var filled = await CreateMissingTablesAsync(context, missing, logger, cancellationToken);
                     results.Add(filled == missing.Count
@@ -118,6 +120,37 @@ public static class DatabaseInitializer
         }
 
         return new InitResult(succeeded, failed, results);
+    }
+
+    /// <summary>
+    /// SQLite 单写者模型的运行参数：
+    /// <list type="bullet">
+    /// <item>journal_mode=WAL：读不阻塞写（持久化在库文件里，重复执行无副作用）；</item>
+    /// <item>busy_timeout=15s：写冲突时等锁，而不是立刻抛 "database is locked"；</item>
+    /// <item>synchronous=NORMAL：WAL 下的推荐档位，掉电最多丢最后一个事务、不会损坏库；</item>
+    /// <item>foreign_keys=ON：SQLite 默认关闭外键，EF 的级联删除/约束依赖它。</item>
+    /// </list>
+    /// </summary>
+    private static async Task ConfigureSqliteAsync(
+        DbContext context,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (!context.Database.IsSqlite()) return;
+
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", cancellationToken);
+            await context.Database.ExecuteSqlRawAsync("PRAGMA busy_timeout=15000;", cancellationToken);
+            await context.Database.ExecuteSqlRawAsync("PRAGMA synchronous=NORMAL;", cancellationToken);
+            await context.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys=ON;", cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // 例如数据库放在不支持 WAL 的网络盘：降级为默认 journal，不阻断启动
+            logger.LogWarning(ex, "SQLite 运行参数设置失败（{Database}），继续使用默认值",
+                DbConnections.DatabasePath);
+        }
     }
 
     /// <summary>
@@ -192,21 +225,8 @@ public static class DatabaseInitializer
             await using var command = connection.CreateCommand();
             var names = string.Join(",", tables.Select((_, i) => $"@p{i}"));
 
-            // 提供程序无关：PostgreSQL / SQLite / 其它关系库各自的"表清单"系统表
-            command.CommandText = context.Database.ProviderName switch
-            {
-                var p when p != null && p.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) =>
-                    $"SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND lower(table_name) IN ({names})",
-                var p when p != null && p.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) =>
-                    $"SELECT name FROM sqlite_master WHERE type = 'table' AND lower(name) IN ({names})",
-                _ => ""
-            };
-
-            if (string.IsNullOrEmpty(command.CommandText))
-            {
-                // 未知提供程序：不做存在性判断（交由 CreateTables 兜底，失败按上下文隔离记录）
-                return new List<string>();
-            }
+            command.CommandText =
+                $"SELECT name FROM sqlite_master WHERE type = 'table' AND lower(name) IN ({names})";
 
             for (var i = 0; i < tables.Count; i++)
             {

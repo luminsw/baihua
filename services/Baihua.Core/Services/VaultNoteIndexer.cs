@@ -26,7 +26,7 @@ namespace Baihua.Core.Services
     }
 
     /// <summary>
-    /// 知识库笔记 FTS5 全文索引服务
+    /// SQLite FTS5 index for vault notes.
     /// </summary>
     public class VaultNoteIndexer
     {
@@ -40,55 +40,19 @@ namespace Baihua.Core.Services
         }
 
         /// <summary>
-        /// 确保全文索引表已创建。
-        /// PostgreSQL：普通表 + vault_id 索引 +（可用时）pg_trgm GIN 索引，配合 ILIKE 子串检索；
-        /// SQLite（单测/兼容）：保留 FTS5 虚拟表。
+        /// Ensure the FTS5 virtual table exists.
         /// </summary>
         public async Task EnsureFtsTableAsync(CancellationToken ct = default)
         {
             try
             {
                 using var dbContext = await _dbContextFactory.CreateDbContextAsync(ct);
-                var isNpgsql = IsNpgsql(dbContext.Database);
-
-                if (isNpgsql)
-                {
-                    // PostgreSQL 建表 + 常规索引（中文无空格，FTS5/tsvector 不适用，改用 ILIKE 子串检索）
-                    await dbContext.Database.ExecuteSqlRawAsync(@"
-                        CREATE TABLE IF NOT EXISTS VaultNoteFts (
-                            title TEXT NOT NULL,
-                            content TEXT NOT NULL,
-                            vault_id TEXT NOT NULL,
-                            file_path TEXT NOT NULL
-                        );
-                    ", ct);
-                    await dbContext.Database.ExecuteSqlRawAsync(
-                        "CREATE INDEX IF NOT EXISTS IX_VaultNoteFts_vault_id ON VaultNoteFts (vault_id);", ct);
-                    await dbContext.Database.ExecuteSqlRawAsync(
-                        "CREATE INDEX IF NOT EXISTS IX_VaultNoteFts_vault_file ON VaultNoteFts (vault_id, file_path);", ct);
-
-                    // pg_trgm GIN 索引加速 ILIKE 子串检索；扩展不可用（权限/未安装）时回退顺序扫描，不影响功能
-                    try
-                    {
-                        await dbContext.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS pg_trgm;", ct);
-                        await dbContext.Database.ExecuteSqlRawAsync(
-                            "CREATE INDEX IF NOT EXISTS IX_VaultNoteFts_content_trgm ON VaultNoteFts USING gin (content gin_trgm_ops);", ct);
-                    }
-                    catch (Exception pgEx)
-                    {
-                        _logger.LogWarning(pgEx, "pg_trgm 扩展不可用，知识库全文检索回退为顺序扫描");
-                    }
-                }
-                else
-                {
-                    // SQLite（单测/兼容路径）：FTS5 虚拟表
-                    await dbContext.Database.ExecuteSqlRawAsync(@"
-                        CREATE VIRTUAL TABLE IF NOT EXISTS VaultNoteFts USING fts5(
-                            title, content, vault_id UNINDEXED, file_path UNINDEXED,
-                            tokenize='unicode61 remove_diacritics 2'
-                        );
-                    ", ct);
-                }
+                await dbContext.Database.ExecuteSqlRawAsync(@"
+                    CREATE VIRTUAL TABLE IF NOT EXISTS VaultNoteFts USING fts5(
+                        title, content, vault_id UNINDEXED, file_path UNINDEXED,
+                        tokenize='unicode61 remove_diacritics 2'
+                    );
+                ", ct);
             }
             catch (Exception ex)
             {
@@ -96,9 +60,6 @@ namespace Baihua.Core.Services
                 throw;
             }
         }
-
-        private static bool IsNpgsql(Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade db)
-            => db.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
 
         /// <summary>
         /// 重建指定知识库的全文索引（删除 + 逐条插入在同一个事务内，任一步失败整体回滚，
@@ -217,7 +178,7 @@ namespace Baihua.Core.Services
         }
 
         /// <summary>
-        /// 使用全文索引搜索知识库（PostgreSQL: ILIKE 子串 + pg_trgm；SQLite: FTS5）
+        /// Search the SQLite FTS5 index using substring matching.
         /// </summary>
         public async Task<List<SearchResult>> SearchAsync(string vaultId, string query, CancellationToken ct = default)
         {
@@ -249,18 +210,15 @@ namespace Baihua.Core.Services
                     }
                 }
 
-                // 子串检索：Postgres 用 ILIKE（大小写不敏感，且命中 pg_trgm GIN 索引），SQLite 用 LIKE。
-                // 参数化查询 + 转义 % _ \ 通配符，防止 SQL 注入与误匹配。中文无空格，FTS5/tsvector 分词不适用，
-                // 故采用子串匹配（对中文与英文均可命中）。
-                var likeOp = IsNpgsql(dbContext.Database) ? "ILIKE" : "LIKE";
+                // Parameterized substring matching works for Chinese and English note content.
                 var pattern = $"%{EscapeLike(query)}%";
 
                 using var command = connection.CreateCommand();
                 command.CommandText = $@"
                     SELECT title, file_path, content
                     FROM VaultNoteFts
-                    WHERE vault_id = @vaultId AND (title {likeOp} @pattern ESCAPE '\' OR content {likeOp} @pattern ESCAPE '\')
-                    ORDER BY (title {likeOp} @pattern ESCAPE '\') DESC, file_path
+                    WHERE vault_id = @vaultId AND (title LIKE @pattern ESCAPE '\' OR content LIKE @pattern ESCAPE '\')
+                    ORDER BY (title LIKE @pattern ESCAPE '\') DESC, file_path
                     LIMIT 50
                 ";
 
@@ -455,7 +413,7 @@ namespace Baihua.Core.Services
             return preview;
         }
 
-        /// <summary>转义 LIKE/ILIKE 通配符（% _ \），避免用户输入被当作通配符</summary>
+        /// <summary>转义 LIKE 通配符（% _ \），避免用户输入被当作通配符</summary>
         private static string EscapeLike(string s)
         {
             if (string.IsNullOrEmpty(s)) return s ?? "";
