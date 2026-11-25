@@ -91,6 +91,48 @@ public class DeviceServiceAuthFlowTests : IDisposable
     }
 
     [Fact]
+    public void UnpairDevice_removes_record_and_sync_logs_idempotent()
+    {
+        // 客户端删除服务器 → 自助解绑：配对记录与同步日志一并清除
+        var service = CreateService();
+        var request = service.SubmitLanDiscoveryRequest("解绑设备", deviceId: "android-unpair");
+        service.AuthorizeDevice(request.RequestId);
+        service.RecordSyncActivity("android-unpair", "解绑设备", "vault-1", 3, "manual");
+
+        Assert.True(service.UnpairDevice("android-unpair"));
+
+        using (var ctx = _factory.Object.CreateDbContext())
+        {
+            Assert.Empty(ctx.AuthorizedDevices.Where(d => d.DeviceId == "android-unpair").ToList());
+            Assert.Empty(ctx.DeviceSyncLogs.Where(l => l.DeviceId == "android-unpair").ToList());
+        }
+
+        // 幂等：重复解绑不报错
+        Assert.True(service.UnpairDevice("android-unpair"));
+    }
+
+    [Fact]
+    public void UnpairDevice_then_reregister_auto_authorizes_as_new_device()
+    {
+        // 删除服务器 → 解绑 → 重新扫码：自动授权模式下直接授权（不留下 Revoked 记录）
+        var service = CreateService();
+        service.AutoAuthorizeEnabled = true;
+        var request = service.SubmitLanDiscoveryRequest("删了又扫", deviceId: "android-rescan");
+        service.AuthorizeDevice(request.RequestId);
+
+        Assert.True(service.UnpairDevice("android-rescan"));
+
+        var (ok, token, err) = service.AutoAuthorizeDevice("删了又扫", deviceId: "android-rescan");
+        Assert.True(ok);
+        Assert.NotNull(token);
+
+        using var ctx = _factory.Object.CreateDbContext();
+        var devices = ctx.AuthorizedDevices.Where(d => d.DeviceId == "android-rescan").ToList();
+        Assert.Single(devices);
+        Assert.Equal("Authorized", devices[0].Status);
+    }
+
+    [Fact]
     public void RejectRequest_removes_pending_and_reauthorization_allowed()
     {
         var service = CreateService();

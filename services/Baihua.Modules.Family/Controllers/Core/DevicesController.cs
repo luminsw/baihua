@@ -111,7 +111,10 @@ namespace Baihua.Modules.Family.Controllers
             return Ok(new { success = true, message = _loc["Devices_RequestRejected"] });
         }
 
-        [HttpPost("revoke")]
+        /// <summary>
+        /// WebUI 管理端撤销设备授权：保留 Revoked 记录，设备重注册需人工批准。
+        /// </summary>
+        [HttpPost("/api/devices/revoke")]
         public IActionResult RevokeDevice([FromBody] RevokeDeviceRequest request)
         {
             if (string.IsNullOrWhiteSpace(request?.DeviceId))
@@ -122,6 +125,26 @@ namespace Baihua.Modules.Family.Controllers
                 return BadRequest(new { error = _loc["Devices_DeviceNotFound"] });
 
             _logger.LogInformation("设备授权已撤销，设备ID: {DeviceId}", request.DeviceId);
+            return Ok(new { success = true, message = _loc["Devices_DeviceRevoked"] });
+        }
+
+        /// <summary>
+        /// 移动端删除服务器时的自助解绑（HMAC 签名）：彻底移除配对记录，
+        /// 重新扫码注册等同新设备（自动授权模式下扫码即授权）。
+        /// 修复：此前与 WebUI 管理撤销共用 RevokeDevice 留下 Revoked 记录，
+        /// 被"已撤销设备重注册一律人工审批"拦截 → 删除服务器后重新扫码一直"等待授权"。
+        /// </summary>
+        [HttpPost("/mg/devices/revoke")]
+        public IActionResult UnpairDevice([FromBody] RevokeDeviceRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request?.DeviceId))
+                return BadRequest(new { error = _loc["Devices_DeviceIdRequired"] });
+
+            var success = _deviceService.UnpairDevice(request.DeviceId);
+            if (!success)
+                return BadRequest(new { error = _loc["Devices_DeviceNotFound"] });
+
+            _logger.LogInformation("设备已解绑（客户端删除服务器），设备ID: {DeviceId}", request.DeviceId);
             return Ok(new { success = true, message = _loc["Devices_DeviceRevoked"] });
         }
 

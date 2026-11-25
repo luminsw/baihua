@@ -411,20 +411,51 @@ namespace Baihua.Core;
             using var dbContext = _dbContextFactory.CreateDbContext();
             var device = dbContext.AuthorizedDevices
                 .FirstOrDefault(d => d.DeviceId == deviceId);
-                
+
             if (device != null)
             {
                 device.Status = "Revoked";
                 dbContext.SaveChanges();
-                
-                _logger.LogInformation("设备授权已撤销: {DeviceName}, DeviceId: {DeviceId}", 
+
+                _logger.LogInformation("设备授权已撤销: {DeviceName}, DeviceId: {DeviceId}",
                     device.DeviceName, deviceId);
-                
+
                 _ = NotifyDeviceStatusChangedAsync("revoked", device.DeviceName, null, deviceId: device.DeviceId);
-                
+
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// 移动端自助解绑（客户端删除服务器时调用，/mg/devices/revoke）：
+        /// 彻底移除设备配对记录与同步日志。与 <see cref="RevokeDevice"/>（管理端撤销，
+        /// 保留 Revoked 记录、重注册需人工批准）不同，解绑后设备重新扫码注册等同新设备
+        /// （自动授权模式下扫码即授权）。幂等：记录不存在视为成功。
+        /// </summary>
+        public bool UnpairDevice(string deviceId)
+        {
+            using var dbContext = _dbContextFactory.CreateDbContext();
+            var device = dbContext.AuthorizedDevices
+                .FirstOrDefault(d => d.DeviceId == deviceId);
+
+            if (device == null)
+            {
+                _logger.LogInformation("设备解绑：记录不存在（视为已解绑），DeviceId: {DeviceId}", deviceId);
+                return true;
+            }
+
+            var deviceName = device.DeviceName;
+            dbContext.AuthorizedDevices.Remove(device);
+            var logs = dbContext.DeviceSyncLogs.Where(l => l.DeviceId == deviceId).ToList();
+            dbContext.DeviceSyncLogs.RemoveRange(logs);
+            dbContext.SaveChanges();
+
+            _logger.LogInformation("设备已解绑: {DeviceName}, DeviceId: {DeviceId}", deviceName, deviceId);
+
+            _ = NotifyDeviceStatusChangedAsync("revoked", deviceName, null, deviceId: deviceId);
+
+            return true;
         }
 
         public bool ValidateAccessToken(string? accessToken)
