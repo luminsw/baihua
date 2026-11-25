@@ -146,6 +146,26 @@ curl -s http://127.0.0.1:8788/api/ai/config/providers | head -c 300   # hasApiKe
 迁移工具会打印每张表的行数与 `data digest verified`，最后输出 `[done] N tables, M rows copied and verified`。
 `VaultNoteFts` 是派生索引，不迁移；服务启动后由索引任务按磁盘内容重建。
 
+### 暂时保留 k3s（只跑 OVMS / Open WebUI）
+
+如果还不想整机卸载 k3s（例如想继续用 `bh-openvino` 和 Open WebUI），可以只退役百花自己的工作负载：
+
+```bash
+# 1) 停掉被原生服务替换的工作负载（数据/PVC 保留）
+sudo kubectl -n baihua scale deploy bh-server --replicas=0
+sudo kubectl -n baihua scale deploy bh-webui  --replicas=0
+sudo kubectl -n baihua scale deploy bh-postgres --replicas=0
+
+# 2) 释放宿主 :80：Traefik 不再需要对外暴露（改为 ClusterIP，svclb 随之移除）
+sudo kubectl -n kube-system patch svc traefik --type=merge -p '{"spec":{"type":"ClusterIP"}}'
+
+# 3) 把 OVMS 暴露到宿主 :8000，原生后端继续用本地推理
+sudo kubectl -n baihua patch svc bh-openvino --type=merge -p '{"spec":{"type":"LoadBalancer"}}'
+```
+
+之后 `bh proxy install` 用系统 nginx 接管 :80；Open WebUI 自己的 LoadBalancer 仍占 8080。
+验证：`curl -s http://127.0.0.1:8000/v1/models`、`curl -I http://<lan-ip>/`。
+
 ### 迁移工具细节
 
 - 时间统一转成 EF Core SQLite 的文本格式 `yyyy-MM-dd HH:mm:ss.FFFFFFF`（UTC），避免 `T` 与空格两种分隔符混用破坏排序；
