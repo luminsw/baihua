@@ -664,8 +664,10 @@ configure_proxy() {
         [ -e /etc/nginx/sites-enabled/default ] && as_root rm -f /etc/nginx/sites-enabled/default || true
     fi
     rm -f "$temp"
-    as_root nginx -t || die "nginx 配置校验失败，未 reload"
-    as_root systemctl reload nginx
+    as_root nginx -t || die "nginx 配置校验失败，未重启"
+    # 首次安装时 nginx 可能因发行版默认站点的 IPv6 listen 起不来；这里统一 enable + 重启
+    as_root systemctl enable nginx >/dev/null 2>&1 || true
+    as_root systemctl restart nginx || die "nginx 启动失败（journalctl -u nginx -n 50）"
 
     local lan_ip env_file="$CONFIG_DIR/server.env"
     lan_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([^ ]*\).*/\1/p' | head -n1)"
