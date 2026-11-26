@@ -13,7 +13,7 @@
 | AI | 多 Provider（DeepSeek/Anthropic…）、本地推理（OVMS/llama.cpp/Ollama/LM Studio）、模型测速与推荐 |
 | 知识库 | 多库管理、增量同步、全文/语义搜索、索引 |
 | 算力池 | 局域网多机共享模型与绘图能力（ComfyUI 文生图/视频），跨机测速与布署 |
-| 移动端 | BaihuaSdk（C#）+ 鸿蒙（arkts）/ 安卓（kotlin）花记客户端 |
+| 移动端 | 鸿蒙（arkts）/ 安卓（kotlin）花记客户端 |
 | DSH 集成 | 桥接/运维/绘图插件、本地 AI 插件、内置 MCP `/mcp` |
 
 ## 结构
@@ -26,8 +26,7 @@ services/
   Baihua.Modules.Vault/  知识库：同步、搜索、索引
   Baihua.Web/            Web 界面（5177，Blazor Server）
   Baihua.Contracts/ Baihua.Core/ Baihua.Data/   共享契约 / 服务层 / EF Core
-libs/                BaihuaSdk（移动端 SDK）、MobileContract（契约）
-clients/Huapu/       花圃（MAUI 技术验证客户端）
+libs/                MobileContract（移动端契约，服务端适配层在用）
 docker/             容器配方（可选；Linux 主推原生 systemd）
 tools/bh/            百花 CLI（见 tools/bh/README.md）
 scripts/ tests/      脚本 / 测试

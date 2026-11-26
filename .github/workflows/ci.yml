@@ -12,9 +12,9 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  # ── SDK + 服务端单元测试（Linux 跑最快） ──
+  # ── 服务端单元测试（Linux 跑最快） ──
   sdk-tests:
-    name: SDK & Service Unit Tests
+    name: Service Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,12 +31,6 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
-
-      - name: Run Baihua.Sdk tests
-        run: dotnet test tests/Baihua.Sdk.Tests/Baihua.Sdk.Tests.csproj -c Release
-
-      - name: Run Huapu tests
-        run: dotnet test tests/Huapu.Tests/Huapu.Tests.csproj -c Release
 
       - name: Run backend tests (Baihua.Server + modules)
         run: dotnet test tests/Baihua.Family.Tests/Baihua.Family.Tests.csproj -c Release -r linux-x64
@@ -173,36 +167,3 @@ jobs:
             tests/e2e/test-results.json
           if-no-files-found: ignore
 
-  # ── Android 编译（.NET 9 MAUI） ──
-  android-build:
-    name: Android MAUI Build
-    runs-on: ubuntu-latest
-    needs: sdk-tests
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-maui-${{ hashFiles('clients/**/*.csproj', 'libs/**/*.csproj') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-maui-
-            ${{ runner.os }}-nuget-
-
-      - name: Install MAUI Android workload
-        run: dotnet workload install maui-android
-
-      - name: Build Android
-        run: dotnet build clients/Huapu/Huapu.csproj -f net10.0-android36.1 -c Release

@@ -1,7 +1,0 @@
-<Solution>
-  <Project Path="../libs/BaihuaSdk/BaihuaSdk.csproj" />
-  <Project Path="../libs/MobileContract/MobileContract.csproj" />
-  <Project Path="Huapu/Huapu.csproj" />
-</Solution>
-
-

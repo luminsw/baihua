@@ -168,15 +168,10 @@ C:\Users\lumin\src\
 - `services/Baihua.Data/`：共享 EF Core 数据层（单库多 DbContext + `DatabaseInitializer`）
 - `services/BaiHua.slnx`：服务端解决方案（包含所有 services/ 项目及 libs/MobileContract）
 - `tools/bh/`：百花 CLI（Windows：`bh` = `win/native` dotnet 进程 + SQLite（唯一形态）；Linux：`linux/native/` = systemd + SQLite，`bh` 即入口）
-- `libs/BaihuaSdk/`：跨平台移动端 SDK（net9.0;net10.0，零 MAUI 依赖，主要 target net10.0）
-- `libs/MobileContract/`：移动端契约（DTO、接口定义）
-- `clients/Huapu/`：花圃（BaiHua.Nursery）— 移动端技术实验与验证工具（非正式发布 App，详见下方说明）
-- `clients/Huapu.slnx`：花圃解决方案（包含 BaihuaSdk + MobileContract + Huapu）
+- `libs/MobileContract/`：移动端契约（DTO、接口定义；服务端设备配对/管理适配层在用）
 - `docs/`：协议与架构文档
 - `scripts/`：开发、发布、部署脚本
 - `tests/Baihua.Family.Tests/`：后端配对服务测试
-- `tests/Baihua.Sdk.Tests/`：SDK 单元测试与集成测试
-- `tests/Huapu.Tests/`：MAUI DI 回归测试
 
 ## 访问授权
 
@@ -319,165 +314,13 @@ Linux 原生形态用系统 nginx（`bh proxy install`）监听 :80，`/mg/*`、
   `/mg/vaults`、`/api/sync/*`、`/vault/*`、`/mobile-vaults/push` 等）与 `/api/ai/chat/*` 均走此校验，
   知识库路径由中间件注入 Bearer Token，供知识库模块的 `ISyncAuthorizationStrategy` 校验（原跨进程转发附加的 `Authorization` 头由此等价替代）。
 
-## BaihuaSdk（跨平台移动端 SDK）
-
-**位置**: `libs/BaihuaSdk/` — 纯 C# `net9.0;net10.0` 类库，零 MAUI 依赖。
-
-封装了与百花服务器通信的全部协议层：
-
-| 模块 | 说明 |
-|------|------|
-| `Signing/` | HMAC-SHA256 请求签名（与 Kotlin `RequestSigner.kt` 算法一致） |
-| `Transport/` | HttpClient 封装、签名注入、HTTPS→HTTP 降级、错误中文映射 |
-| `Services/SyncServiceImpl.cs` | 知识库同步（manifest → 文件下载 → 本地写入） |
-| `Services/PairingServiceImpl.cs` | QR 码解析、多地址格式、设备注册 |
-| `Services/LogServiceImpl.cs` | 批量缓冲日志上报 |
-| `Services/QuotaServiceImpl.cs` | 配额/购买 API |
-| `Push/PushWebSocketService.cs` | WebSocket 实时推送 + HTTP 轮询降级 |
-| `Storage/` | ISecureStore / IServerConfigStore 接口（平台层实现） |
-
-```bash
-# 运行 SDK 单元测试
-dotnet test tests/Baihua.Sdk.Tests/
-
-# 运行集成测试（需要百花服务器）
-export BaiHua_TEST_URL=http://192.168.3.x:8788
-export BaiHua_TEST_SECRET=<shared-secret>
-export BaiHua_TEST_VAULT_ID=<vault-id>
-dotnet test tests/Baihua.Sdk.Tests/ --filter Integration
-```
-
-## 花圃 / BaiHua.Nursery（移动端技术实验与验证工具）
-
-**位置**: `clients/Huapu/` — .NET MAUI Blazor Hybrid App。
-**解决方案**: `clients/Huapu.slnx`（包含 BaihuaSdk + MobileContract + Huapu）
-
-> **定位说明**：花圃（BaiHua.Nursery）是百花服务对移动端支持的**技术验证工具**，用于验证 BaihuaSdk 协议、配对流程、同步功能等在真实移动设备上的表现。它**不是正式发布的 App**，不具备产品级功能完整性。花记的正式移动端是鸿蒙端（ArkUI）和安卓端（Jetpack Compose），它们功能远超花圃。
->
-> 花圃的职责边界：
-> - ✅ 验证百花服务端 API 对移动端的兼容性
-> - ✅ 验证 BaihuaSdk 的配对/同步/签名协议
-> - ✅ 作为 .NET MAUI 技术实验平台
-> - ✅ 对鸿蒙/安卓端花记的功能创意起到互相启发的作用
-> - ❌ 不承担正式移动客户端角色
-> - ❌ 不与鸿蒙/安卓端功能完全对齐
->
-> **与花记的关系**：花圃参考鸿蒙/安卓花记的 UI/UX 设计（底部 Tab 导航、暗色模式、品牌色等），但功能范围远小于花记。花圃可作为新功能的快速验证平台，验证通过后再移植到鸿蒙/安卓端。
-
-**UI 设计参考**（对齐鸿蒙/安卓花记）：
-- 底部 3 Tab 导航：首页 / 获取知识 / 我的
-- 品牌色：红色 `#FF2442`（与鸿蒙花记一致）
-- 完整暗色模式支持（CSS 变量 + `data-theme` 属性）
-- 语义化颜色系统（19 个 CSS 变量，亮/暗双主题）
-
-**页面结构**：
-| 页面 | 路由 | 说明 |
-|------|------|------|
-| 首页 | `/` | 快捷入口、已配对服务器、搜索入口 |
-| 获取知识 | `/knowledge` | 百花同步 + 配对（子 Tab 切换） |
-| 我的 | `/profile` | 设备信息、数据概览、功能菜单 |
-| 搜索 | `/search` | 全文搜索已同步知识库 |
-| 配对 | `/pairing` | 扫码/手动配对服务器 |
-| 同步 | `/sync` | 知识库获取（独立页面入口） |
-| 已获取 | `/vaults` | 文件浏览器、Markdown 预览 |
-| 设置 | `/settings` | 暗色模式切换、数据管理、关于 |
-
-**组件拆分**：
-- `SyncContent.razor` / `PairingContent.razor`：可复用内容组件，供 KnowledgePage 和独立页面共用
-
-**功能边界说明**：
-- 花圃包含完整的**拜师（Master）功能**（约 2600 行：MasterService + 4 页 + 模型/缓存），功能远超"验证工具"典型范围——这是有意保留的完整产品功能（与 Web 端拜师体验对齐），非技术验证范畴；新增移动端功能时不必与花圃完全对齐，但拜师功能是例外（已正式纳入，不要裁剪）。
-- 花圃不承担正式移动客户端角色，不与鸿蒙/安卓端功能完全对齐（拜师除外）。
-
-- **Android**: `dotnet build clients/Huapu.slnx -f net9.0-android -c Release` → APK 在 `clients/Huapu/bin/Release/net9.0-android/com.lumin.BaiHua-Signed.apk`
-- **iOS**: 需要 macOS + Xcode（GitHub Actions CI 已配置 `.github/workflows/ci.yml`）
-
-```bash
-# Android Release 编译
-dotnet build clients/Huapu.slnx -f net9.0-android -c Release
-
-# 安装到手机
-adb install clients/Huapu/bin/Release/net9.0-android/com.lumin.BaiHua-Signed.apk```
-```
-
-### 花圃 Honor/部分 Android 设备 .NET 10 兼容性
-
-**已知问题**: 2026-06 期间，Honor 真机（`ADNQUT5813009383`）安装 .NET 10 Preview APK 后启动崩溃：
-```
-java.lang.IllegalArgumentException: No view found for id 0x7f0800ff
-for fragment NavigationRootManager_ElementBasedFragment
-```
-这是 MAUI 10 Preview 在部分 Android 设备上的已知框架问题（[dotnet/maui#32029](https://github.com/dotnet/maui/issues/32029)）。
-
-**当前状态（2026-06-27）**:
-- 为规避 Honor 设备兼容性问题，Android 目标框架已回退至 **.NET 9 LTS**（`net9.0-android`）
-- MAUI workload `9.0.x`，`ZXing.Net.Maui.Controls` 降级至 `0.6.0`
-- Debug + Release 构建成功（0 错误 0 警告）
-- 单元测试全部通过（155 + 9）
-- **✅ 真机验证通过**: Honor `ADNQUT5813009383` 安装 .NET 9 APK 后启动正常，MainActivity 可见，无崩溃
-
-**csproj 关键防御配置**（已启用）:
-```xml
-<AndroidEnableFastDeployment>false</AndroidEnableFastDeployment>
-<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
-<AndroidStoreUncompressedFileExtensions>.so;.dll</AndroidStoreUncompressedFileExtensions>
-<AndroidEnableCompressionInNativeLibraries>false</AndroidEnableCompressionInNativeLibraries>
-```
-
-**后续若需升级 .NET 10**: 需先在 Honor/相关设备上重新验证 MAUI 10 Fragment 兼容性，确认无崩溃后再将 `TargetFrameworks` 改回 `net10.0-android`。
-
-### 花圃 Debug TLS 证书宽松
-
-Debug 构建跳过 TLS 证书验证（方便本地自签名证书开发），Release 构建严格校验证书。见 `MauiProgram.cs` 中的 `#if DEBUG` 条件判断。
-
-
 ## 测试
-
-### BaihuaSdk 测试
-
-**单元测试**（无需服务器，覆盖核心算法和逻辑）：
-
-```bash
-dotnet test tests/Baihua.Sdk.Tests/Baihua.Sdk.Tests.csproj --filter Unit
-```
-
-覆盖模块：
-- `Signing/RequestSigner`：签名算法、密钥管理、SHA256/HMAC 验证
-- `Transport/HttpTransport`：URL 规范化、错误提取、HTTP 状态码映射
-- `Services/SyncServiceImpl`：文件类型判断、路径安全验证
-- `Services/PairingServiceImpl`：QR 码解析（新旧格式）、服务器地址提取
-
-**集成测试**（需要运行中的百花服务器）：
-
-```bash
-export BaiHua_TEST_URL=http://192.168.x.x:8788
-export BaiHua_TEST_SECRET=<shared-secret>
-export BaiHua_TEST_VAULT_ID=<vault-id>
-dotnet test tests/Baihua.Sdk.Tests/Baihua.Sdk.Tests.csproj --filter Integration
-```
-
-测试完整流程：配对 → 获取知识库列表 → 获取 manifest → 同步文件
-
-### 花圃测试
-
-**DI 回归测试**（确保所有服务可正确构造）：
-
-```bash
-dotnet test tests/Huapu.Tests/Huapu.Tests.csproj
-```
-
-### 后端测试（tests/Baihua.Family.Tests）
 
 **后端配对服务测试**（测试项目名沿用 `Baihua.Family.Tests`，覆盖 `Baihua.Server` 宿主 + 各模块）：
 
 ```bash
 dotnet test tests/Baihua.Family.Tests/Baihua.Family.Tests.csproj
 ```
-
-## 已知限制
-
-- **华为/荣耀手机**: .NET 10 Preview 存在 `NavigationRootManager_ElementBasedFragment` 崩溃。当前 Android 目标框架已回退至 .NET 9 LTS 规避该问题，待 MAUI 10 兼容性验证通过后再考虑升级。详见上方「花圃 → Honor 兼容性」。
-- **Android 模拟器**: 需要 KVM 硬件加速（`sudo modprobe kvm_intel`，BIOS 中启用 VT-x）。
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
