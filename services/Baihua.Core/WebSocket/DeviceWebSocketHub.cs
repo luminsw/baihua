@@ -18,6 +18,71 @@ public class DeviceWebSocketHub
 
     public int ConnectedCount => _connections.Count;
 
+    /// <summary>
+    /// 当前有活跃 WS 连接的 deviceId 集合（连接可能不带 deviceId，此类连接不参与定向能力）。
+    /// </summary>
+    public IReadOnlyCollection<string> GetOnlineDeviceIds()
+    {
+        return _connections.Values
+            .Where(c => !string.IsNullOrEmpty(c.DeviceId) && c.Socket.State == WebSocketState.Open)
+            .Select(c => c.DeviceId!)
+            .Distinct()
+            .ToList();
+    }
+
+    /// <summary>
+    /// 定向推送「获取知识库」指令：只发给 deviceIds 中有活跃连接的设备，
+    /// 不做广播降级（fetch 指令发错设备会让无关设备白白下载知识库）。
+    /// 返回成功送达的 deviceId 列表（目标中离线的会被跳过）。
+    /// </summary>
+    public async Task<IReadOnlyList<string>> SendVaultFetchAsync(
+        IReadOnlyList<string> deviceIds,
+        IReadOnlyList<string> vaultIds,
+        IReadOnlyDictionary<string, string> vaultNames)
+    {
+        if (_connections.IsEmpty || deviceIds.Count == 0) return Array.Empty<string>();
+
+        var msg = new Dictionary<string, object?>
+        {
+            ["action"] = "fetch_vaults",
+            ["vaultIds"] = vaultIds,
+            ["vaultNames"] = vaultNames,
+            ["timestamp"] = DateTime.UtcNow.ToString("o")
+        };
+        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(msg));
+
+        var delivered = new HashSet<string>();
+        var dead = new List<string>();
+
+        foreach (var kvp in _connections)
+        {
+            if (string.IsNullOrEmpty(kvp.Value.DeviceId) || !deviceIds.Contains(kvp.Value.DeviceId)) continue;
+            try
+            {
+                if (kvp.Value.Socket.State == WebSocketState.Open)
+                {
+                    await kvp.Value.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
+                    delivered.Add(kvp.Value.DeviceId);
+                }
+                else
+                {
+                    dead.Add(kvp.Key);
+                }
+            }
+            catch
+            {
+                dead.Add(kvp.Key);
+            }
+        }
+
+        foreach (var id in dead)
+        {
+            _connections.TryRemove(id, out _);
+        }
+
+        return delivered.ToList();
+    }
+
     public async Task AcceptAsync(System.Net.WebSockets.WebSocket webSocket, string? deviceName = null,
         string? deviceId = null, string? serverId = null, string? serverName = null)
     {

@@ -12,6 +12,7 @@
 @using Microsoft.JSInterop
 @using Baihua.Contracts.Vaults
 @using Baihua.Contracts.Ai
+@using Baihua.Contracts.Devices
 @using Baihua.Web.Services
 @implements IAsyncDisposable
 
@@ -107,12 +108,37 @@
             </div>
         }
 
+        <!-- 多选工具栏 + 发送结果提示 -->
+        @if (selectedVaultIds.Count > 0)
+        {
+            <div class="mb-3 d-flex flex-wrap gap-2 align-items-center p-2 rounded send-toolbar">
+                <span class="small">@L["BrowseVault_SelectedCount", selectedVaultIds.Count]</span>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="ClearVaultSelection">
+                    @L["BrowseVault_ClearSelection"]
+                </button>
+                <button class="btn btn-sm btn-primary" @onclick="OpenSendModal">
+                    @L["BrowseVault_SendToDevice"]
+                </button>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(sendResultMessage))
+        {
+            <div class="alert @(sendResultSuccess ? "alert-success" : "alert-warning") alert-dismissible fade show py-2">
+                @sendResultMessage
+                <button type="button" class="btn-close" @onclick="() => sendResultMessage = null"></button>
+            </div>
+        }
+
         <!-- 知识库列表（文件夹卡片形式） -->
         <div class="row g-3">
             @foreach (var v in FilteredVaults)
             {
                 <div class="col-md-3 col-sm-4 col-6">
-                    <div class="card h-100 vault-folder-card">
+                    <div class="card h-100 vault-folder-card position-relative @(selectedVaultIds.Contains(v.Id) ? "vault-card-selected" : "")">
+                        <input type="checkbox" class="form-check-input vault-select-check"
+                               checked="selectedVaultIds.Contains(v.Id)"
+                               @onclick="() => ToggleVaultSelection(v.Id)"
+                               title="@L["BrowseVault_SendToDevice"]" />
                         <div class="card-body text-center py-4">
                             <div class="fs-1 mb-2" @onclick="() => SelectVault(v.Id)" style="cursor:pointer;">📚</div>
                             <div class="fw-bold text-truncate" @onclick="() => SelectVault(v.Id)" style="cursor:pointer;">@v.Name</div>
@@ -387,12 +413,89 @@
     </div>
 }
 
+<!-- 发送知识库到设备弹窗 -->
+@if (showSendModal)
+{
+    <div class="modal fade show" style="display:block; background:rgba(0,0,0,0.5);" tabindex="-1">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@L["BrowseVault_SendToDeviceTitle"]</h5>
+                    <button type="button" class="btn-close" @onclick="CloseSendModal" aria-label="@L["Common_Close"]"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">@L["BrowseVault_ChooseDevices"]</p>
+                    @if (isLoadingDevices)
+                    {
+                        <div class="text-center py-4">
+                            <div class="spinner-border text-primary"></div>
+                        </div>
+                    }
+                    else if (sendDevices.Count == 0)
+                    {
+                        <div class="alert alert-info py-2 mb-0">@L["BrowseVault_NoOnlineDevices"]</div>
+                    }
+                    else
+                    {
+                        <div class="list-group">
+                            @foreach (var d in sendDevices)
+                            {
+                                <label class="list-group-item d-flex justify-content-between align-items-center @(d.IsOnline ? "" : "text-muted")">
+                                    <span class="d-flex align-items-center gap-2">
+                                        <input type="checkbox" class="form-check-input m-0"
+                                               disabled="@(d.IsOnline ? (bool?)null : true)"
+                                               checked="selectedDeviceIds.Contains(d.DeviceId)"
+                                               @onchange="() => ToggleDeviceSelection(d.DeviceId)" />
+                                        <span class="text-truncate">@d.DeviceName</span>
+                                        @if (!string.IsNullOrEmpty(d.SystemDeviceName))
+                                        {
+                                            <small class="text-muted text-truncate">（@d.SystemDeviceName）</small>
+                                        }
+                                    </span>
+                                    <span class="badge @(d.IsOnline ? "bg-success" : "bg-secondary")" style="font-size:0.7em;">
+                                        @(d.IsOnline ? L["BrowseVault_DeviceOnline"] : L["BrowseVault_DeviceOffline"])
+                                    </span>
+                                </label>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseSendModal">@L["Common_Close"]</button>
+                    <button class="btn btn-primary" disabled="@(isSending || selectedDeviceIds.Count == 0)" @onclick="ConfirmSendVaults">
+                        @(isSending ? L["BrowseVault_Sending"] : L["BrowseVault_Send"])
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 
 <style>
     .vault-folder-card, .vault-note-card {
         cursor: pointer;
         transition: transform 0.15s ease, box-shadow 0.15s ease;
         border: 1px solid rgba(0,0,0,0.08);
+    }
+    .vault-select-check {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 1.15em;
+        height: 1.15em;
+        cursor: pointer;
+        z-index: 1;
+    }
+    .vault-card-selected {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 2px rgba(13,110,253,0.25);
+    }
+    .send-toolbar {
+        background: rgba(13,110,253,0.08);
+    }
+    [data-bs-theme="dark"] .send-toolbar {
+        background: rgba(13,110,253,0.15);
     }
     .vault-folder-card:hover, .vault-note-card:hover {
         transform: translateY(-2px);
@@ -604,6 +707,102 @@
     private int listeningCurrentIndex = 0;
     private bool isPlaying = false;
     private HashSet<int> playedIndices = new();
+
+    // 发送知识库到设备（多选 + 弹窗）
+    private HashSet<string> selectedVaultIds = new();
+    private bool showSendModal = false;
+    private bool isLoadingDevices = false;
+    private List<AuthorizedDeviceDto> sendDevices = new();
+    private HashSet<string> selectedDeviceIds = new();
+    private bool isSending = false;
+    private string? sendResultMessage = null;
+    private bool sendResultSuccess = false;
+
+    private void ToggleVaultSelection(string vaultId)
+    {
+        if (!selectedVaultIds.Remove(vaultId))
+        {
+            selectedVaultIds.Add(vaultId);
+        }
+    }
+
+    private void ClearVaultSelection()
+    {
+        selectedVaultIds.Clear();
+    }
+
+    private void ToggleDeviceSelection(string deviceId)
+    {
+        if (!selectedDeviceIds.Remove(deviceId))
+        {
+            selectedDeviceIds.Add(deviceId);
+        }
+    }
+
+    private async Task OpenSendModal()
+    {
+        showSendModal = true;
+        isLoadingDevices = true;
+        selectedDeviceIds.Clear();
+        try
+        {
+            sendDevices = await DevicesService.GetAuthorizedDevicesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "加载已授权设备列表失败");
+            sendDevices = new List<AuthorizedDeviceDto>();
+        }
+        isLoadingDevices = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CloseSendModal()
+    {
+        showSendModal = false;
+    }
+
+    private async Task ConfirmSendVaults()
+    {
+        if (isSending || selectedDeviceIds.Count == 0 || selectedVaultIds.Count == 0) return;
+
+        isSending = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var (ok, result, message) = await DevicesService.SendVaultsToDevicesAsync(
+                selectedDeviceIds.ToList(), selectedVaultIds.ToList());
+
+            if (ok && result != null && result.DeliveredDeviceIds.Count > 0)
+            {
+                var skipped = result.SkippedDeviceIds.Count;
+                sendResultMessage = skipped > 0
+                    ? L["BrowseVault_SendPartial", result.DeliveredDeviceIds.Count, skipped].Value
+                    : L["BrowseVault_SendSuccess", result.DeliveredDeviceIds.Count].Value;
+                sendResultSuccess = true;
+                selectedVaultIds.Clear();
+                showSendModal = false;
+            }
+            else if (ok && result != null)
+            {
+                // 全部目标设备都离线（送达 0 台）
+                sendResultMessage = L["BrowseVault_NoOnlineDevices"].Value;
+                sendResultSuccess = false;
+                showSendModal = false;
+            }
+            else
+            {
+                sendResultMessage = message ?? L["BrowseVault_SendFailed", "未知错误"].Value;
+                sendResultSuccess = false;
+                showSendModal = false;
+            }
+        }
+        finally
+        {
+            isSending = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 
 
     private bool isLoadingRecentNotes = true;

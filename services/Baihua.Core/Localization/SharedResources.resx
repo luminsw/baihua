@@ -1457,6 +1457,15 @@
   <data name="Devices_RequestRejected" xml:space="preserve">
     <value>已拒绝设备配对</value>
   </data>
+  <data name="Devices_FetchVaultsInvalidRequest" xml:space="preserve">
+    <value>请选择至少一个设备和一个知识库</value>
+  </data>
+  <data name="Devices_FetchVaultsDeviceNotAuthorized" xml:space="preserve">
+    <value>设备未授权: {0}</value>
+  </data>
+  <data name="Devices_FetchVaultsVaultNotFound" xml:space="preserve">
+    <value>知识库不存在: {0}</value>
+  </data>
   <!-- Git Keys -->
   <data name="Git_CommitFailed" xml:space="preserve">
     <value>提交失败: {0}</value>

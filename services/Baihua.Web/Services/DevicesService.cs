@@ -141,12 +141,12 @@ public class DevicesService
         {
             var client = _httpClientFactory.CreateClient("FamilyApi");
             var response = await client.PostAsJsonAsync("api/devices/revoke", new { deviceId });
-            
+
             if (response.IsSuccessStatusCode)
             {
                 return (true, _loc["Devices_DeviceRevoked"].Value);
             }
-            
+
             var error = await response.Content.ReadAsStringAsync();
             return (false, _loc["Devices_RevokeFailed", error].Value);
         }
@@ -154,6 +154,34 @@ public class DevicesService
         {
             _logger.LogError(ex, "撤销设备授权失败，DeviceId: {DeviceId}", deviceId);
             return (false, _loc["Devices_RevokeFailed", ex.Message].Value);
+        }
+    }
+
+    /// <summary>
+    /// 把选中的知识库发送到移动端（定向推送 fetch_vaults 指令，仅在线设备可送达）
+    /// </summary>
+    public async Task<(bool success, FetchVaultsResponse? result, string? message)> SendVaultsToDevicesAsync(
+        List<string> deviceIds, List<string> vaultIds)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("FamilyApi");
+            var response = await client.PostAsJsonAsync("api/devices/fetch-vaults",
+                new FetchVaultsRequest { DeviceIds = deviceIds, VaultIds = vaultIds });
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<FetchVaultsResponse>();
+                return (true, result, null);
+            }
+
+            var error = await response.Content.ReadAsStringAsync();
+            return (false, null, _loc["BrowseVault_SendFailed", error].Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "发送知识库到设备失败");
+            return (false, null, _loc["BrowseVault_SendFailed", ex.Message].Value);
         }
     }
 

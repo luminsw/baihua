@@ -2580,6 +2580,45 @@
   <data name="BrowseVault_Listen" xml:space="preserve">
     <value>🎧 听</value>
   </data>
+  <data name="BrowseVault_SendToDevice" xml:space="preserve">
+    <value>📤 发送到设备</value>
+  </data>
+  <data name="BrowseVault_SendToDeviceTitle" xml:space="preserve">
+    <value>📤 发送知识库到设备</value>
+  </data>
+  <data name="BrowseVault_SelectedCount" xml:space="preserve">
+    <value>已选 {0} 个知识库</value>
+  </data>
+  <data name="BrowseVault_ClearSelection" xml:space="preserve">
+    <value>清除选择</value>
+  </data>
+  <data name="BrowseVault_ChooseDevices" xml:space="preserve">
+    <value>选择要接收的设备（仅在线设备可接收）</value>
+  </data>
+  <data name="BrowseVault_DeviceOnline" xml:space="preserve">
+    <value>🟢 在线</value>
+  </data>
+  <data name="BrowseVault_DeviceOffline" xml:space="preserve">
+    <value>⚪ 离线</value>
+  </data>
+  <data name="BrowseVault_Send" xml:space="preserve">
+    <value>发送</value>
+  </data>
+  <data name="BrowseVault_SendSuccess" xml:space="preserve">
+    <value>已发送到 {0} 台设备</value>
+  </data>
+  <data name="BrowseVault_SendPartial" xml:space="preserve">
+    <value>已发送到 {0} 台设备，{1} 台离线已跳过</value>
+  </data>
+  <data name="BrowseVault_SendFailed" xml:space="preserve">
+    <value>发送失败：{0}</value>
+  </data>
+  <data name="BrowseVault_NoOnlineDevices" xml:space="preserve">
+    <value>没有在线的设备，请先打开花记 App 并确认设备已连接服务器</value>
+  </data>
+  <data name="BrowseVault_Sending" xml:space="preserve">
+    <value>发送中…</value>
+  </data>
   <data name="BrowseVault_BackToList" xml:space="preserve">
     <value>← 返回知识库列表</value>
   </data>

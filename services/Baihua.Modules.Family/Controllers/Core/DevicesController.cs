@@ -17,14 +17,16 @@ namespace Baihua.Modules.Family.Controllers
         private readonly DeviceService _deviceService;
         private readonly IHubContext<DeviceHub> _hubContext;
         private readonly Baihua.Core.Services.VaultSettingsService _vaultSettings;
+        private readonly Baihua.Core.WebSocket.DeviceWebSocketHub _wsHub;
         private readonly ILogger<DevicesController> _logger;
         private readonly IStringLocalizer<SharedResources> _loc;
 
-        public DevicesController(DeviceService deviceService, IHubContext<DeviceHub> hubContext, Baihua.Core.Services.VaultSettingsService vaultSettings, ILogger<DevicesController> logger, IStringLocalizer<SharedResources> loc)
+        public DevicesController(DeviceService deviceService, IHubContext<DeviceHub> hubContext, Baihua.Core.Services.VaultSettingsService vaultSettings, Baihua.Core.WebSocket.DeviceWebSocketHub wsHub, ILogger<DevicesController> logger, IStringLocalizer<SharedResources> loc)
         {
             _deviceService = deviceService;
             _hubContext = hubContext;
             _vaultSettings = vaultSettings;
+            _wsHub = wsHub;
             _logger = logger;
             _loc = loc;
         }
@@ -47,6 +49,7 @@ namespace Baihua.Modules.Family.Controllers
         [HttpGet("authorized")]
         public ActionResult<List<AuthorizedDeviceDto>> GetAuthorizedDevices()
         {
+            var onlineIds = _wsHub.GetOnlineDeviceIds();
             var devices = _deviceService.GetAuthorizedDevices();
             var dtos = devices.Select(d => new AuthorizedDeviceDto
             {
@@ -59,7 +62,8 @@ namespace Baihua.Modules.Family.Controllers
                 SyncCount = d.SyncCount,
                 FirstSyncTime = d.FirstSyncTime,
                 SyncedVaultIds = d.SyncedVaultIds,
-                SyncedVaultNames = d.SyncedVaultNames
+                SyncedVaultNames = d.SyncedVaultNames,
+                IsOnline = onlineIds.Contains(d.DeviceId)
             }).ToList();
             return Ok(dtos);
         }
@@ -153,6 +157,56 @@ namespace Baihua.Modules.Family.Controllers
         {
             var stats = _deviceService.GetMobileStats();
             return Ok(stats);
+        }
+
+        /// <summary>
+        /// WebUI 把选中的知识库「发送」给移动端：定向推送 fetch_vaults 指令，
+        /// 客户端收到后调用既有的增量同步流程获取这些库。仅送达在线设备。
+        /// </summary>
+        [HttpPost("/api/devices/fetch-vaults")]
+        public async Task<ActionResult<FetchVaultsResponse>> SendVaultsToDevices([FromBody] FetchVaultsRequest request)
+        {
+            if (request == null || request.DeviceIds.Count == 0 || request.VaultIds.Count == 0)
+                return BadRequest(new { error = _loc["Devices_FetchVaultsInvalidRequest"] });
+
+            // 校验目标设备均已授权（未授权设备不该收到任何指令）
+            var authorized = _deviceService.GetAuthorizedDevices()
+                .Select(d => d.DeviceId)
+                .ToHashSet();
+            var unknownDevices = request.DeviceIds.Where(id => !authorized.Contains(id)).ToList();
+            if (unknownDevices.Count > 0)
+                return BadRequest(new { error = _loc["Devices_FetchVaultsDeviceNotAuthorized", string.Join(", ", unknownDevices)] });
+
+            // 校验知识库存在，并带上名称（客户端展示用）
+            var vaults = _vaultSettings.GetVaults();
+            var vaultNames = new Dictionary<string, string>();
+            var missingVaults = new List<string>();
+            foreach (var vaultId in request.VaultIds)
+            {
+                var vault = vaults.FirstOrDefault(v => v.Id == vaultId);
+                if (vault == null)
+                {
+                    missingVaults.Add(vaultId);
+                }
+                else
+                {
+                    vaultNames[vaultId] = vault.Name;
+                }
+            }
+            if (missingVaults.Count > 0)
+                return BadRequest(new { error = _loc["Devices_FetchVaultsVaultNotFound", string.Join(", ", missingVaults)] });
+
+            var delivered = await _wsHub.SendVaultFetchAsync(request.DeviceIds, request.VaultIds, vaultNames);
+
+            _logger.LogInformation("发送知识库到设备：vaults={VaultIds}, devices={DeviceIds}, delivered={Delivered}",
+                string.Join(",", request.VaultIds), string.Join(",", request.DeviceIds), string.Join(",", delivered));
+
+            return Ok(new FetchVaultsResponse
+            {
+                Success = delivered.Count > 0,
+                DeliveredDeviceIds = delivered.ToList(),
+                SkippedDeviceIds = request.DeviceIds.Where(id => !delivered.Contains(id)).ToList()
+            });
         }
 
         /// <summary>

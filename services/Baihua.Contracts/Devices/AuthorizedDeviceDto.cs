@@ -42,4 +42,10 @@ public class AuthorizedDeviceDto
     /// </summary>
     [JsonPropertyName("syncedVaultNames")]
     public Dictionary<string, string> SyncedVaultNames { get; set; } = new();
+
+    /// <summary>
+    /// 设备当前是否在线（有活跃 WS 推送连接）
+    /// </summary>
+    [JsonPropertyName("isOnline")]
+    public bool IsOnline { get; set; }
 }
