@@ -24,9 +24,9 @@
         <div class="bh-empty-icon">🎓</div>
         <div class="bh-empty-title">尚未选择师父</div>
         <div class="bh-empty-sub">
-            <p>@(new MarkupString(L["MasterStage_NoMasterHint"].Value))</p>
+            <p>@L["MasterStage_NoMasterHint"]</p>
         </div>
-        <a class="btn btn-primary btn-sm" href="/master-chat">去找师父聊聊</a>
+        <a class="btn btn-primary" href="/master-chat">去找师父聊聊 →</a>
     </div>
 }
 else if (isLoading)
@@ -199,7 +199,7 @@ else
 
 <style>
     .empty-state { text-align: center; padding: 3rem; color: var(--master-text-dim); }
-    .empty-state a { color: var(--master-accent); }
+    .empty-state a:not(.btn) { color: var(--master-accent); }
     .loading { text-align: center; padding: 3rem; color: var(--master-text-dim); }
     .stage-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--master-border); }
     .master-label { color: var(--master-text-muted); font-size: 0.9rem; }
@@ -468,33 +468,40 @@ else
     .master-stage-page, .stage-header { }
 
     .bh-empty.empty-state {
-        max-width: 520px;
-        margin: 2.5rem auto;
+        max-width: 560px;
+        margin: 0 auto;
+        min-height: min(56vh, 460px);
+        justify-content: center;
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 0.5rem;
-        padding: 2.4rem 1.6rem;
-        background: var(--bh-surface);
-        border: 1px dashed var(--bh-border-strong);
+        gap: 0.55rem;
+        padding: 3rem 2rem;
+        background:
+            radial-gradient(120% 90% at 50% 0%, var(--bh-brand-50) 0%, var(--bh-surface) 58%),
+            var(--bh-surface);
+        border: 1px solid var(--bh-border);
         border-radius: var(--bh-radius-lg);
-        box-shadow: var(--bh-shadow-xs);
+        box-shadow: var(--bh-shadow-sm);
         text-align: center;
     }
 
     .bh-empty-icon {
-        width: 52px;
-        height: 52px;
+        width: 64px;
+        height: 64px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.5rem;
-        background: var(--bh-brand-50);
+        font-size: 1.9rem;
+        background: var(--bh-surface);
         border: 1px solid var(--bh-brand-100);
-        border-radius: 14px;
+        border-radius: 18px;
+        box-shadow: var(--bh-shadow-xs);
+        margin-bottom: 0.35rem;
     }
 
-    .bh-empty-title { font-size: 1rem; font-weight: 650; color: var(--bh-ink-900); }
-    .bh-empty-sub { font-size: 0.86rem; color: var(--bh-ink-400); }
+    .bh-empty-title { font-size: 1.12rem; font-weight: 700; color: var(--bh-ink-900); }
+    .bh-empty-sub { font-size: 0.88rem; color: var(--bh-ink-500); max-width: 34em; line-height: 1.65; }
     .bh-empty-sub p { margin: 0; }
+    .bh-empty.empty-state .btn { margin-top: 0.9rem; }
 </style>

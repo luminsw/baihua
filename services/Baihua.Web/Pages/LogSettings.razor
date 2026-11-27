@@ -197,7 +197,7 @@ docker compose -f docker-compose.observability.yml up -d</code></pre>
     }
 
     .sink-config-section {
-        background: #f5f8fa;
+        background: var(--bh-surface-2);
         border-radius: 8px;
         padding: 1rem 1.25rem;
         margin: 1rem 0;
@@ -205,7 +205,7 @@ docker compose -f docker-compose.observability.yml up -d</code></pre>
 
     .sink-config-section h4 {
         margin-bottom: 1rem;
-        color: #1e3a4c;
+        color: var(--bh-ink-700);
     }
 
     .form-group {
@@ -223,7 +223,7 @@ docker compose -f docker-compose.observability.yml up -d</code></pre>
     .form-control {
         width: 100%;
         padding: 0.5rem 0.75rem;
-        border: 1px solid #d8e2e8;
+        border: 1px solid var(--bh-border-strong);
         border-radius: 6px;
         background: #fff;
         color: #333;
@@ -232,7 +232,7 @@ docker compose -f docker-compose.observability.yml up -d</code></pre>
 
     .form-control:focus {
         outline: none;
-        border-color: #4a9eff;
+        border-color: var(--bh-brand-600);
         box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.15);
     }
 
@@ -260,7 +260,7 @@ docker compose -f docker-compose.observability.yml up -d</code></pre>
     }
 
     .btn-primary {
-        background: #4a9eff;
+        background: var(--bh-brand-600);
         color: #fff;
     }
 
@@ -269,12 +269,12 @@ docker compose -f docker-compose.observability.yml up -d</code></pre>
     }
 
     .btn-secondary {
-        background: #e8eef2;
+        background: var(--bh-border);
         color: #4a5860;
     }
 
     .btn-secondary:hover {
-        background: #d8e2e8;
+        background: var(--bh-border-strong);
     }
 
     .btn:disabled {
@@ -303,8 +303,8 @@ docker compose -f docker-compose.observability.yml up -d</code></pre>
     }
 
     .deploy-hint {
-        background: #f5f8fa;
-        border: 1px solid #e8eef2;
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
         border-radius: 8px;
         padding: 0.75rem 1rem;
     }
@@ -322,7 +322,7 @@ docker compose -f docker-compose.observability.yml up -d</code></pre>
     }
 
     .hint-content pre {
-        background: #e8eef2;
+        background: var(--bh-border);
         border-radius: 4px;
         padding: 0.5rem 0.75rem;
         overflow-x: auto;
@@ -375,7 +375,7 @@ docker compose -f docker-compose.observability.yml up -d</code></pre>
         color: #ffffff;
     }
     [data-bs-theme="dark"] .form-control:focus {
-        border-color: #4a9eff;
+        border-color: var(--bh-brand-600);
         box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.25);
     }
     [data-bs-theme="dark"] .form-text {

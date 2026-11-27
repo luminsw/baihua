@@ -506,7 +506,7 @@
         display: flex;
         gap: 0.5rem;
         padding-top: 0.5rem;
-        border-top: 1px solid #d8e2e8;
+        border-top: 1px solid var(--bh-border-strong);
     }
     [data-bs-theme="dark"] .chat-input {
         border-top-color: rgba(255,255,255,0.1);
@@ -520,12 +520,12 @@
         line-height: 1.4;
         padding: 0.5rem 0.75rem;
         background: #ffffff;
-        border: 1px solid #d8e2e8;
+        border: 1px solid var(--bh-border-strong);
         color: #333333;
     }
     .chat-input textarea:focus {
         outline: none;
-        border-color: #2e8baf;
+        border-color: var(--bh-brand-500);
     }
     .chat-input textarea::placeholder {
         color: #aaaaaa;
@@ -552,7 +552,7 @@
     }
     .modal-content {
         background: #ffffff;
-        border: 1px solid #d8e2e8;
+        border: 1px solid var(--bh-border-strong);
         border-radius: 12px;
         padding: 1.5rem;
         width: 400px;
@@ -641,7 +641,7 @@
         overflow-x: auto;
         max-width: 100%;
         overflow-x: auto;
-        border: 1px solid #d8e2e8;
+        border: 1px solid var(--bh-border-strong);
     }
     .message.master .message-text pre code {
         background: transparent;
@@ -649,19 +649,19 @@
         color: #333333;
     }
     .message.master .message-text blockquote {
-        border-left: 3px solid #2e8baf;
+        border-left: 3px solid var(--bh-brand-500);
         padding: 0.3rem 0.5rem;
         margin: 0.3rem 0;
         background: #eef3f6;
         color: #555555;
     }
     .message.master .message-text strong { color: #333333; }
-    .message.master .message-text a { color: #2e8baf; }
-    .message.master .message-text hr { border: none; border-top: 1px solid #d8e2e8; margin: 0.5rem 0; }
+    .message.master .message-text a { color: var(--bh-brand-500); }
+    .message.master .message-text hr { border: none; border-top: 1px solid var(--bh-border-strong); margin: 0.5rem 0; }
     .message.master .message-text table { border-collapse: collapse; width: 100%; max-width: 100%; margin: 0.3rem 0; }
     .message.master .message-text th,
     .message.master .message-text td {
-        border: 1px solid #d8e2e8;
+        border: 1px solid var(--bh-border-strong);
         padding: 0.3rem 0.5rem;
         color: #333333;
     }
@@ -696,7 +696,7 @@
         background: transparent !important;
     }
     [data-bs-theme="dark"] .message.master .message-text blockquote {
-        border-left-color: #2e8baf;
+        border-left-color: var(--bh-brand-500);
         background: rgba(255,255,255,0.04);
         color: rgba(255,255,255,0.65);
     }

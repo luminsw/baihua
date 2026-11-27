@@ -368,7 +368,7 @@
     <value>阶段进度</value>
   </data>
   <data name="MasterStage_NoMasterHint" xml:space="preserve">
-    <value>未选择师父，&lt;a href="master-chat"&gt;返回师父对话页&lt;/a&gt;</value>
+    <value>在「虚拟师父」里挑一位师父，就能开启从入门到出师的修行之路。</value>
   </data>
   <data name="MasterStage_Loading" xml:space="preserve">
     <value>加载中...</value>

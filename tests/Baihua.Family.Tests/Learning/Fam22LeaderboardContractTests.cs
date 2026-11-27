@@ -136,6 +136,7 @@ public class Fam22LeaderboardContractTests : IDisposable
             RegexActiveFirst(source, "和自己比") ||
             source.Contains("activeTab = self", StringComparison.OrdinalIgnoreCase) ||
             source.Contains("activeView = self", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("activeView = \"self\"", StringComparison.OrdinalIgnoreCase) ||
             source.Contains("SelfCompare", StringComparison.OrdinalIgnoreCase);
         Assert.True(selfCompareActive,
             "FAM-22-AC1：默认视图必须是'和自己比'（红）");

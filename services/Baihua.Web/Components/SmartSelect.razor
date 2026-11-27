@@ -151,12 +151,12 @@
     }
 
     .smart-select.open .smart-select-trigger {
-        border-color: #2e8baf;
+        border-color: var(--bh-brand-500);
         box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
     }
 
     .smart-select.disabled .smart-select-trigger {
-        background: #e8eef2;
+        background: var(--bh-border);
         cursor: not-allowed;
         opacity: 0.65;
     }
@@ -165,7 +165,7 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        color: #1e3a4c;
+        color: var(--bh-ink-700);
     }
 
     .smart-select-value:empty::before,
@@ -189,7 +189,7 @@
         left: 0;
         right: 0;
         background: white;
-        border: 1px solid #d8e2e8;
+        border: 1px solid var(--bh-border-strong);
         border-radius: 8px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         z-index: 1050;
@@ -207,7 +207,7 @@
     .smart-select-search {
         padding: 0.5rem 0.75rem;
         border: none;
-        border-bottom: 1px solid #e8eef2;
+        border-bottom: 1px solid var(--bh-border);
         outline: none;
         font-size: 0.9rem;
         background: transparent;
@@ -236,7 +236,7 @@
     }
 
     .smart-select-option.selected {
-        background: #2e8baf;
+        background: var(--bh-brand-500);
         color: white;
     }
 
