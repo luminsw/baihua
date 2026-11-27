@@ -18,8 +18,13 @@
 
 <PageTitle>@L["BrowseVault_PageTitle"]</PageTitle>
 
-<div class="container mt-4">
-    <h1 class="mb-4">@L["BrowseVault_Title"]</h1>
+<div class="container mt-4 browse-page">
+    <div class="bh-page-header">
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">🗂️</span>@L["BrowseVault_Title"]</h1>
+            <p class="bh-page-sub">按行业、标签与来源筛选知识库，点开即可阅读笔记。</p>
+        </div>
+    </div>
 
     <!-- 最近浏览 -->
     @if (!isLoadingRecentNotes && recentNotes?.Any() == true)
@@ -1378,3 +1383,117 @@
         return Markdown.ToHtml(markdown, pipeline);
     }
 }
+
+<style>
+    /* ---------- 知识库浏览：卡片化 ---------- */
+    .browse-page { max-width: 1180px; }
+
+    .browse-page .vault-folder-card {
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+        background: var(--bh-surface);
+    }
+
+    .browse-page .vault-folder-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--bh-brand-100);
+        box-shadow: var(--bh-shadow-md);
+    }
+
+    .browse-page .vault-folder-card .card-body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem 0.75rem 0.85rem !important;
+    }
+
+    .browse-page .vault-card-icon {
+        width: 44px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        line-height: 1;
+        background: var(--bh-brand-50);
+        border: 1px solid var(--bh-brand-100);
+        border-radius: 12px;
+        margin-bottom: 0.55rem;
+        cursor: pointer;
+    }
+
+    .browse-page .vault-folder-card .fw-bold { font-size: 0.9rem; color: var(--bh-ink-900); }
+
+    .browse-page .vault-folder-card .badge {
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 0.18em 0.55em;
+    }
+
+    .browse-page .vault-folder-card .badge.bg-secondary {
+        background: var(--bh-surface-3) !important;
+        color: var(--bh-ink-500);
+    }
+
+    .browse-page .vault-folder-card .badge.bg-info {
+        background: var(--bh-brand-50) !important;
+        color: var(--bh-brand-700);
+    }
+
+    .browse-page .vault-folder-card .btn-outline-primary {
+        border-radius: 999px;
+        font-size: 0.75rem;
+        padding: 0.15rem 0.7rem;
+        margin-top: auto;
+    }
+
+    .browse-page .vault-select-check {
+        position: absolute;
+        top: 0.5rem;
+        left: 0.55rem;
+        margin: 0;
+        opacity: 0.35;
+        transition: opacity 0.15s ease;
+    }
+
+    .browse-page .vault-folder-card:hover .vault-select-check { opacity: 1; }
+
+    .browse-page .vault-card-selected {
+        border-color: var(--bh-brand-500) !important;
+        box-shadow: 0 0 0 3px rgba(46, 147, 181, 0.14);
+    }
+
+    .browse-page .filter-bar { margin-bottom: 0.5rem; }
+
+    .browse-page .filter-chip {
+        border-radius: 999px;
+        border: 1px solid var(--bh-border);
+        background: var(--bh-surface);
+        color: var(--bh-ink-500);
+        font-size: 0.78rem;
+        padding: 0.2rem 0.7rem;
+    }
+
+    .browse-page .filter-chip:hover { border-color: var(--bh-brand-500); color: var(--bh-brand-700); }
+
+    .browse-page .filter-chip.active {
+        background: var(--bh-brand-600);
+        border-color: var(--bh-brand-600);
+        color: #fff;
+    }
+
+    .browse-page .note-chip {
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        background: var(--bh-surface);
+        padding: 0.5rem 0.7rem;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .browse-page .note-chip:hover {
+        border-color: var(--bh-brand-500);
+        box-shadow: var(--bh-shadow-sm);
+    }
+</style>

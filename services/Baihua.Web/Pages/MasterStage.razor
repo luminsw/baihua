@@ -11,12 +11,22 @@
 
 <PageTitle>@L["MasterStage_PageTitle"]</PageTitle>
 
-<h1>@L["MasterStage_Title"]</h1>
+<div class="bh-page-header">
+    <div>
+        <h1 class="bh-page-title"><span class="bh-page-emoji">🎓</span>@L["MasterStage_Title"]</h1>
+        <p class="bh-page-sub">查看当前师父的修行阶段与进阶路线。</p>
+    </div>
+</div>
 
 @if (string.IsNullOrEmpty(masterId))
 {
-    <div class="empty-state">
-        <p>@(new MarkupString(L["MasterStage_NoMasterHint"].Value))</p>
+    <div class="empty-state bh-empty">
+        <div class="bh-empty-icon">🎓</div>
+        <div class="bh-empty-title">尚未选择师父</div>
+        <div class="bh-empty-sub">
+            <p>@(new MarkupString(L["MasterStage_NoMasterHint"].Value))</p>
+        </div>
+        <a class="btn btn-primary btn-sm" href="/chat">去找师父聊聊</a>
     </div>
 }
 else if (isLoading)
@@ -454,3 +464,37 @@ else
         NavigationManager.NavigateTo("master-chat");
     }
 }
+<style>
+    .master-stage-page, .stage-header { }
+
+    .bh-empty.empty-state {
+        max-width: 520px;
+        margin: 2.5rem auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 2.4rem 1.6rem;
+        background: var(--bh-surface);
+        border: 1px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        text-align: center;
+    }
+
+    .bh-empty-icon {
+        width: 52px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        background: var(--bh-brand-50);
+        border: 1px solid var(--bh-brand-100);
+        border-radius: 14px;
+    }
+
+    .bh-empty-title { font-size: 1rem; font-weight: 650; color: var(--bh-ink-900); }
+    .bh-empty-sub { font-size: 0.86rem; color: var(--bh-ink-400); }
+    .bh-empty-sub p { margin: 0; }
+</style>

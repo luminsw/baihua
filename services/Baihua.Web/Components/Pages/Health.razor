@@ -15,7 +15,14 @@
 
 <PageTitle>@L["Health_PageTitle"]</PageTitle>
 
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 health-page">
+    <div class="bh-page-header">
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">🩺</span>@L["Health_PageTitle"]</h1>
+            <p class="bh-page-sub">服务状态、请求指标与错误日志集中查看，异常可一键修复。</p>
+        </div>
+    </div>
+
     <!-- 主标签页 -->
     <ul class="nav nav-tabs mb-4">
         <li class="nav-item">
@@ -30,7 +37,7 @@
     {
     <div class="card">
         <div class="card-header d-flex align-items-center justify-content-between">
-            <h2 class="mb-0">@L["Health_SystemHealthCheck"]</h2>
+            <h2 class="mb-0 health-card-title">检测结果</h2>
             <div class="d-flex gap-2">
                 <button class="btn btn-sm btn-outline-success" @onclick="FixIssuesAsync" disabled="@isFixing">
                     @if (isFixing)
@@ -877,3 +884,66 @@
         RefreshPerfData();
     }
 }
+<style>
+    /* ---------- 健康检查：页头 / 标签 / 卡片统一 ---------- */
+    .health-page { max-width: 1120px; }
+
+    .health-page .nav-tabs {
+        border-bottom: 1px solid var(--bh-border);
+        gap: 0.25rem;
+    }
+
+    .health-page .nav-tabs .nav-link {
+        border: 1px solid transparent;
+        border-radius: 10px 10px 0 0;
+        color: var(--bh-ink-400);
+        font-size: 0.88rem;
+        font-weight: 600;
+        padding: 0.5rem 0.95rem;
+    }
+
+    .health-page .nav-tabs .nav-link:hover { color: var(--bh-brand-700); background: var(--bh-brand-50); }
+
+    .health-page .nav-tabs .nav-link.active {
+        color: var(--bh-brand-700);
+        background: var(--bh-surface);
+        border-color: var(--bh-border) var(--bh-border) var(--bh-surface);
+    }
+
+    .health-page .card {
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        overflow: hidden;
+        margin-bottom: 1rem;
+    }
+
+    .health-page .card-header {
+        background: var(--bh-surface-2);
+        border-bottom: 1px solid var(--bh-border);
+        padding: 0.75rem 1.1rem;
+    }
+
+    .health-page .health-card-title,
+    .health-page .card-header h2,
+    .health-page .card-header h5 {
+        font-size: 0.95rem;
+        font-weight: 650;
+        color: var(--bh-ink-900);
+    }
+
+    .health-page .card-header .btn { border-radius: 8px; font-size: 0.8rem; }
+    .health-page .card-body { padding: 1.1rem; }
+
+    .health-page .card-body .alert-secondary,
+    .health-page .card-body .bg-light {
+        background: var(--bh-surface-2) !important;
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        color: var(--bh-ink-500);
+        font-size: 0.86rem;
+    }
+
+    .health-page .progress { background: var(--bh-surface-3); border-radius: 999px; }
+    .health-page .progress-bar { background: var(--bh-brand-500); }
+</style>

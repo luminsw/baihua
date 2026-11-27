@@ -9,7 +9,12 @@
 <PageTitle>@L["Quiz_Title"]</PageTitle>
 
 <div class="quiz-page">
-    <h1>🎯 @L["Quiz_Title"]</h1>
+    <div class="bh-page-header">
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">🎯</span>@L["Quiz_Title"]</h1>
+            <p class="bh-page-sub">两位家庭成员轮流提问与作答，看看谁记得更牢。</p>
+        </div>
+    </div>
 
     @if (session == null)
     {
@@ -18,7 +23,11 @@
             <h2>@L["Quiz_SelectPlayers"]</h2>
             @if (learners.Count < 2)
             {
-                <div class="quiz-empty">@L["Quiz_NeedTwoLearners"]</div>
+                <div class="quiz-empty">
+                    <div class="quiz-empty-icon">👨‍👩‍👧</div>
+                    <div>@L["Quiz_NeedTwoLearners"]</div>
+                    <a class="btn btn-sm btn-primary mt-2" href="/achievements">去添加成员</a>
+                </div>
             }
             else
             {
@@ -279,3 +288,47 @@
         answerText = "";
     }
 }
+
+<style>
+    /* ---------- 亲子互考：卡片化 ---------- */
+    .quiz-page { max-width: 880px; }
+
+    .quiz-setup {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        padding: 1.1rem 1.25rem 1.25rem;
+    }
+
+    .quiz-setup > h2 {
+        font-size: 0.95rem;
+        font-weight: 650;
+        color: var(--bh-ink-700);
+        padding-bottom: 0.6rem;
+        border-bottom: 1px solid var(--bh-border);
+        margin-bottom: 1rem;
+    }
+
+    .quiz-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 1.8rem 1rem;
+        border: 1px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius);
+        color: var(--bh-ink-400);
+        font-size: 0.88rem;
+        text-align: center;
+    }
+
+    .quiz-empty-icon { font-size: 1.6rem; }
+
+    .player-select { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
+    .player-select label { font-size: 0.78rem; color: var(--bh-ink-400); margin-bottom: 0.3rem; display: block; }
+
+    @@media (max-width: 640px) {
+        .player-select { grid-template-columns: 1fr; }
+    }
+</style>

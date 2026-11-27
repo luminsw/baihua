@@ -11,9 +11,11 @@
 <PageTitle>百花服务器互联</PageTitle>
 
 <div class="server-msg-page">
-<div class="server-msg-header">
-    <h1 class="h4 mb-0">🛰️ 百花服务器互联</h1>
-    <span class="text-secondary small">与其他百花服务器互发消息</span>
+<div class="bh-page-header">
+    <div>
+        <h1 class="bh-page-title"><span class="bh-page-emoji">🛰️</span>百花服务器互联</h1>
+        <p class="bh-page-sub">与其他百花服务器互发消息，共享口令鉴权、即发即达。</p>
+    </div>
 </div>
 
 <div class="server-msg-layout">
@@ -330,3 +332,106 @@
         _hub?.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 }
+
+<style>
+    /* ---------- 服务器互联：双栏卡片 ---------- */
+    .server-msg-page { max-width: 1180px; }
+
+    .server-msg-page .server-msg-sidebar,
+    .server-msg-page .server-msg-chat {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        padding: 0.9rem;
+    }
+
+    .server-msg-page .server-msg-sidebar { border-radius: var(--bh-radius-lg); }
+
+    .server-msg-page .server-msg-peer {
+        border: 1px solid transparent;
+        border-radius: 10px;
+        padding: 0.55rem 0.65rem;
+        margin-bottom: 0.35rem;
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .server-msg-page .server-msg-peer:hover {
+        background: var(--bh-brand-50);
+        border-color: var(--bh-brand-100);
+    }
+
+    .server-msg-page .server-msg-peer.active {
+        background: var(--bh-brand-50);
+        border-color: var(--bh-brand-100);
+        box-shadow: inset 3px 0 0 var(--bh-brand-600);
+    }
+
+    .server-msg-page .server-msg-peer .server-msg-del { padding: 0.1rem 0.4rem; border-radius: 8px; font-size: 0.8rem; }
+
+    .server-msg-page .server-msg-chat-head {
+        display: flex;
+        align-items: baseline;
+        gap: 0.15rem;
+        padding: 0.15rem 0.25rem 0.75rem;
+        border-bottom: 1px solid var(--bh-border);
+        margin-bottom: 0.75rem;
+    }
+
+    .server-msg-page .server-msg-thread {
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        padding: 0.75rem;
+    }
+
+    .server-msg-page .server-msg-inputbar { margin-top: 0.75rem; align-items: flex-end; }
+
+    .server-msg-page .server-msg-input {
+        border-radius: 10px;
+        border-color: var(--bh-border-strong);
+        font-size: 0.88rem;
+    }
+
+    .server-msg-page .server-msg-input:focus {
+        border-color: var(--bh-brand-500);
+        box-shadow: 0 0 0 3px rgba(46, 147, 181, 0.16);
+    }
+
+    .server-msg-page .server-msg-sendbtn { border-radius: 10px; padding: 0.5rem 1.1rem; }
+
+    .server-msg-page .server-msg-addform {
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        padding: 0.7rem;
+        margin-bottom: 0.6rem;
+    }
+
+    .server-msg-page code {
+        background: var(--bh-brand-50);
+        color: var(--bh-brand-700);
+        padding: 0.05rem 0.3rem;
+        border-radius: 5px;
+        font-size: 0.78rem;
+    }
+</style>
+
+<style>
+    /* ---------- 空态：居中虚线占位 ---------- */
+    .server-msg-page .server-msg-chat { display: flex; flex-direction: column; min-height: 420px; }
+
+    .server-msg-page .server-msg-chat > .text-center.py-5 {
+        margin: auto;
+        padding: 2.2rem 1.5rem !important;
+        border: 1px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius);
+        color: var(--bh-ink-400) !important;
+        font-size: 0.88rem;
+        background: var(--bh-surface-2);
+    }
+
+    .server-msg-page .server-msg-sidebar { display: flex; flex-direction: column; }
+    .server-msg-page .server-msg-peerlist { flex: 1 1 auto; overflow-y: auto; }
+</style>

@@ -7,41 +7,47 @@
 <PageTitle>@L["DailyCard_PageTitle"]</PageTitle>
 
 <div class="daily-card-page">
-    <h1>📚 @L["DailyCard_Title"]</h1>
+    <div class="bh-page-header">
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">🗂️</span>@L["DailyCard_Title"]</h1>
+            <p class="bh-page-sub">每天几张卡片，翻转卡片自测，坚持打卡积累记忆。</p>
+        </div>
+    </div>
 
     @if (!string.IsNullOrEmpty(errorMessage))
     {
         <div class="alert alert-error">@errorMessage</div>
     }
 
-    <!-- 知识库选择 -->
-    <div class="vault-selector" style="margin-bottom:1rem;">
-        <label>@L["DailyCard_VaultLabel"]</label>
-        <select class="form-control" style="display:inline-block;width:auto;min-width:200px;" @bind="selectedVaultId" @bind:after="OnVaultChanged">
-            @foreach (var vault in vaults)
-            {
-                <option value="@vault.Id">@vault.Name</option>
-            }
-        </select>
-    </div>
-
-    <!-- 进度与 streak -->
-    @if (progress != null)
-    {
-        <div class="progress-section">
-            <div class="streak-badge">
-                <span class="streak-flame">🔥</span>
-                <span class="streak-count">@(progress.Streak)</span>
-                <span class="streak-label">@L["DailyCard_StreakLabel", progress.Streak]</span>
-            </div>
-            <div class="progress-bar-wrap">
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: @(progress.Target > 0 ? (progress.Completed * 100 / progress.Target) : 0)%"></div>
-                </div>
-                <span class="progress-text">@progress.Completed / @progress.Target</span>
-            </div>
+    <!-- 知识库选择 + 进度 -->
+    <div class="daily-topbar">
+        <div class="vault-selector">
+            <label>@L["DailyCard_VaultLabel"]</label>
+            <select class="form-control" @bind="selectedVaultId" @bind:after="OnVaultChanged">
+                @foreach (var vault in vaults)
+                {
+                    <option value="@vault.Id">@vault.Name</option>
+                }
+            </select>
         </div>
-    }
+
+        @if (progress != null)
+        {
+            <div class="progress-section">
+                <div class="streak-badge">
+                    <span class="streak-flame">🔥</span>
+                    <span class="streak-count">@(progress.Streak)</span>
+                    <span class="streak-label">@L["DailyCard_StreakLabel", progress.Streak]</span>
+                </div>
+                <div class="progress-bar-wrap">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: @(progress.Target > 0 ? (progress.Completed * 100 / progress.Target) : 0)%"></div>
+                    </div>
+                    <span class="progress-text">@progress.Completed / @progress.Target</span>
+                </div>
+            </div>
+        }
+    </div>
 
     <!-- 卡片区域 -->
     @if (isLoading)
@@ -781,3 +787,148 @@
 
 
 }
+
+<style>
+    /* ---------- 每日卡片：结构与配色 ---------- */
+    .daily-card-page { max-width: 820px; margin: 0 auto; }
+
+    .daily-topbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.9rem 1.4rem;
+        padding: 0.85rem 1.1rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        margin-bottom: 1rem;
+    }
+
+    .daily-topbar .vault-selector { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+    .daily-topbar .vault-selector label { margin: 0; font-size: 0.8rem; color: var(--bh-ink-400); white-space: nowrap; }
+    .daily-topbar .vault-selector .form-control { width: auto; min-width: 200px; border-radius: 9px; }
+
+    .daily-topbar .progress-section { display: flex; align-items: center; gap: 1rem; margin: 0; flex-wrap: wrap; }
+
+    .daily-topbar .streak-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.28rem 0.7rem;
+        background: var(--bh-warning-bg);
+        border: 1px solid #f0dfbc;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        color: var(--bh-warning);
+    }
+
+    .daily-topbar .streak-count { font-weight: 700; font-size: 0.95rem; }
+    .daily-topbar .streak-label { color: var(--bh-warning); }
+
+    .daily-topbar .progress-bar-wrap { display: flex; align-items: center; gap: 0.6rem; min-width: 200px; }
+    .daily-topbar .progress-bar {
+        position: relative;
+        flex: 1;
+        height: 8px;
+        background: var(--bh-surface-3);
+        border-radius: 999px;
+        overflow: hidden;
+    }
+
+    .daily-topbar .progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--bh-brand-500), var(--bh-brand-600));
+    }
+
+    .daily-topbar .progress-text { font-size: 0.78rem; color: var(--bh-ink-400); font-variant-numeric: tabular-nums; }
+
+    .card-loading {
+        padding: 2.5rem 1rem;
+        text-align: center;
+        color: var(--bh-ink-400);
+        font-size: 0.9rem;
+    }
+
+    /* 今日完成 */
+    .no-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 2.6rem 1.2rem;
+        background: var(--bh-surface);
+        border: 1px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius-lg);
+        color: var(--bh-ink-500);
+        font-size: 0.92rem;
+    }
+
+    .no-card-icon { font-size: 2.2rem; }
+    .no-card > div { color: var(--bh-ink-400); }
+
+    /* 卡片本体 */
+    .card-container { margin: 0.4rem auto 0; }
+    .card-face {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-sm);
+    }
+
+    .card-deck {
+        display: inline-block;
+        padding: 1px 8px;
+        background: var(--bh-brand-50);
+        color: var(--bh-brand-700);
+        border: 1px solid var(--bh-brand-100);
+        border-radius: 999px;
+        font-size: 0.74rem;
+    }
+
+    /* 评分按钮 */
+    .answer-buttons { display: flex; justify-content: center; gap: 0.6rem; flex-wrap: wrap; margin-top: 1rem; }
+    .answer-buttons .btn { border-radius: 10px; padding: 0.45rem 1.1rem; font-size: 0.88rem; font-weight: 550; }
+    .answer-buttons .btn-forgot { background: var(--bh-danger-bg); color: var(--bh-danger); border: 1px solid #eebdbb; }
+    .answer-buttons .btn-hard { background: var(--bh-warning-bg); color: var(--bh-warning); border: 1px solid #f0dfbc; }
+    .answer-buttons .btn-remember { background: var(--bh-success-bg); color: var(--bh-success); border: 1px solid #cfe9da; }
+    .answer-buttons .btn:hover { filter: brightness(0.97); }
+
+    .flip-hint { text-align: center; color: var(--bh-ink-400); font-size: 0.84rem; margin-top: 0.85rem; }
+
+    /* 家长出题 */
+    .custom-card-section { margin-top: 1.6rem; }
+    .custom-card-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.7rem 1rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        font-size: 0.88rem;
+        font-weight: 550;
+        color: var(--bh-ink-700);
+        cursor: pointer;
+        list-style: none;
+    }
+
+    .custom-card-toggle::-webkit-details-marker { display: none; }
+    .custom-card-toggle:hover { border-color: var(--bh-border-strong); }
+
+    .custom-card-form {
+        margin-top: 0.6rem;
+        padding: 1rem 1.1rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .custom-card-form .form-group { margin-bottom: 0.75rem; }
+    .custom-card-form label { font-size: 0.8rem; color: var(--bh-ink-400); margin-bottom: 0.25rem; display: block; }
+    .custom-card-form .form-control { border-radius: 9px; }
+    .custom-card-form .form-actions { display: flex; justify-content: flex-end; }
+</style>

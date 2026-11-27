@@ -8,15 +8,19 @@
 
 <PageTitle>@L["Stock_PageTitle"]</PageTitle>
 
-<h1>@L["Stock_Title"]</h1>
-<p class="text-muted">@L["Stock_Subtitle"]</p>
+<div class="bh-page-header">
+    <div>
+        <h1 class="bh-page-title">@L["Stock_Title"]</h1>
+        <p class="bh-page-sub">@L["Stock_Subtitle"]</p>
+    </div>
+</div>
 
 <!-- 分析条件 -->
 <div class="card mb-4">
     <div class="card-header">@L["Stock_AnalysisHeader"]</div>
     <div class="card-body">
-        <div class="row g-3 align-items-end">
-            <div class="col-md-4">
+        <div class="row g-3 align-items-start">
+            <div class="col-12">
                 <label class="form-label small text-muted">@L["Stock_StrategyLabel"]</label>
                 <select class="form-select" @bind="_strategy">
                     <option value="">@L["Stock_Strategy_All"]</option>
@@ -26,7 +30,7 @@
                     <option value="dividend">@L["Stock_Strategy_Dividend"]</option>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <label class="form-label small text-muted">@L["Stock_IndustryLabel"]</label>
                 <select class="form-select" @bind="_industry">
                     <option value="">@L["Stock_IndustryAll"]</option>
@@ -36,7 +40,7 @@
                     }
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <label class="form-label small text-muted">@L["Stock_HorizonLabel"]</label>
                 <select class="form-select" @bind="_horizon">
                     <option value="">@L["Stock_Horizon_All"]</option>
@@ -46,7 +50,7 @@
             </div>
         </div>
         <div class="row g-3 mt-1">
-            <div class="col-md-8">
+            <div class="col-12">
                 <label class="form-label small text-muted">@L["Stock_PromptLabel"]</label>
                 <div class="d-flex gap-2">
                     <input class="form-control" placeholder="@L["Stock_PromptPlaceholder"]"
@@ -54,9 +58,9 @@
                     <button class="btn btn-outline-secondary text-nowrap" title="@L["Stock_ResetPromptTitle"]" @onclick="ResetPrompt">@L["Stock_ResetPrompt"]</button>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <label class="form-label small text-muted">@L["Stock_HistoryLabel"]</label>
-                <select class="form-select" @bind="_selectedHistory" @bind:after="OnHistorySelected">
+                <select class="form-select" data-enhanced-mode="dropdown" @bind="_selectedHistory" @bind:after="OnHistorySelected">
                     <option value="">@L["Stock_HistoryPlaceholder"]</option>
                     @foreach (var p in _promptHistory)
                     {
@@ -347,3 +351,102 @@ else
         }
     }
 }
+
+<style>
+    /* ---------- 股票建议：筛选卡与结果表 ---------- */
+    .card.mb-4 {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .card.mb-4 > .card-header {
+        background: var(--bh-surface-2);
+        border-bottom: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg) var(--bh-radius-lg) 0 0;
+        font-weight: 600;
+        color: var(--bh-ink-700);
+        font-size: 0.92rem;
+        padding: 0.7rem 1.1rem;
+    }
+
+    .card.mb-4 > .card-body { padding: 1.1rem; }
+
+    .card .form-label {
+        font-size: 0.78rem;
+        color: var(--bh-ink-400);
+        margin-bottom: 0.3rem;
+        letter-spacing: 0.02em;
+    }
+
+    /* 买入 / 卖出：分段控件 */
+    .card .btn-group[role="group"] {
+        padding: 3px;
+        background: var(--bh-surface-3);
+        border-radius: 10px;
+        gap: 3px;
+    }
+
+    .card .btn-group[role="group"] .btn {
+        border: none !important;
+        border-radius: 8px !important;
+        font-size: 0.85rem;
+        padding: 0.3rem 0.9rem;
+        background: transparent;
+        color: var(--bh-ink-500);
+    }
+
+    .card .btn-group[role="group"] .btn-primary {
+        background: var(--bh-surface) !important;
+        color: var(--bh-brand-700) !important;
+        font-weight: 600;
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .card .btn-group[role="group"] .btn-danger {
+        background: var(--bh-surface) !important;
+        color: var(--bh-danger) !important;
+        font-weight: 600;
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .card .btn-group[role="group"] .btn-outline-primary,
+    .card .btn-group[role="group"] .btn-outline-danger {
+        background: transparent !important;
+        color: var(--bh-ink-500) !important;
+    }
+
+    /* 结果表 */
+    .card .table { font-size: 0.87rem; margin-bottom: 0; }
+
+    .card .table > thead th {
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: var(--bh-ink-400);
+        border-bottom: 1px solid var(--bh-border);
+        white-space: nowrap;
+    }
+
+    .card .table > tbody > tr:hover { background: var(--bh-surface-2); }
+    .card .table td { color: var(--bh-ink-700); vertical-align: middle; }
+    .card .table code { color: var(--bh-brand-700); background: var(--bh-brand-50); padding: 1px 5px; border-radius: 5px; }
+
+    .card .progress { background: var(--bh-surface-3); border-radius: 999px; }
+    .card .progress-bar { border-radius: 999px; }
+
+    .card .badge { font-weight: 600; padding: 0.32em 0.6em; border-radius: 7px; }
+    .card .card-header .badge { background: var(--bh-brand-50) !important; color: var(--bh-brand-700) !important; }
+
+    .loading-spinner {
+        padding: 2.5rem 1rem;
+        text-align: center;
+        color: var(--bh-ink-400);
+        font-size: 0.9rem;
+    }
+
+    .text-muted.small.mt-4 { color: var(--bh-ink-400) !important; }
+    details > summary { color: var(--bh-ink-400); cursor: pointer; }
+    details pre { background: var(--bh-surface-2) !important; border-color: var(--bh-border) !important; }
+</style>

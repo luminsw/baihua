@@ -13,9 +13,13 @@
 
 <PageTitle>@L["KnowledgeGen_PageTitle"]</PageTitle>
 
-<h1>@L["KnowledgeGen_Title"]</h1>
-
-<p class="text-muted mb-3">@L["KnowledgeGen_Subtitle"]</p>
+<div class="bh-page-header">
+    <div>
+        <h1 class="bh-page-title">@L["KnowledgeGen_Title"]</h1>
+        <p class="bh-page-sub">@L["KnowledgeGen_Subtitle"]</p>
+    </div>
+    <a href="cards" class="btn btn-sm btn-outline-secondary">@L["KnowledgeGen_ViewCards"]</a>
+</div>
 
 @if (isInitializing)
 {
@@ -297,12 +301,6 @@ else
         </div>
     </div>
 
-    <!-- Cards Entry -->
-    <div class="mt-3">
-        <a href="cards" class="btn btn-outline-info">
-            <span>@L["KnowledgeGen_ViewCards"]</span>
-        </a>
-    </div>
 }
 
 <style>
@@ -929,3 +927,121 @@ else
         return cleaned.Length > 6 ? cleaned.Substring(0, 6) : cleaned;
     }
 }
+
+<style>
+    /* ---------- 知识库生成：宽卡 + 分区 ---------- */
+    .generate-section {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-sm);
+        padding: 1.5rem 1.6rem;
+        max-width: 1000px;
+    }
+
+    .generate-section .form-group {
+        margin-bottom: 0;
+        padding: 1.1rem 0;
+        border-bottom: 1px solid var(--bh-border);
+    }
+
+    .generate-section .form-group:last-of-type { border-bottom: 0; }
+
+    .generate-section .form-group > label {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 650;
+        letter-spacing: 0.02em;
+        color: var(--bh-ink-500);
+        margin-bottom: 0.55rem;
+    }
+
+    .generate-section .form-control { border-radius: 10px; border-color: var(--bh-border-strong); }
+    .generate-section .form-control:focus {
+        border-color: var(--bh-brand-500);
+        box-shadow: 0 0 0 3px rgba(46, 147, 181, 0.16);
+    }
+
+    .generate-section .form-text { font-size: 0.78rem; color: var(--bh-ink-400); }
+
+    /* 模式切换 / 行业：分段按钮组 */
+    .generate-section .btn-group .btn { border-radius: 9px !important; }
+    .generate-section .btn-outline-primary { border-color: var(--bh-border-strong); color: var(--bh-ink-500); }
+    .generate-section .btn-outline-primary:hover {
+        background: var(--bh-brand-50);
+        border-color: var(--bh-brand-100);
+        color: var(--bh-brand-700);
+    }
+
+    /* 模型选择：白底卡片 */
+    .ai-model-selector {
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        padding: 0.85rem 1rem;
+    }
+
+    .model-option {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border-strong);
+        border-radius: 999px;
+        padding: 0.3rem 0.8rem;
+        font-size: 0.82rem;
+        color: var(--bh-ink-700);
+    }
+
+    .model-option:hover { border-color: var(--bh-brand-500); color: var(--bh-brand-700); }
+
+    .model-option.selected {
+        background: var(--bh-brand-600);
+        border-color: var(--bh-brand-600);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(29, 127, 158, 0.25);
+    }
+
+    /* 灵感主题：三列紧凑卡 */
+    .topic-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 0.7rem;
+    }
+
+    .topic-card {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        padding: 0.7rem 0.85rem;
+        text-align: left;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+
+    .topic-card:hover {
+        transform: translateY(-1px);
+        border-color: var(--bh-brand-100);
+        box-shadow: var(--bh-shadow-sm);
+    }
+
+    .topic-cat {
+        background: var(--bh-brand-50);
+        color: var(--bh-brand-700);
+        border-radius: 6px;
+        font-size: 0.68rem;
+    }
+
+    /* 底部操作行 */
+    .form-actions {
+        margin-top: 0.5rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--bh-border);
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .form-actions .btn-lg {
+        border-radius: 10px;
+        font-size: 0.95rem;
+        padding: 0.6rem 1.6rem;
+        box-shadow: 0 4px 12px rgba(29, 127, 158, 0.22);
+    }
+</style>

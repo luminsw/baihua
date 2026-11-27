@@ -3059,3 +3059,21 @@ hr { border-color: var(--bh-border); opacity: 1; }
     opacity: 1 !important;
     box-shadow: none !important;
 }
+
+/* ---------- enhanced-select 微调：长文本 chip 截断 ---------- */
+.enhanced-select-chip {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.enhanced-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

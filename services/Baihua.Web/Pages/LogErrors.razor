@@ -9,16 +9,26 @@
 
 <PageTitle>@L["LogErrors_PageTitle"]</PageTitle>
 
-<div class="container-fluid py-3">
-    <h4 class="mb-3">@L["LogErrors_Title"]</h4>
+<div class="container-fluid py-3 log-errors-page">
+    <div class="bh-page-header">
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">🐞</span>@L["LogErrors_Title"]</h1>
+            <p class="bh-page-sub">集中查看本地与 OpenObserve 的错误日志，可按来源清理。</p>
+        </div>
+    </div>
 
-    <div class="mb-2 d-flex gap-2 align-items-center flex-wrap">
-        <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshLocal" disabled="@loading">@L["LogErrors_RefreshLocal"]</button>
-        <button class="btn btn-sm btn-outline-info" @onclick="RefreshOpenObserve" disabled="@loadingOo">@L["LogErrors_OpenObserveErrors"]</button>
-        <button class="btn btn-sm btn-outline-danger" @onclick="ClearLocalLogs">@L["LogErrors_ClearLocal"]</button>
-        <button class="btn btn-sm btn-outline-warning" @onclick="ClearOpenObserve" disabled="@clearingOo">@L["LogErrors_ClearOpenObserve"]</button>
-        <a href="http://localhost:5082" target="_blank" class="btn btn-sm btn-outline-info">@L["LogErrors_OpenObserveUI"]</a>
-        <span class="small">@status</span>
+    <div class="log-toolbar">
+        <div class="log-toolbar-actions">
+            <button class="btn btn-sm btn-primary" @onclick="RefreshLocal" disabled="@loading">@L["LogErrors_RefreshLocal"]</button>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshOpenObserve" disabled="@loadingOo">@L["LogErrors_OpenObserveErrors"]</button>
+            <button class="btn btn-sm btn-outline-danger" @onclick="ClearLocalLogs">@L["LogErrors_ClearLocal"]</button>
+            <button class="btn btn-sm btn-outline-warning" @onclick="ClearOpenObserve" disabled="@clearingOo">@L["LogErrors_ClearOpenObserve"]</button>
+            <a href="http://localhost:5082" target="_blank" class="btn btn-sm btn-outline-secondary">@L["LogErrors_OpenObserveUI"]</a>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(status))
+        {
+            <span class="log-toolbar-status">@status</span>
+        }
     </div>
 
     @if (pendingClear != null)
@@ -41,7 +51,10 @@
     }
     else if (entries.Count == 0)
     {
-        <div class="alert alert-info">@L["LogErrors_NoErrors"]</div>
+        <div class="log-empty">
+            <div class="log-empty-icon">✅</div>
+            <div>@L["LogErrors_NoErrors"]</div>
+        </div>
     }
     else
     {
@@ -376,3 +389,52 @@
     [Microsoft.AspNetCore.Components.Inject]
     private IJSRuntime JSRuntime { get; set; } = default!;
 }
+
+<style>
+    /* ---------- 错误日志：工具条 + 列表卡 ---------- */
+    .log-errors-page { max-width: 1180px; }
+
+    .log-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        box-shadow: var(--bh-shadow-xs);
+        padding: 0.6rem 0.85rem;
+        margin-bottom: 0.9rem;
+    }
+
+    .log-toolbar-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+    .log-toolbar-actions .btn { border-radius: 8px; font-size: 0.8rem; }
+    .log-toolbar-status { font-size: 0.78rem; color: var(--bh-ink-400); }
+
+    .log-errors-page .list-group {
+        border-radius: var(--bh-radius);
+        overflow: hidden;
+        border: 1px solid var(--bh-border);
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .log-errors-page .list-group-item { background: var(--bh-surface); border-color: var(--bh-border); }
+    .log-errors-page .list-group-item:hover { background: var(--bh-surface-2); }
+    .log-errors-page .list-group-item code { color: var(--bh-ink-700); }
+
+    .log-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 2.2rem 1rem;
+        background: var(--bh-surface);
+        border: 1px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius-lg);
+        color: var(--bh-ink-400);
+        font-size: 0.86rem;
+    }
+
+    .log-empty-icon { font-size: 1.5rem; }
+</style>

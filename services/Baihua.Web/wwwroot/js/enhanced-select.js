@@ -21,13 +21,15 @@
 
         const optionCount = originalSelect.options.length;
         const isDisabled = originalSelect.disabled;
+        // 长文本/大量选项的选择器可显式要求用下拉（data-enhanced-mode="dropdown"）
+        const forceDropdown = originalSelect.dataset.enhancedMode === 'dropdown';
 
         const wrapper = document.createElement('div');
         wrapper.className = 'enhanced-select-wrapper';
         originalSelect.parentNode.insertBefore(wrapper, originalSelect);
         wrapper.appendChild(originalSelect);
 
-        if (optionCount <= CHIP_THRESHOLD) {
+        if (!forceDropdown && optionCount <= CHIP_THRESHOLD) {
             renderChips(wrapper, originalSelect, isDisabled);
         } else {
             renderDropdown(wrapper, originalSelect, isDisabled);
@@ -46,6 +48,17 @@
         wrapper.appendChild(chipsContainer);
 
         function buildChips() {
+            // 选项是异步加载的：初始化时可能只有 1 项，之后暴增到几十项。
+            // 一旦超过平铺阈值，就销毁 chip 组，改用可搜索下拉，避免撑爆页面。
+            if (originalSelect.options.length > CHIP_THRESHOLD) {
+                observer.disconnect();
+                originalSelect.removeEventListener('change', buildChips);
+                chipsContainer.remove();
+                wrapper.classList.remove('enhanced-select-chips-mode');
+                renderDropdown(wrapper, originalSelect, originalSelect.disabled);
+                return;
+            }
+
             chipsContainer.innerHTML = '';
             for (let i = 0; i < originalSelect.options.length; i++) {
                 const opt = originalSelect.options[i];

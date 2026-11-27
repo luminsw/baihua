@@ -78,20 +78,22 @@
                     </div>
                     <!-- 自动授权开关 -->
                     <div class="auto-auth-toggle mt-3">
-                        <label class="form-check form-switch d-flex align-items-center gap-2 mb-0">
-                            <input class="form-check-input" type="checkbox" role="switch"
-                                   checked="@_autoAuthorizeEnabled"
-                                   @onchange="ToggleAutoAuth"
-                                   disabled="@_isTogglingAutoAuth" />
-                            <span class="form-check-label">
+                        <div class="auto-auth-text">
+                            <div class="auto-auth-title">
                                 自动授权
                                 @if (_isTogglingAutoAuth)
                                 {
                                     <span class="spinner-border spinner-border-sm ms-1" style="width:12px;height:12px;"></span>
                                 }
-                            </span>
+                            </div>
+                            <small class="text-muted">开启后，扫码设备自动获得授权，无需手动审批</small>
+                        </div>
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                   checked="@_autoAuthorizeEnabled"
+                                   @onchange="ToggleAutoAuth"
+                                   disabled="@_isTogglingAutoAuth" />
                         </label>
-                        <small class="text-muted d-block mt-1">开启后，扫码设备自动获得授权，无需手动审批</small>
                     </div>
                 }
             }
@@ -776,4 +778,77 @@
         .qr-zoom { align-self: center; }
         .server-info-compact { width: 100%; }
     }
+</style>
+<style>
+    /* ---------- 二维码工具：成卡化 ---------- */
+    .server-qr-compact {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        padding: 1.1rem 1.25rem;
+        align-items: flex-start;
+        gap: 1.4rem;
+    }
+
+    .qr-code-wrapper.qr-compact {
+        border: 1px solid var(--bh-border);
+        border-radius: 12px;
+        box-shadow: none;
+    }
+
+    .qr-zoom-hint { color: var(--bh-brand-600); font-size: 0.72rem; }
+
+    .info-row { padding: 0.45rem 0; align-items: center; }
+    .info-row:first-child { padding-top: 0; }
+    .info-row + .info-row { border-top: 1px solid var(--bh-border); }
+
+    .info-label {
+        color: var(--bh-ink-400);
+        font-size: 0.78rem;
+        letter-spacing: 0.02em;
+        min-width: 4.8em;
+    }
+
+    .info-value { color: var(--bh-ink-900); font-weight: 550; }
+    .info-value code, .info-value span { font-variant-numeric: tabular-nums; }
+
+    .name-edit-trigger { opacity: 0.35; }
+    .name-edit-trigger:hover { opacity: 1; }
+
+    /* 自动授权：一句话 + 右侧开关 */
+    .auto-auth-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        padding: 0.8rem 1.1rem;
+    }
+
+    .auto-auth-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--bh-ink-700);
+    }
+
+    .auto-auth-text small { font-size: 0.78rem; color: var(--bh-ink-400); }
+
+    .auto-auth-toggle .form-check-input {
+        width: 2.3em;
+        height: 1.25em;
+        margin: 0;
+        cursor: pointer;
+    }
+
+    .auto-auth-toggle .form-check-input:checked {
+        background-color: var(--bh-brand-600);
+        border-color: var(--bh-brand-600);
+    }
+
+    /* 通用二维码输入卡 */
+    .qr-form-left textarea { border-radius: 10px; }
 </style>

@@ -7,12 +7,14 @@
 
 <PageTitle>@L["LogSettings_PageTitle"]</PageTitle>
 
-<h1>@L["LogSettings_Heading"]</h1>
+<div class="bh-page-header">
+    <div>
+        <h1 class="bh-page-title">@L["LogSettings_Heading"]</h1>
+        <p class="bh-page-sub">@L["LogSettings_Description"]</p>
+    </div>
+</div>
 
-<div class="settings-form">
-    <p class="form-description">
-        @L["LogSettings_Description"]
-    </p>
+<div class="settings-form log-settings-page">
 
     @if (isLoading)
     {
@@ -421,5 +423,97 @@ docker compose -f docker-compose.observability.yml up -d</code></pre>
     }
     [data-bs-theme="dark"] .loading-spinner {
         color: rgba(255,255,255,0.4);
+    }
+</style>
+
+<style>
+    /* ---------- 日志配置：统一为品牌卡片 ---------- */
+    .log-settings-page {
+        max-width: 720px;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-sm);
+        padding: 1.4rem 1.5rem 1.5rem;
+    }
+
+    .log-settings-page .sink-config-section {
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        padding: 1rem 1.1rem;
+        margin: 0 0 1rem;
+    }
+
+    .log-settings-page .sink-config-section h4 {
+        font-size: 0.92rem;
+        font-weight: 650;
+        color: var(--bh-ink-900);
+        margin-bottom: 0.85rem;
+    }
+
+    .log-settings-page .form-group label { color: var(--bh-ink-500); font-size: 0.8rem; font-weight: 600; }
+
+    .log-settings-page .form-control {
+        border: 1px solid var(--bh-border-strong);
+        border-radius: 10px;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .log-settings-page .form-control:focus {
+        border-color: var(--bh-brand-500);
+        box-shadow: 0 0 0 3px rgba(46, 147, 181, 0.16);
+    }
+
+    .log-settings-page .btn { border-radius: 9px; font-size: 0.86rem; }
+
+    .log-settings-page .btn-primary {
+        background: var(--bh-brand-600);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(29, 127, 158, 0.22);
+    }
+
+    .log-settings-page .btn-primary:hover { background: var(--bh-brand-700); }
+
+    .log-settings-page .btn-secondary {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border-strong);
+        color: var(--bh-ink-700);
+    }
+
+    .log-settings-page .btn-secondary:hover { border-color: var(--bh-brand-500); color: var(--bh-brand-700); }
+
+    .log-settings-page .deploy-hint {
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        padding: 0.7rem 0.9rem;
+        background: var(--bh-surface-2);
+    }
+
+    .log-settings-page .deploy-hint summary {
+        cursor: pointer;
+        font-size: 0.84rem;
+        font-weight: 600;
+        color: var(--bh-ink-500);
+    }
+
+    .log-settings-page .hint-content { margin-top: 0.7rem; font-size: 0.82rem; color: var(--bh-ink-500); }
+
+    .log-settings-page pre {
+        background: var(--bh-ink-900);
+        color: #dbe9f0;
+        border-radius: 10px;
+        padding: 0.75rem 0.9rem;
+        font-size: 0.78rem;
+        overflow-x: auto;
+    }
+
+    .log-settings-page .loading-spinner {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 1.2rem 0;
+        color: var(--bh-ink-400);
+        font-size: 0.86rem;
     }
 </style>

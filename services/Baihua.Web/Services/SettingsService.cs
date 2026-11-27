@@ -75,6 +75,36 @@ public class SettingsService
         }
 
         PersistBackendUrlIfLoopbackNormalized();
+        MigrateLegacyContainerHost();
+    }
+
+    /// <summary>
+    /// 容器时代（compose / k8s / wslc）的 webui.settings.json 里可能残留
+    /// http://bh-server:8788、http://host.docker.internal:8788 这类服务名地址。
+    /// Windows native 是唯一形态，服务名无法解析，会让日志配置等直接用 BackendUrl
+    /// 的页面报「不知道这样的主机」。这里把已知容器主机名迁回本机回环；
+    /// 显式环境变量 / 配置项（BaihuaServer:BaseUrl）仍优先，不受影响。
+    /// </summary>
+    private void MigrateLegacyContainerHost()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_data.BackendUrl)) return;
+            if (!Uri.TryCreate(_data.BackendUrl, UriKind.Absolute, out var uri)) return;
+
+            var legacyHosts = new[] { "bh-server", "baihua-server", "server", "family", "ai", "vault", "host.docker.internal" };
+            if (!legacyHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase)) return;
+
+            var port = uri.Port > 0 ? uri.Port : 8788;
+            var migrated = $"http://127.0.0.1:{port}";
+            _logger.LogInformation("WebUI 后端地址由容器主机名 {Old} 迁移为 {New}", uri.Authority, migrated);
+            _data.BackendUrl = migrated;
+            Save();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "迁移后端地址失败");
+        }
     }
 
     private SettingsData? Load()
