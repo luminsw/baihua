@@ -6,22 +6,25 @@
 
 <PageTitle>算力池</PageTitle>
 
-<div class="compute-header">
-    <h1 class="h4 mb-0">⚡ 百花算力池</h1>
-    <span class="text-secondary small">局域网内所有百花服务器的 AI 算力一览，点击模型即可选用</span>
-    <span class="text-secondary small ms-auto">仅展示局域网本地算力（固本/本地大模型）；云端模型在「AI 配置」中管理</span>
+<div class="bh-page-header">
+    <div>
+        <h1 class="bh-page-title"><span class="bh-page-emoji">⚡</span>百花算力池</h1>
+        <p class="bh-page-sub">局域网内所有百花服务器的 AI 算力一览，点击模型即可选用。</p>
+    </div>
 </div>
 
 <div class="compute-toolbar">
-    <span class="text-secondary small">刷新于 @_updatedAt</span>
-    <select class="form-select form-select-sm d-inline-block w-auto ms-3" @bind="_taskType">
-        <option value="">全部任务</option>
-        <option value="chat">💬 闲聊</option>
-        <option value="deep">🧠 深度思考</option>
-        <option value="vision">🖼 视觉</option>
-        <option value="code">💻 代码</option>
-    </select>
-    <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="RefreshAsync" disabled="@_busy">🔄 刷新</button>
+    <span class="compute-toolbar-meta text-secondary small nowrap">刷新于 @_updatedAt</span>
+    <div class="compute-toolbar-actions">
+        <select class="form-select form-select-sm d-inline-block w-auto" @bind="_taskType">
+            <option value="">全部任务</option>
+            <option value="chat">💬 闲聊</option>
+            <option value="deep">🧠 深度思考</option>
+            <option value="vision">🖼 视觉</option>
+            <option value="code">💻 代码</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary nowrap" @onclick="RefreshAsync" disabled="@_busy">🔄 刷新</button>
+    </div>
 </div>
 
 @if (_message != null)
@@ -508,3 +511,66 @@ else
         _ => "未知"
     };
 }
+
+<style>
+    /* ---------- 算力池小幅修正：避免按钮/时间被挤成竖排 ---------- */
+    .compute-status,
+    .refresh-meta,
+    .compute-header .btn,
+    .metric-filter .btn { white-space: nowrap; }
+    .page-header, .compute-header { flex-wrap: wrap; }
+</style>
+<style>
+    .nowrap,
+    .compute-toolbar > span,
+    .compute-toolbar .btn { white-space: nowrap; }
+    .compute-toolbar { flex-wrap: wrap; gap: 0.4rem; }
+    .compute-toolbar select { margin-left: 0 !important; }
+</style>
+<style>
+    /* 工具栏：时间在左，筛选胶囊 + 刷新在右 */
+    .compute-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem 0.9rem;
+        padding: 0 !important;
+        margin-bottom: 1rem;
+    }
+    .compute-toolbar-actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-left: auto;
+    }
+    .compute-toolbar .enhanced-select-wrapper { display: inline-flex; margin: 0 !important; }
+    .compute-toolbar .btn { white-space: nowrap; }
+
+    /* 深度任务：模型选择不被拉伸，执行按钮不折行 */
+    .pool-task .enhanced-select-wrapper { flex: 0 1 auto; min-width: 220px; }
+    .pool-task .btn { flex: none; white-space: nowrap; }
+</style>
+<style>
+    .compute-toolbar-actions { flex-wrap: nowrap !important; }
+    .compute-toolbar-actions > .enhanced-select-wrapper { flex: 0 0 auto; }
+    .compute-toolbar-actions > .btn { flex: 0 0 auto; }
+</style>
+<style>
+    .compute-toolbar { justify-content: flex-start !important; gap: 0.5rem 1rem; }
+    .compute-toolbar-actions { margin-left: 0 !important; }
+</style>
+<style>
+    .pool-task .d-flex > .enhanced-select-wrapper { flex: 0 0 auto !important; }
+</style>
+<style>
+    .pool-task .d-flex { flex-wrap: wrap; align-items: center; }
+    .pool-task .enhanced-select-wrapper {
+        display: inline-flex !important;
+        flex: 0 0 auto !important;
+        width: auto !important;
+    }
+    .pool-task .enhanced-select-chips { width: auto !important; flex: 0 1 auto; }
+    .pool-task .btn { flex: 0 0 auto !important; }
+</style>

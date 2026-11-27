@@ -3007,3 +3007,55 @@ hr { border-color: var(--bh-border); opacity: 1; }
     .top-logo { height: 28px !important; }
     .top-row-subtitle { display: none; }
 }
+
+/* ===== 视觉刷新 v2 补丁：按钮语义色统一（2026-11-27） ===== */
+.btn-primary,
+.btn-primary:focus {
+    background-color: var(--bh-brand-600);
+    border-color: var(--bh-brand-600);
+    color: #fff;
+}
+.btn-primary:hover,
+.btn-primary:active,
+.btn-primary.active,
+.btn-primary:first-child:active {
+    background-color: var(--bh-brand-700);
+    border-color: var(--bh-brand-700);
+    color: #fff;
+}
+.btn-primary:disabled, .btn-primary.disabled {
+    background-color: var(--bh-brand-500);
+    border-color: var(--bh-brand-500);
+    color: #fff;
+    opacity: .55;
+}
+.btn-success,
+.btn-success:focus {
+    background-color: var(--bh-success);
+    border-color: var(--bh-success);
+    color: #fff;
+}
+.btn-success:hover, .btn-success:active, .btn-success.active {
+    background-color: #27784c;
+    border-color: #27784c;
+    color: #fff;
+}
+.btn-outline-primary {
+    color: var(--bh-brand-700);
+    border-color: var(--bh-brand-500);
+    background-color: transparent;
+}
+.btn-outline-primary:hover, .btn-outline-primary.active {
+    background-color: var(--bh-brand-600);
+    border-color: var(--bh-brand-600);
+    color: #fff;
+}
+
+/* 禁用态按钮：统一中性灰，避免"彩色但按不动"的困惑 */
+.btn:disabled, .btn.disabled, fieldset:disabled .btn {
+    background-color: var(--bh-surface-3) !important;
+    border-color: var(--bh-border) !important;
+    color: var(--bh-ink-300) !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
+}

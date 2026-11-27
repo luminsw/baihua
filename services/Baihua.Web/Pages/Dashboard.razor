@@ -10,7 +10,12 @@
 <PageTitle>@L["Dashboard_PageTitle"]</PageTitle>
 
 <div class="dashboard-page">
-    <h1>@L["Dashboard_Title"]</h1>
+    <div class="bh-page-header">
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">📊</span>@L["Dashboard_Title"]</h1>
+            <p class="bh-page-sub">今日学习概览、连续打卡与成长时间线。</p>
+        </div>
+    </div>
 
     @if (isLoading)
     {
@@ -192,3 +197,220 @@
         }
     }
 }
+
+<style>
+    /* ---------- 家长看板视觉细化 ---------- */
+    .dashboard-page { max-width: 980px; }
+
+    .member-selector { gap: 0.4rem; margin-bottom: 1.1rem; }
+    .selector-label { color: var(--bh-ink-400); font-size: 0.84rem; }
+
+    .member-chip {
+        border: 1px solid var(--bh-border);
+        background: var(--bh-surface);
+        border-radius: 20px;
+        padding: 0.3rem 0.85rem;
+        font-size: 0.86rem;
+        color: var(--bh-ink-700);
+        transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+
+    .member-chip:hover { border-color: var(--bh-border-strong); }
+
+    .member-chip.active {
+        background: var(--bh-brand-600);
+        border-color: var(--bh-brand-600);
+        color: #fff;
+        font-weight: 600;
+    }
+
+    /* 三栏卡片 */
+    .dashboard-first-screen { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.85rem; }
+
+    .section {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        margin-bottom: 1rem;
+        padding: 0.95rem 1.1rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .section h2 {
+        font-size: 0.9rem;
+        font-weight: 650;
+        color: var(--bh-ink-700);
+        margin-bottom: 0.6rem;
+    }
+
+    .today-item,
+    .ach-item { border-bottom: 1px solid var(--bh-border); padding: 0.5rem 0; }
+    .ti-avatar, .ach-icon { font-size: 1.2rem; }
+    .ti-learner, .ach-title { font-weight: 600; font-size: 0.9rem; color: var(--bh-ink-900); }
+    .ti-desc { color: var(--bh-ink-500); font-size: 0.84rem; }
+    .ach-time { color: var(--bh-ink-300); font-size: 0.76rem; }
+
+    .today-summary { padding-top: 0.6rem; gap: 0.5rem; }
+    .ts-count { font-weight: 600; font-size: 0.86rem; color: var(--bh-ink-700); }
+    .ts-vs { color: var(--bh-ink-300); font-size: 0.8rem; }
+    .trend-up { color: var(--bh-success); }
+    .trend-down { color: var(--bh-danger); }
+    .trend-flat { color: var(--bh-ink-400); }
+
+    /* 连续打卡 */
+    .streak-section { text-align: center; justify-content: center; }
+    .streak-section h2 { margin-bottom: 0.2rem; }
+    .flame { font-size: 1.25rem; }
+    .streak-num {
+        font-size: 2.1rem;
+        font-weight: 750;
+        line-height: 1.1;
+        color: var(--bh-warning);
+        font-variant-numeric: tabular-nums;
+    }
+    .streak-unit { font-size: 0.85rem; color: var(--bh-ink-500); }
+    .streak-sub { color: var(--bh-ink-300); font-size: 0.76rem; margin-top: 0.35rem; }
+
+    /* 空提示 */
+    .empty-hint {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 1.1rem 0.5rem;
+        color: var(--bh-ink-400);
+        font-size: 0.85rem;
+        text-align: center;
+    }
+
+    .cta-btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.4rem 0.95rem;
+        background: var(--bh-brand-600);
+        color: #fff;
+        border-radius: 9px;
+        text-decoration: none;
+        font-size: 0.84rem;
+        font-weight: 600;
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .cta-btn:hover { background: var(--bh-brand-700); color: #fff; }
+
+    /* 时间线 */
+    .timeline-list { gap: 0.45rem; }
+
+    .timeline-item {
+        padding: 0.5rem 0.7rem;
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: 10px;
+    }
+
+    .tl-date { color: var(--bh-ink-400); font-size: 0.8rem; }
+    .tl-learner { color: var(--bh-ink-900); font-size: 0.86rem; }
+    .tl-desc { color: var(--bh-ink-500); font-size: 0.84rem; }
+    .timeline-paging { color: var(--bh-ink-300); font-size: 0.78rem; }
+
+    /* 空态 / 错误 / 骨架 */
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 2.6rem 1.5rem;
+        background: var(--bh-surface-2);
+        border: 1.5px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius-lg);
+    }
+
+    .empty-icon { font-size: 2.2rem; margin-bottom: 0.5rem; }
+    .empty-text { color: var(--bh-ink-500); font-size: 0.9rem; margin-bottom: 1rem; }
+
+    .dashboard-error {
+        text-align: center;
+        padding: 2.5rem 1rem;
+        background: var(--bh-danger-bg);
+        border: 1px solid #f2cfcd;
+        border-radius: var(--bh-radius-lg);
+    }
+
+    .error-text { color: var(--bh-danger); font-size: 0.9rem; margin-bottom: 0.9rem; }
+
+    .retry-btn {
+        background: var(--bh-danger);
+        color: #fff;
+        border: none;
+        border-radius: 9px;
+        padding: 0.45rem 1.2rem;
+        font-size: 0.86rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .skeleton {
+        background: linear-gradient(90deg, var(--bh-surface-3) 25%, var(--bh-surface-2) 37%, var(--bh-surface-3) 63%);
+        background-size: 400% 100%;
+        animation: skeleton-shimmer 1.4s ease infinite;
+        border-radius: 8px;
+    }
+
+    @@media (max-width: 1024px) {
+        .dashboard-first-screen { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @@media (max-width: 768px) {
+        .dashboard-page { padding: 0.9rem 0.6rem 2rem; }
+        .dashboard-first-screen { grid-template-columns: 1fr; gap: 0.7rem; }
+        .today-summary { flex-wrap: wrap; }
+        .timeline-item { flex-wrap: wrap; gap: 0.25rem; }
+        .tl-learner { min-width: 0; }
+    }
+</style>
+<style>
+    /* 看板卡片：标题图标 + 空态垂直居中 */
+    .dashboard-first-screen .section {
+        display: flex;
+        flex-direction: column;
+        min-height: 176px;
+    }
+    .dashboard-first-screen .section h2 {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.95rem;
+        font-weight: 650;
+        color: var(--bh-ink-700);
+        padding-bottom: 0.6rem;
+        border-bottom: 1px solid var(--bh-border);
+        margin-bottom: 0.75rem;
+    }
+    .dashboard-first-screen .sec-ico {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        font-size: 0.85rem;
+        background: var(--bh-brand-50);
+        border: 1px solid var(--bh-brand-100);
+        border-radius: 8px;
+    }
+    .dashboard-first-screen .empty-hint {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        color: var(--bh-ink-400);
+        font-size: 0.85rem;
+    }
+    .dashboard-first-screen .empty-hint p { margin: 0; }
+    .dashboard-first-screen .streak-section { justify-content: center; }
+</style>

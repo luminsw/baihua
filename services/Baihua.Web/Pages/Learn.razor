@@ -9,12 +9,17 @@
 <PageTitle>题库 · 学习</PageTitle>
 
 <div class="learn-page">
-    <h1>📚 题库学习</h1>
+    <div class="bh-page-header">
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">📚</span>题库学习</h1>
+            <p class="bh-page-sub">按行业选择题库，看题选答案，即时解析与易混淆项区分。</p>
+        </div>
+    </div>
 
     @if (stage == Stage.Banks)
     {
         <div class="learn-setup">
-            <h2>选择题库</h2>
+            <h2 class="learn-step-title">选择题库</h2>
             @if (banks.Count == 0)
             {
                 <p class="learn-empty">暂无可用题库（可以 AI 生成，或导入题库包）。</p>
@@ -59,7 +64,7 @@
     else if (stage == Stage.Learner)
     {
         <div class="learn-setup">
-            <h2>选择家庭成员</h2>
+            <h2 class="learn-step-title">选择家庭成员</h2>
             @if (bankStats != null)
             {
                 <div class="bank-stats">
@@ -251,49 +256,244 @@
 </div>
 
 <style>
-    .learn-page { max-width: 860px; margin: 0 auto; padding: 1rem; }
-    .bank-list { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
-    .bank-card { display: flex; flex-direction: column; gap: .25rem; padding: .9rem 1.2rem; border: 1px solid var(--bs-border-color); border-radius: .5rem; background: var(--bs-body-bg); }
-    .bank-card.pending-delete { border-color: var(--bs-danger); background: rgba(220, 53, 69, .06); }
-    .bank-select { text-align: left; padding: 0; border: 0; background: none; }
-    .bank-select:hover .bank-name { text-decoration: underline; }
-    .bank-actions { display: flex; gap: .4rem; justify-content: flex-end; }
-    .bank-notice { margin: .25rem 0 .75rem; padding: .5rem .8rem; border-left: 3px solid var(--bs-warning); background: var(--bs-tertiary-bg); font-size: .9rem; white-space: pre-wrap; }
-    .bank-name { font-size: 1.05rem; font-weight: 600; }
-    .bank-meta { display: flex; gap: 1rem; color: var(--bs-secondary-color); font-size: .85rem; margin-top: .25rem; }
-    .player-select { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
-    .player-stat { display: block; font-size: .75rem; opacity: .85; margin-top: .2rem; }
-    .bank-stats { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0 1rem; }
-    .bank-stats .stat { background: var(--bs-tertiary-bg); border-radius: .5rem; padding: .5rem .9rem; text-align: center; min-width: 5.5rem; }
-    .bank-stats .stat-value { display: block; font-size: 1.25rem; font-weight: 700; }
-    .bank-stats .stat-label { display: block; font-size: .78rem; color: var(--bs-secondary-color); }
-    .learn-progress { display: flex; justify-content: space-between; color: var(--bs-secondary-color); margin-bottom: .75rem; }
-    .learn-stem { background: var(--bs-tertiary-bg); border-radius: .5rem; padding: 1rem; margin-bottom: 1rem; }
-    .stem-patient { font-weight: 600; margin-bottom: .5rem; }
-    .stem-signs { margin: 0 0 .5rem 0; padding-left: 1.2rem; }
-    .stem-signs li { margin: .15rem 0; }
-    .stem-full { font-size: .85rem; color: var(--bs-secondary-color); white-space: pre-wrap; }
-    .learn-options { display: flex; flex-direction: column; gap: .5rem; }
-    .option-btn { text-align: left; display: flex; gap: .75rem; align-items: baseline; padding: .7rem 1rem; }
-    .option-key { font-weight: 700; min-width: 1.4rem; }
-    .result-head { font-size: 1.1rem; font-weight: 600; margin-bottom: .75rem; }
-    .learn-result.wrong .result-head { color: var(--bs-danger); }
-    .learn-result.correct .result-head { color: var(--bs-success); }
-    .result-option { padding: .5rem .75rem; border-radius: .375rem; margin-bottom: .4rem; }
-    .result-option.right { background: rgba(25, 135, 84, .12); border: 1px solid var(--bs-success); }
-    .result-option.picked-wrong { background: rgba(220, 53, 69, .10); border: 1px solid var(--bs-danger); }
-    .result-option.plain { background: var(--bs-tertiary-bg); }
-    .option-explanation { font-size: .85rem; color: var(--bs-secondary-color); margin-top: .25rem; }
-    .analysis-title { font-weight: 600; margin: .9rem 0 .4rem; }
-    .analysis-body { white-space: pre-wrap; line-height: 1.7; }
-    .discrimination-table .versus-cell { font-weight: 600; white-space: nowrap; }
-    .ai-note { font-size: .8rem; color: var(--bs-secondary-color); font-weight: 400; }
-    .summary-score { font-size: 3rem; font-weight: 700; text-align: center; }
-    .summary-note { text-align: center; color: var(--bs-secondary-color); margin-bottom: 1rem; }
-    .wrong-item { border-left: 3px solid var(--bs-danger); padding: .4rem .8rem; margin: .5rem 0; }
-    .wrong-stem { font-weight: 600; }
-    .wrong-answer { font-size: .9rem; color: var(--bs-secondary-color); }
-    .summary-actions, .result-actions, .ai-row { margin-top: 1rem; display: flex; gap: .5rem; }
+    .learn-page { max-width: 880px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+
+    .learn-step-title {
+        font-size: 1rem;
+        font-weight: 650;
+        color: var(--bh-ink-700);
+        margin: 0.25rem 0 0.9rem;
+    }
+
+    /* ---------- 题库卡片 ---------- */
+    .bank-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+        gap: 0.75rem;
+        margin: 0 0 1rem;
+    }
+
+    .bank-card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        padding: 0.95rem 1.05rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+    }
+
+    .bank-card:hover {
+        border-color: var(--bh-brand-500);
+        box-shadow: var(--bh-shadow-md);
+        transform: translateY(-1px);
+    }
+
+    .bank-card.pending-delete {
+        border-color: var(--bh-danger);
+        background: var(--bh-danger-bg);
+    }
+
+    .bank-select {
+        display: block;
+        width: 100%;
+        padding: 0;
+        border: 0;
+        background: none;
+        text-align: left;
+        color: inherit;
+    }
+
+    .bank-select:hover { background: none; }
+
+    .bank-name {
+        font-size: 0.98rem;
+        font-weight: 650;
+        line-height: 1.4;
+        color: var(--bh-ink-900);
+        word-break: break-word;
+    }
+
+    .bank-select:hover .bank-name { color: var(--bh-brand-700); }
+
+    .bank-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem 0.55rem;
+        margin-top: 0.45rem;
+        font-size: 0.78rem;
+        color: var(--bh-ink-500);
+    }
+
+    .bank-meta span {
+        padding: 0.1rem 0.45rem;
+        background: var(--bh-surface-3);
+        border-radius: 6px;
+        white-space: nowrap;
+    }
+
+    .bank-actions {
+        display: flex;
+        gap: 0.4rem;
+        justify-content: flex-end;
+        padding-top: 0.55rem;
+        border-top: 1px solid var(--bh-border);
+    }
+
+    .bank-actions .btn,
+    .export-row .btn {
+        padding: 0.2rem 0.6rem;
+        font-size: 0.78rem;
+        border-radius: 8px;
+        white-space: nowrap;
+    }
+
+    .bank-notice {
+        margin: 0 0 1rem;
+        padding: 0.6rem 0.85rem;
+        font-size: 0.85rem;
+        line-height: 1.6;
+        color: var(--bh-warning);
+        background: var(--bh-warning-bg);
+        border-left: 3px solid var(--bh-warning);
+        border-radius: 8px;
+        white-space: pre-wrap;
+    }
+
+    .export-row { display: flex; gap: 0.5rem; }
+
+    .learn-empty {
+        padding: 1.8rem 1rem;
+        text-align: center;
+        font-size: 0.88rem;
+        color: var(--bh-ink-400);
+        background: var(--bh-surface-2);
+        border: 1.5px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius-lg);
+    }
+
+    /* ---------- 统计条 ---------- */
+    .bank-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0.5rem 0 1rem;
+    }
+
+    .bank-stats .stat {
+        min-width: 5.2rem;
+        padding: 0.5rem 0.85rem;
+        text-align: center;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: 10px;
+    }
+
+    .bank-stats .stat-value {
+        display: block;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--bh-ink-900);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .bank-stats .stat-label {
+        display: block;
+        margin-top: 0.1rem;
+        font-size: 0.74rem;
+        color: var(--bh-ink-400);
+    }
+
+    /* ---------- 成员选择 ---------- */
+    .player-select { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 1rem; }
+
+    .player-select .btn {
+        padding: 0.5rem 0.9rem;
+        font-size: 0.88rem;
+        border-radius: 10px;
+        text-align: left;
+    }
+
+    .player-stat { display: block; margin-top: 0.2rem; font-size: 0.74rem; opacity: 0.85; }
+
+    /* ---------- 答题 ---------- */
+    .learn-progress {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+        font-size: 0.83rem;
+        color: var(--bh-ink-400);
+    }
+
+    .learn-stem {
+        padding: 1rem 1.1rem;
+        margin-bottom: 1rem;
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        line-height: 1.7;
+    }
+
+    .stem-patient { font-weight: 650; color: var(--bh-ink-900); margin-bottom: 0.5rem; }
+    .stem-signs { margin: 0 0 0.5rem; padding-left: 1.2rem; }
+    .stem-signs li { margin: 0.15rem 0; }
+    .stem-full { font-size: 0.86rem; color: var(--bh-ink-500); white-space: pre-wrap; }
+
+    .learn-options { display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .option-btn {
+        display: flex;
+        align-items: baseline;
+        gap: 0.7rem;
+        padding: 0.7rem 1rem;
+        text-align: left;
+        border-radius: 10px;
+        line-height: 1.6;
+    }
+
+    .option-key { min-width: 1.35rem; font-weight: 700; color: var(--bh-brand-700); }
+
+    .result-head { font-size: 1.05rem; font-weight: 650; margin-bottom: 0.75rem; }
+    .learn-result.wrong .result-head { color: var(--bh-danger); }
+    .learn-result.correct .result-head { color: var(--bh-success); }
+
+    .result-option { padding: 0.5rem 0.75rem; border-radius: 9px; margin-bottom: 0.4rem; }
+    .result-option.right { background: var(--bh-success-bg); border: 1px solid #b9e0ca; }
+    .result-option.picked-wrong { background: var(--bh-danger-bg); border: 1px solid #f0cbc9; }
+    .result-option.plain { background: var(--bh-surface-2); }
+
+    .option-explanation { margin-top: 0.25rem; font-size: 0.84rem; color: var(--bh-ink-500); }
+
+    .analysis-title { font-weight: 650; margin: 0.9rem 0 0.4rem; color: var(--bh-ink-900); }
+    .analysis-body { white-space: pre-wrap; line-height: 1.75; color: var(--bh-ink-700); }
+    .discrimination-table .versus-cell { font-weight: 650; white-space: nowrap; }
+    .ai-note { font-size: 0.78rem; font-weight: 400; color: var(--bh-ink-400); }
+
+    /* ---------- 结算 ---------- */
+    .summary-score {
+        font-size: 2.6rem;
+        font-weight: 750;
+        text-align: center;
+        color: var(--bh-brand-700);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .summary-note { text-align: center; color: var(--bh-ink-500); font-size: 0.88rem; margin-bottom: 1rem; }
+
+    .wrong-item {
+        padding: 0.45rem 0.8rem;
+        margin: 0.5rem 0;
+        border-left: 3px solid var(--bh-danger);
+        background: var(--bh-danger-bg);
+        border-radius: 0 8px 8px 0;
+    }
+
+    .wrong-stem { font-weight: 600; font-size: 0.9rem; color: var(--bh-ink-900); }
+    .wrong-answer { font-size: 0.84rem; color: var(--bh-ink-500); }
+
+    .summary-actions, .result-actions, .ai-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
 </style>
 
 @code {

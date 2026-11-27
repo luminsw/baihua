@@ -7,8 +7,12 @@
 
 <PageTitle>@L["FamilyBudget_PageTitle"]</PageTitle>
 
-<h1>💰 @L["FamilyBudget_Title"]</h1>
-<p class="text-muted">@L["FamilyBudget_Subtitle"]</p>
+<div class="bh-page-header">
+    <div>
+        <h1 class="bh-page-title"><span class="bh-page-emoji">💰</span>@L["FamilyBudget_Title"]</h1>
+        <p class="bh-page-sub">@L["FamilyBudget_Subtitle"]</p>
+    </div>
+</div>
 
 @if (_loading)
 {
@@ -16,7 +20,7 @@
 }
 else
 {
-    <div class="d-flex align-items-center gap-3 mb-3">
+    <div class="d-flex align-items-center gap-3 mb-3 month-bar">
         <button class="btn btn-outline-secondary btn-sm" @onclick='() => ChangeMonth(-1)'>◀ @L["FamilyBudget_PrevMonth"]</button>
         <h4 class="mb-0">@L["FamilyBudget_MonthLabel", _year, _month]</h4>
         <button class="btn btn-outline-secondary btn-sm" @onclick='() => ChangeMonth(1)'>@L["FamilyBudget_NextMonth"] ▶</button>
@@ -362,3 +366,84 @@ else
         await LoadAsync();
     }
 }
+
+<style>
+    /* ---------- 家庭记账视觉细化 ---------- */
+    .bh-page-header + .month-bar { margin-top: 0.2rem; }
+    .month-bar h4 { font-size: 1.05rem; font-weight: 650; color: var(--bh-ink-900); }
+    .month-bar .btn { border-radius: 8px; }
+
+    .row.g-3 > [class^="col-"] > .card {
+        height: auto;
+        align-self: flex-start;
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    /* 月度概览：大数字 + 小标签 */
+    .row.g-3.mb-4 .card-body { text-align: left !important; padding: 1rem 1.15rem; }
+    .row.g-3.mb-4 .card-body > .text-muted { font-size: 0.8rem; }
+    .row.g-3.mb-4 .card-body > .fs-4 {
+        font-size: 1.6rem !important;
+        font-weight: 700;
+        line-height: 1.3;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .row.g-3.mb-4 .card.border-success { border-left: 3px solid var(--bh-success) !important; }
+    .row.g-3.mb-4 .card.border-danger { border-left: 3px solid var(--bh-danger) !important; }
+    .row.g-3.mb-4 .card.border-primary,
+    .row.g-3.mb-4 .card.border-warning { border-left: 3px solid var(--bh-brand-500) !important; }
+
+    .row.g-3 .card-header {
+        background: var(--bh-surface-2);
+        border-bottom: 1px solid var(--bh-border);
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--bh-ink-700);
+        border-radius: var(--bh-radius-lg) var(--bh-radius-lg) 0 0 !important;
+    }
+
+    .row.g-3 .card-body .form-control,
+    .row.g-3 .card-body .form-select { font-size: 0.9rem; }
+
+    .row.g-3 .card-body .progress { height: 6px; background: var(--bh-surface-3); border-radius: 6px; }
+</style>
+<style>
+    /* 概览卡：只保留左侧语义色条，去掉整圈彩边 */
+    .row.g-3.mb-4 .card.border-success,
+    .row.g-3.mb-4 .card.border-danger,
+    .row.g-3.mb-4 .card.border-primary,
+    .row.g-3.mb-4 .card.border-warning {
+        border: 1px solid var(--bh-border) !important;
+        border-left-width: 3px !important;
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+    }
+    .row.g-3.mb-4 .card.border-success { border-left-color: var(--bh-success) !important; }
+    .row.g-3.mb-4 .card.border-danger { border-left-color: var(--bh-danger) !important; }
+    .row.g-3.mb-4 .card.border-primary { border-left-color: var(--bh-brand-500) !important; }
+    .row.g-3.mb-4 .card.border-warning { border-left-color: var(--bh-warning) !important; }
+
+    /* 收支切换：未选中态弱化，选中态用品牌色系 */
+    .card .btn-group.w-100 .btn-outline-danger,
+    .card .btn-group.w-100 .btn-outline-success {
+        background: var(--bh-surface-2);
+        border-color: var(--bh-border-strong);
+        color: var(--bh-ink-500);
+        font-weight: 500;
+    }
+    .card .btn-group.w-100 .btn-danger {
+        background: var(--bh-danger-bg);
+        border-color: var(--bh-danger);
+        color: var(--bh-danger);
+        font-weight: 600;
+    }
+    .card .btn-group.w-100 .btn-success {
+        background: var(--bh-success-bg);
+        border-color: var(--bh-success);
+        color: var(--bh-success);
+        font-weight: 600;
+    }
+</style>

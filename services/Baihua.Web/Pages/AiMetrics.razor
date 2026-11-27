@@ -61,8 +61,10 @@ else
                 @foreach (var t in trends)
                 {
                     var height = maxTrendCalls > 0 ? (int)(t.CallCount * 100.0 / maxTrendCalls) : 0;
-                    <div class="trend-bar-wrapper">
-                        <div class="trend-bar" style="height: @(height)%" title="@t.Date: @t.CallCount 次, @t.AvgLatencyMs ms"></div>
+                    <div class="trend-bar-wrapper" title="@t.Date：@t.CallCount 次调用，平均 @t.AvgLatencyMs ms">
+                        <div class="trend-bar-track">
+                            <div class="trend-bar" style="height: @(height)%"></div>
+                        </div>
                         <div class="trend-label">@t.Date.Substring(5)</div>
                     </div>
                 }
@@ -301,3 +303,159 @@ else
 
     public void Dispose() { }
 }
+
+<style>
+    /* ---------- AI 性能监控视觉细化 ---------- */
+    .metrics-filter { display: flex; align-items: center; gap: 4px; padding: 4px; background: var(--bh-surface-3); border-radius: 11px; width: fit-content; }
+    .metrics-filter button { margin: 0; border: none; background: transparent; border-radius: 8px; padding: 0.32rem 0.85rem; font-size: 0.85rem; color: var(--bh-ink-500); }
+    .metrics-filter button.active { background: var(--bh-surface); color: var(--bh-brand-700); font-weight: 600; box-shadow: var(--bh-shadow-xs); }
+
+    .metrics-cards { gap: 0.7rem; }
+    .metric-card {
+        padding: 0.85rem 1rem;
+        text-align: left;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+    }
+    .metric-value {
+        font-size: 1.45rem;
+        font-weight: 700;
+        line-height: 1.25;
+        color: var(--bh-ink-900);
+        font-variant-numeric: tabular-nums;
+    }
+    .metric-label { font-size: 0.78rem; color: var(--bh-ink-500); margin-top: 0.15rem; }
+
+    .metrics-section h3 { font-size: 0.95rem; font-weight: 650; color: var(--bh-ink-700); }
+
+    /* 趋势柱状图：固定轨道高度，避免柱体撑满 */
+    .trend-chart {
+        height: 168px;
+        align-items: stretch;
+        gap: 10px;
+        padding: 0.75rem 0.9rem 0.55rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .trend-bar-wrapper {
+        position: relative;
+        justify-content: flex-end;
+        padding-bottom: 20px;
+        min-width: 0;
+    }
+
+    .trend-bar {
+        width: 100%;
+        max-width: 42px;
+        margin: 0 auto;
+        background: linear-gradient(180deg, var(--bh-brand-500), var(--bh-brand-600));
+        border-radius: 5px 5px 0 0;
+        min-height: 3px;
+    }
+
+    .trend-bar:hover { filter: brightness(1.08); }
+
+    .trend-label {
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.68rem;
+        color: var(--bh-ink-400);
+        line-height: 1.4;
+    }
+
+    /* 表格 */
+    .metrics-section .table { font-size: 0.85rem; }
+    .metrics-section .table > thead th {
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--bh-ink-400);
+        border-bottom: 1px solid var(--bh-border);
+        background: var(--bh-surface-2);
+        white-space: nowrap;
+    }
+    .metrics-section .table > tbody > tr:hover { background: var(--bh-surface-2); }
+    .metrics-section .table td { color: var(--bh-ink-700); vertical-align: middle; }
+</style>
+<style>
+    /* ---------- 趋势图最终版：基线 + 网格 + 圆角柱 ---------- */
+    .trend-chart {
+        position: relative;
+        height: 190px;
+        display: flex;
+        align-items: stretch;
+        gap: 10px;
+        padding: 1rem 1rem 1.7rem;
+        background:
+            repeating-linear-gradient(to top,
+                transparent 0, transparent calc(25% - 1px),
+                var(--bh-border) calc(25% - 1px), var(--bh-border) 25%) 0 1rem/100% calc(100% - 2.7rem) no-repeat,
+            var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        overflow: hidden;
+    }
+
+    .trend-chart::after {
+        content: "";
+        position: absolute;
+        left: 1rem;
+        right: 1rem;
+        bottom: 1.62rem;
+        border-top: 1px solid var(--bh-border-strong);
+    }
+
+    .trend-bar-wrapper {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .trend-bar-track {
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+    }
+
+    .trend-bar {
+        width: 100%;
+        max-width: 34px;
+        min-height: 2px;
+        border-radius: 6px 6px 0 0;
+        background: linear-gradient(180deg, var(--bh-brand-500), var(--bh-brand-600));
+        transition: filter .15s ease;
+    }
+
+    .trend-bar[style*="height: 0%"] {
+        min-height: 2px;
+        background: var(--bh-border-strong);
+        border-radius: 2px;
+    }
+
+    .trend-bar-wrapper:hover .trend-bar { filter: brightness(1.1); }
+
+    .trend-label {
+        margin-top: 0.4rem;
+        font-size: 0.68rem;
+        color: var(--bh-ink-400);
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
+    .trend-bar-wrapper:hover .trend-label { color: var(--bh-brand-700); }
+</style>

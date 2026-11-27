@@ -7,7 +7,12 @@
 <PageTitle>@L["Achievements_PageTitle"]</PageTitle>
 
 <div class="achievements-page">
-    <h1>🏆 @L["Achievements_Title"]</h1>
+    <div class="bh-page-header">
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">🏆</span>@L["Achievements_Title"]</h1>
+            <p class="bh-page-sub">家庭成员的学习成就与奖励兑换进度。</p>
+        </div>
+    </div>
 
     @if (!string.IsNullOrEmpty(celebrationText))
     {
@@ -411,3 +416,126 @@
 
     private string rewardFormError = "";
 }
+
+<style>
+    /* ---------- 成就墙视觉细化 ---------- */
+    .achievements-page { max-width: 1040px; }
+
+    .stats-overview {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.7rem;
+    }
+
+    .stat-card {
+        text-align: left;
+        padding: 0.9rem 1.05rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .stat-value {
+        font-size: 1.55rem;
+        font-weight: 700;
+        color: var(--bh-ink-900);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .stat-label { font-size: 0.8rem; color: var(--bh-ink-500); margin-top: 0.15rem; }
+
+    .learner-chip {
+        padding: 0.35rem 0.7rem;
+        border: 1px solid var(--bh-border);
+        background: var(--bh-surface);
+        border-radius: 20px;
+        font-size: 0.86rem;
+        color: var(--bh-ink-700);
+    }
+
+    .learner-chip:hover { border-color: var(--bh-border-strong); }
+    .learner-chip.active { box-shadow: var(--bh-shadow-xs); }
+    .add-learner { color: var(--bh-ink-500); border-style: dashed; }
+
+    .add-learner-form {
+        padding: 0.7rem 0.8rem;
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+    }
+
+    .achievement-grid {
+        grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+        gap: 0.7rem;
+    }
+
+    .achievement-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem 0.75rem;
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        background: var(--bh-surface);
+        transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+    }
+
+    .achievement-card:hover { transform: translateY(-2px); box-shadow: var(--bh-shadow-sm); }
+
+    .achievement-card.locked {
+        opacity: 1;
+        filter: none;
+        background: var(--bh-surface-2);
+        border-color: var(--bh-border);
+    }
+
+    .achievement-card.locked .achievement-icon { opacity: 0.45; }
+    .achievement-card.locked .achievement-title { color: var(--bh-ink-500); font-weight: 500; }
+    .achievement-card.locked .achievement-desc { color: var(--bh-ink-300); }
+
+    .achievement-card.unlocked { box-shadow: var(--bh-shadow-xs); }
+    .achievement-card.tier-bronze { border-color: #e3c7a8; }
+    .achievement-card.tier-silver { border-color: #d8dee3; }
+    .achievement-card.tier-gold { border-color: #eddba6; background: #fffdf5; }
+    .achievement-card.tier-diamond { border-color: #c9ecf7; background: #f6fdff; }
+
+    .achievement-icon { font-size: 1.75rem; margin-bottom: 0.45rem; }
+    .achievement-title { font-weight: 650; font-size: 0.9rem; color: var(--bh-ink-900); margin-bottom: 0.2rem; }
+    .achievement-desc { font-size: 0.76rem; color: var(--bh-ink-400); line-height: 1.5; }
+    .achievement-date { font-size: 0.72rem; color: var(--bh-brand-600); margin-top: 0.35rem; }
+
+    /* 奖励区 */
+    .reward-section {
+        padding: 1rem 1.1rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .reward-section h2 { font-size: 0.98rem; font-weight: 650; color: var(--bh-ink-900); }
+    .reward-empty { color: var(--bh-ink-400); font-size: 0.86rem; }
+
+    .reward-item { border-bottom: 1px solid var(--bh-border); }
+    .reward-name { font-weight: 600; color: var(--bh-ink-900); font-size: 0.9rem; }
+    .reward-achieved { color: var(--bh-success); font-weight: 600; font-size: 0.84rem; }
+    .reward-progress-text { color: var(--bh-ink-500); font-size: 0.82rem; }
+
+    .reward-item .progress { height: 6px; background: var(--bh-surface-3); border-radius: 6px; }
+    .reward-item .progress-bar { background: var(--bh-brand-500); border-radius: 6px; }
+
+    .reward-add {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) auto 104px auto;
+        gap: 0.45rem;
+        align-items: center;
+    }
+
+    .reward-add .form-control,
+    .reward-add .form-select { width: 100%; min-width: 0; font-size: 0.84rem; }
+
+    @@media (max-width: 768px) {
+        .stats-overview { grid-template-columns: 1fr; }
+        .reward-add { grid-template-columns: 1fr 1fr; }
+    }
+</style>

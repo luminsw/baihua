@@ -7,7 +7,12 @@
 <PageTitle>@L["Todo_PageTitle"]</PageTitle>
 
 <div class="todo-page">
-    <h1>📝 @L["Todo_PageTitle"]</h1>
+    <div class="bh-page-header">
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">📝</span>@L["Todo_PageTitle"]</h1>
+            <p class="bh-page-sub">输入一个目标让 AI 拆成可执行的小事，或直接记下临时待办。</p>
+        </div>
+    </div>
 
     <!-- AI 目标生成区：输入一个目标，AI 拆解为一组具体待办 -->
     <div class="todo-ai mb-2">
@@ -15,7 +20,7 @@
             <input class="form-control" placeholder="@L["Todo_GoalPlaceholder"]" maxlength="200"
                    @bind="_goalInput" @bind:event="oninput"
                    @onkeydown="OnGoalKeyDown" aria-label="@L["Todo_GoalPlaceholder"]" />
-            <button class="btn btn-success" disabled="@(_generating || string.IsNullOrWhiteSpace(_goalInput))" @onclick="GenerateAsync">
+            <button class="btn btn-primary" disabled="@(_generating || string.IsNullOrWhiteSpace(_goalInput))" @onclick="GenerateAsync">
                 @L["Todo_AiGenerate"]
             </button>
         </div>
@@ -51,12 +56,12 @@
     }
     else
     {
-        <div class="btn-group btn-group-sm mb-3" role="group">
+        <div class="todo-filters" role="group">
             @foreach (var (key, label) in _filters)
             {
-                <button class="btn @(_filter == key ? "btn-primary" : "btn-outline-primary")"
+                <button class="todo-filter @(_filter == key ? "is-active" : "")"
                         @onclick="() => SetFilter(key)">
-                    @label <span class="badge @(_filter == key ? "bg-light text-primary" : "bg-secondary")">@CountFor(key)</span>
+                    @label<span class="todo-filter-count">@CountFor(key)</span>
                 </button>
             }
         </div>
@@ -67,15 +72,10 @@
         }
         else if (_visibleGoals.Count == 0 && _visibleUngrouped.Count == 0)
         {
-            <div class="todo-empty">
-                @if (_goals.Count == 0)
-                {
-                    <div>🎯 @L["Todo_NoGoals"]</div>
-                }
-                else
-                {
-                    <div>@L["Todo_Empty"]</div>
-                }
+            <div class="bh-empty todo-empty">
+                <div class="bh-empty-icon">@(_goals.Count == 0 ? "🎯" : "🌿")</div>
+                <div class="bh-empty-title">@(_goals.Count == 0 ? "还没有目标" : "这里暂时是空的")</div>
+                <div class="bh-empty-sub">@(_goals.Count == 0 ? L["Todo_NoGoals"] : L["Todo_Empty"])</div>
             </div>
         }
         else
@@ -540,4 +540,175 @@
         padding-left: 1.4rem;
         border-left: 2px solid rgba(13, 110, 253, 0.35);
     }
+</style>
+<style>
+    /* ---------- 待办页视觉细化 ---------- */
+    .todo-page { max-width: 900px; }
+
+    .todo-ai .form-control,
+    .todo-page > .input-group .form-control {
+        border-radius: 10px 0 0 10px;
+        height: 42px;
+    }
+
+    .todo-ai .btn,
+    .todo-page > .input-group .btn {
+        border-radius: 0 10px 10px 0;
+        padding-inline: 1.1rem;
+        white-space: nowrap;
+    }
+
+    .todo-generating { color: var(--bh-ink-500); font-size: 0.85rem; }
+    .todo-loading { color: var(--bh-ink-400); font-size: 0.9rem; }
+
+    /* 筛选条：分段控件 */
+    .todo-filters {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        margin-bottom: 1rem;
+        background: var(--bh-surface-3);
+        border-radius: 11px;
+    }
+
+    .todo-filter {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.34rem 0.8rem;
+        border: none;
+        background: transparent;
+        border-radius: 8px;
+        font-size: 0.86rem;
+        font-weight: 500;
+        color: var(--bh-ink-500);
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .todo-filter:hover { color: var(--bh-ink-900); }
+
+    .todo-filter.is-active {
+        background: var(--bh-surface);
+        color: var(--bh-brand-700);
+        font-weight: 600;
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .todo-filter-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 9px;
+        background: var(--bh-surface-3);
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--bh-ink-500);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .todo-filter.is-active .todo-filter-count {
+        background: var(--bh-brand-100);
+        color: var(--bh-brand-700);
+    }
+
+    /* 空态 */
+    .todo-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 3rem 1.5rem;
+        background: var(--bh-surface-2);
+        border: 1.5px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius-lg);
+        color: var(--bh-ink-400);
+        text-align: center;
+    }
+
+    .todo-empty .bh-empty-icon { font-size: 2.2rem; line-height: 1; margin-bottom: 0.3rem; }
+    .todo-empty .bh-empty-title { font-size: 0.98rem; font-weight: 600; color: var(--bh-ink-700); }
+    .todo-empty .bh-empty-sub { font-size: 0.85rem; color: var(--bh-ink-400); }
+
+    /* 目标卡片 */
+    .todo-goal {
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        overflow: hidden;
+    }
+
+    .todo-goal .card-header {
+        background: var(--bh-surface-2);
+        border-bottom: 1px solid var(--bh-border);
+        padding: 0.6rem 0.9rem;
+    }
+
+    .todo-goal-icon { font-size: 1rem; }
+    .todo-goal-title { font-size: 0.94rem; color: var(--bh-ink-900); }
+
+    .todo-goal .list-group-item {
+        border-color: var(--bh-border);
+        padding: 0.55rem 0.9rem;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .todo-goal .list-group-item:hover { background: var(--bh-surface-2); }
+
+    .todo-goal .btn-sm,
+    .todo-page .btn-sm {
+        padding: 0.16rem 0.5rem;
+        font-size: 0.76rem;
+        border-radius: 8px;
+        white-space: nowrap;
+    }
+
+    .todo-item .form-check-input { margin-top: 0; flex: 0 0 auto; width: 1.05em; height: 1.05em; cursor: pointer; }
+    .todo-title { color: var(--bh-ink-700); }
+    .todo-done .todo-title { text-decoration: line-through; opacity: 0.55; }
+
+    .todo-date { color: var(--bh-ink-300) !important; font-size: 0.76rem !important; }
+
+    .todo-note {
+        background: var(--bh-brand-50) !important;
+        padding-left: 3.1rem !important;
+        border-top: none;
+    }
+
+    .todo-note-text {
+        color: var(--bh-ink-500);
+        font-size: 0.86rem;
+        line-height: 1.65;
+    }
+
+    .todo-ungrouped-title {
+        margin: 1.2rem 0 0.6rem;
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--bh-ink-500) !important;
+    }
+
+    /* AI 预览弹窗 */
+    .todo-preview-goal {
+        padding: 0.55rem 0.8rem;
+        background: var(--bh-surface-3);
+        border-radius: 9px;
+        font-size: 0.95rem;
+        color: var(--bh-ink-900);
+    }
+
+    .todo-preview-item-title { font-size: 0.9rem; color: var(--bh-ink-700); }
+
+    .todo-preview-item-note {
+        color: var(--bh-ink-500);
+        font-size: 0.85rem;
+        border-left: 2px solid var(--bh-brand-100);
+        margin-top: 0.3rem;
+    }
+
+    .modal-content { border-radius: var(--bh-radius-lg); border-color: var(--bh-border); }
 </style>

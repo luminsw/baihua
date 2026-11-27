@@ -7,7 +7,12 @@
 <PageTitle>@L["Leaderboard_PageTitle"]</PageTitle>
 
 <div class="leaderboard-page">
-    <h1>🐲 @L["Leaderboard_Title"]</h1>
+    <div class="bh-page-header">
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">🐲</span>@L["Leaderboard_Title"]</h1>
+            <p class="bh-page-sub">和自己比、和家人比，进步看得见。</p>
+        </div>
+    </div>
 
     <!-- FAM-22：视图切换（默认选中第一个视图按钮） -->
     <div class="view-switch">
@@ -455,3 +460,127 @@
         isLoading = false;
     }
 }
+
+<style>
+    /* ---------- 排行榜视觉细化 ---------- */
+    .leaderboard-page { max-width: 820px; }
+
+    .view-switch {
+        gap: 4px;
+        padding: 4px;
+        margin-bottom: 1.1rem;
+        background: var(--bh-surface-3);
+        border-radius: 11px;
+    }
+
+    .view-tab {
+        padding: 0.38rem 1rem;
+        border-radius: 8px;
+        font-size: 0.88rem;
+        color: var(--bh-ink-500);
+        font-weight: 500;
+    }
+
+    .view-tab.active {
+        background: var(--bh-surface);
+        color: var(--bh-brand-700);
+        font-weight: 600;
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .self-compare {
+        padding: 1.35rem 1rem 1.1rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .compare-grid { gap: 1rem; }
+
+    .compare-card {
+        min-width: 132px;
+        padding: 0.9rem 1.25rem;
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+    }
+
+    .cmp-label { font-size: 0.8rem; color: var(--bh-ink-500); }
+
+    .cmp-value {
+        font-size: 1.9rem;
+        font-weight: 750;
+        line-height: 1.2;
+        color: var(--bh-ink-900);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .cmp-unit { font-size: 0.76rem; color: var(--bh-ink-400); }
+    .compare-arrow { min-width: 84px; }
+    .arrow-up { font-size: 1.6rem; color: var(--bh-success); }
+    .arrow-down { font-size: 1.6rem; color: var(--bh-danger); }
+    .arrow-flat { font-size: 1.6rem; color: var(--bh-ink-300); }
+    .arrow-none { font-size: 1.6rem; color: var(--bh-ink-300); }
+    .cmp-delta { font-size: 0.86rem; font-weight: 600; color: var(--bh-ink-700); }
+    .cmp-percent { color: var(--bh-ink-400); font-weight: 400; font-size: 0.78rem; }
+    .compare-tip { margin-top: 0.9rem; color: var(--bh-ink-400); font-size: 0.82rem; }
+
+    /* 家庭排行 */
+    .role-tabs,
+    .tab-group {
+        gap: 4px;
+        padding: 4px;
+        background: var(--bh-surface-3);
+        border-radius: 11px;
+    }
+
+    .tab {
+        padding: 0.34rem 0.85rem;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: var(--bh-ink-500);
+        font-weight: 500;
+    }
+
+    .tab.active {
+        background: var(--bh-surface);
+        color: var(--bh-brand-700);
+        font-weight: 600;
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .setting-toggle { font-size: 0.85rem; color: var(--bh-ink-500); margin: 0.6rem 0 0.9rem; }
+
+    .leaderboard-row {
+        padding: 0.7rem 0.95rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        box-shadow: var(--bh-shadow-xs);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .leaderboard-row:hover { transform: none; border-color: var(--bh-border-strong); box-shadow: var(--bh-shadow-sm); }
+
+    .leaderboard-row.top-1 { border-color: #eddba6; background: #fffdf5; }
+    .leaderboard-row.top-2 { border-color: #dde3e8; background: var(--bh-surface-2); }
+    .leaderboard-row.top-3 { border-color: #e6d0bb; background: #fffaf6; }
+
+    .rank-num { color: var(--bh-ink-400); }
+    .score-bar-wrap { background: var(--bh-surface-3); border-radius: 4px; }
+    .score-bar { border-radius: 4px; height: 100%; }
+
+    .empty,
+    .solo-guide {
+        padding: 1.5rem 1rem;
+        text-align: center;
+        background: var(--bh-surface-2);
+        border: 1.5px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius-lg);
+        color: var(--bh-ink-400);
+        font-size: 0.88rem;
+    }
+
+    .solo-guide { margin-top: 0.6rem; border-style: solid; border-color: var(--bh-border); }
+</style>

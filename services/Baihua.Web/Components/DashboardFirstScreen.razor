@@ -3,7 +3,7 @@
 <div class="dashboard-first-screen">
     <!-- 今日三件事 -->
     <section class="today-highlights section">
-        <h2>今日三件事</h2>
+        <h2><span class="sec-ico">📌</span>今日三件事</h2>
         @if (Data.TodayActivities.Count == 0)
         {
             <div class="empty-hint">
@@ -48,7 +48,7 @@
 
     <!-- 连续打卡 + 火焰 -->
     <section class="streak-section section">
-        <h2>连续打卡 <span class="flame">🔥</span></h2>
+        <h2><span class="sec-ico">🔥</span>连续打卡</h2>
         <div class="streak-value">
             <span class="flame">🔥</span>
             <span class="streak-num">@Data.FamilyStreak</span>
@@ -59,7 +59,7 @@
 
     <!-- 最新成就 -->
     <section class="achievements-section section">
-        <h2>最新成就</h2>
+        <h2><span class="sec-ico">🏆</span>最新成就</h2>
         @if (Data.LatestAchievements.Count == 0)
         {
             <div class="empty-hint">
