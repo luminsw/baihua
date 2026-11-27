@@ -958,13 +958,13 @@
                     @switch (provider.Tier)
                     {
                         case AiModelTier.Tier1_Embedding:
-                            <span class="badge" style="background:#e8d5f2;color:#6b2c91;">@L["Settings_Tier1"]</span>
+                            <span class="badge tier-badge tier-1">@L["Settings_Tier1"]</span>
                             break;
                         case AiModelTier.Tier2_Local:
-                            <span class="badge" style="background:#e0f0e5;color:#3d6b45;">@L["Settings_Tier2"]</span>
+                            <span class="badge tier-badge tier-2">@L["Settings_Tier2"]</span>
                             break;
                         case AiModelTier.Tier3_Cloud:
-                            <span class="badge" style="background:#e0ecf4;color:#4a2a30;">@L["Settings_Tier3"]</span>
+                            <span class="badge tier-badge tier-3">@L["Settings_Tier3"]</span>
                             break;
                     }
                 </div>
@@ -1443,3 +1443,138 @@
     }
 
 }
+
+<style>
+    /* 视觉刷新 v2：设置页（覆盖旧规则，不删原文，靠层叠生效） */
+    .settings-form { max-width: 1120px; }
+
+    .settings-section-title {
+        font-size: 1.02rem;
+        font-weight: 650;
+        color: var(--bh-ink-700);
+        margin: 1.25rem 0 0.8rem;
+    }
+
+    .ai-provider-card {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: 14px;
+        padding: 16px 18px;
+        box-shadow: var(--bh-shadow-xs);
+        transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+
+    .ai-provider-card:hover {
+        box-shadow: var(--bh-shadow-sm);
+        border-color: var(--bh-border-strong);
+    }
+
+    .provider-header { margin-bottom: 0.6rem; }
+
+    .provider-name {
+        font-size: 1rem;
+        font-weight: 650;
+        color: var(--bh-ink-900);
+    }
+
+    .provider-info {
+        gap: 4px;
+        margin-bottom: 0.6rem;
+    }
+
+    .provider-id {
+        align-self: flex-start;
+        background: var(--bh-surface-3);
+        color: var(--bh-ink-500);
+        border-radius: 6px;
+        padding: 1px 7px;
+        font-size: 0.78rem;
+    }
+
+    .provider-url {
+        color: var(--bh-ink-400);
+        font-size: 0.82rem;
+        word-break: break-all;
+    }
+
+    .provider-models { gap: 0; }
+
+    /* 模型行：不再画成一个个白色输入框，改成表格式细线行 */
+    .model-item {
+        background: transparent;
+        border: none;
+        border-top: 1px solid var(--bh-border);
+        border-radius: 0;
+        padding: 6px 2px;
+    }
+
+    .model-item:first-child { border-top: none; }
+
+    .model-name {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.84rem;
+        color: var(--bh-ink-700);
+    }
+
+    .ai-provider-card .badge {
+        font-size: 0.72rem;
+        font-weight: 600;
+        border-radius: 6px;
+        padding: 0.28em 0.55em;
+    }
+
+    .badge.badge-primary { background: var(--bh-brand-100); color: var(--bh-brand-700); }
+    .badge.badge-success { background: var(--bh-success-bg); color: var(--bh-success); }
+    .badge.badge-warning { background: var(--bh-warning-bg); color: var(--bh-warning); }
+    .badge.badge-danger { background: var(--bh-danger-bg); color: var(--bh-danger); }
+    .badge.badge-secondary { background: var(--bh-surface-3); color: var(--bh-ink-500); }
+    .badge.tier-1 { background: var(--bh-surface-3); color: var(--bh-ink-500); }
+    .badge.tier-2 { background: var(--bh-brand-50); color: var(--bh-brand-700); }
+    .badge.tier-3 { background: var(--bh-warning-bg); color: var(--bh-warning); }
+    .badge.category-tag { background: var(--bh-surface-3); color: var(--bh-ink-500); }
+
+    /* 行内动作：默认隐形，悬停卡片才显形，避免每个卡片两枚重按钮 */
+    .provider-actions { gap: 4px; }
+
+    .provider-actions .btn.btn-icon {
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--bh-ink-400);
+        font-size: 0.8rem;
+        padding: 2px 9px;
+        border-radius: 8px;
+    }
+
+    .provider-actions .btn.btn-icon:hover {
+        background: var(--bh-surface-2);
+        color: var(--bh-brand-600);
+        border-color: var(--bh-border);
+    }
+
+    .provider-actions .btn.btn-icon.btn-danger { color: var(--bh-ink-400); }
+
+    .provider-actions .btn.btn-icon.btn-danger:hover {
+        background: var(--bh-danger-bg);
+        color: var(--bh-danger);
+        border-color: transparent;
+    }
+
+    .list-actions { display: flex; gap: 10px; margin-top: 1rem; }
+
+    .config-note {
+        color: var(--bh-ink-400);
+        font-size: 0.82rem;
+        margin-top: 0.75rem;
+    }
+
+    .ai-edit-form {
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        padding: 20px 22px;
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .ai-edit-form h4 { font-size: 1.05rem; color: var(--bh-ink-900); }
+    .ai-edit-form h5 { font-size: 0.92rem; color: var(--bh-ink-700); }
+</style>

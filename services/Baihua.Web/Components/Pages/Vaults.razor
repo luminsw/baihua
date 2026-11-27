@@ -1801,3 +1801,61 @@
     };
 
 }
+
+<style>
+    /* 视觉刷新 v2：知识库管理页 */
+    .table th { white-space: nowrap; font-size: 0.78rem; }
+    .table td, .table th { vertical-align: middle; }
+    .table td .badge { white-space: nowrap; font-weight: 500; }
+
+    /* 操作列不再被挤成一字一行 */
+    .table td:last-child, .table th:last-child {
+        white-space: nowrap;
+        width: 1%;
+    }
+
+    .btn-group > .btn {
+        white-space: nowrap;
+        padding: 0.22rem 0.6rem;
+        font-size: 0.78rem;
+    }
+
+    /* 标签列：可换行但不逐字断行 */
+    .table td .badge + .badge { margin-left: 4px; }
+
+    /* 新增知识库这一行：输入框限宽，按钮不再拉满 */
+    .row.g-2.align-items-end .form-control { max-width: 360px; }
+    .row.g-2.align-items-end .btn.w-100 {
+        width: auto !important;
+        padding-left: 1.4rem;
+        padding-right: 1.4rem;
+    }
+</style>
+
+<style>
+    /* 表格列宽治理：8 列在 1000px 内容宽里必须分好，避免逐字断行 */
+    .table td:nth-child(1) { min-width: 108px; }
+    .table td:nth-child(2) {
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .table td:nth-child(4) { white-space: nowrap; }
+    .table td:nth-child(5) { min-width: 100px; }
+    .table td:nth-child(5) .text-muted { white-space: nowrap; }
+    .table td:nth-child(6) .btn,
+    .table td:nth-child(6) .badge,
+    .table td:nth-child(7) .btn,
+    .table td:nth-child(7) .badge { white-space: nowrap; }
+</style>
+
+<style>
+    /* 生成记忆卡片按钮更紧凑，给 8 列表格留出余量 */
+    .table td:nth-child(7) .btn {
+        padding: 0.2rem 0.5rem;
+        font-size: 0.76rem;
+    }
+    /* 兜底：表格若仍超宽，允许在卡片内横向滚动而不是溢出裁切 */
+    .card-body.p-0 { overflow-x: auto; }
+</style>
