@@ -13,7 +13,8 @@ namespace Baihua.Core.Services;
 
 public partial class AiClientService
 {
-        public IChatClient CreateChatClient(string providerId, string model)
+        /// <remarks>virtual 便于测试注入假 IChatClient（与 ComputeEmbeddingAsync/ReadNoteContentAsync 的做法一致）。</remarks>
+        public virtual IChatClient CreateChatClient(string providerId, string model)
         {
             return CreateChatClient(providerId, model, tools: null);
         }
@@ -26,7 +27,7 @@ public partial class AiClientService
         /// OpenAI 兼容 shim（/mg/ai/v1）按模型名转发——API Key 与模型路由只存在于 AI 服务；
         /// AI 服务进程（默认 false）内部直连真实 provider，避免 shim 自指转发。
         /// </summary>
-        public IChatClient CreateChatClient(string providerId, string model, IList<AITool>? tools)
+        public virtual IChatClient CreateChatClient(string providerId, string model, IList<AITool>? tools)
         {
             var cacheKey = $"{providerId}:{model}";
             return _chatClientCache.GetOrAdd(cacheKey, _ =>

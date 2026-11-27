@@ -139,10 +139,10 @@ jobs:
           wait_for http://127.0.0.1:8788/health Server
           wait_for http://127.0.0.1:5177/ WebUI
 
-      - name: Run Playwright tests (navigation/dashboard/migration)
+      - name: Run Playwright tests (navigation/dashboard/migration/search/settings)
         run: |
           cd tests/e2e
-          npx playwright test --project=navigation --project=dashboard --project=migration
+          npx playwright test --project=navigation --project=dashboard --project=migration --project=search --project=settings
 
       - name: Dump service logs (on failure)
         if: failure()
