@@ -119,7 +119,8 @@ var clientOptions = new OpenAIClientOptions
         /// <summary>
         /// 创建 Embedding 生成器（回退到旧配置）
         /// </summary>
-        public IEmbeddingGenerator<string, Embedding<float>> CreateEmbeddingGenerator()
+        /// <remarks>virtual 便于测试注入假 IEmbeddingGenerator（与 CreateChatClient 的做法一致）。</remarks>
+        public virtual IEmbeddingGenerator<string, Embedding<float>> CreateEmbeddingGenerator()
         {
             var url = _aiSettings.SemanticEmbeddingUrl;
             var model = _aiSettings.SemanticEmbeddingModel;
@@ -150,7 +151,7 @@ var clientOptions = new OpenAIClientOptions
         /// <summary>
         /// 为指定 URL+模型+Key 创建 Embedding 生成器
         /// </summary>
-        public IEmbeddingGenerator<string, Embedding<float>> CreateEmbeddingGenerator(string url, string model, string? apiKey)
+        public virtual IEmbeddingGenerator<string, Embedding<float>> CreateEmbeddingGenerator(string url, string model, string? apiKey)
         {
             if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(model))
                 throw new Exception(_loc["AiClient_EmbeddingNotConfigured"]);
