@@ -44,7 +44,16 @@
         {
             <div class="master-empty">
                 <div class="empty-icon">🏛️</div>
-                <div class="empty-text">@L["MasterChat_EmptyDesc"]</div>
+                @if (masters.Count == 0)
+                {
+                    <div class="empty-title">@L["MasterChat_EmptyHint"]</div>
+                    <div class="empty-text">@L["MasterChat_EmptyDesc"]</div>
+                }
+                else
+                {
+                    <div class="empty-title">@L["MasterChat_EmptyDesc"]</div>
+                }
+                <button class="btn btn-primary" @onclick="ShowCreateModal">@L["MasterChat_CreateMaster"]</button>
             </div>
         }
         else
@@ -204,29 +213,33 @@
 <style>
     .master-layout {
         display: flex;
-        gap: 1rem;
-        height: calc(100vh - 120px);
+        gap: 1.25rem;
+        height: calc(100vh - 112px);
+        min-height: 420px;
     }
     .master-sidebar {
-        width: 240px;
+        width: 250px;
         flex-shrink: 0;
         display: flex;
         flex-direction: column;
-        border-right: 1px solid #d8e2e8;
+        border-right: 1px solid var(--bh-border);
         padding-right: 1rem;
+        min-height: 0;
     }
     [data-bs-theme="dark"] .master-sidebar {
-        border-right-color: rgba(255,255,255,0.1);
+        border-right-color: var(--bh-border);
     }
     .sidebar-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 0.75rem;
+        gap: 8px;
+        margin-bottom: 0.85rem;
     }
     .sidebar-header h3 {
         margin: 0;
         font-size: 1rem;
+        font-weight: 650;
     }
     .master-list {
         flex: 1;
@@ -234,30 +247,35 @@
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+        min-height: 0;
     }
     .master-card {
         padding: 0.75rem;
-        border-radius: 8px;
-        background: #ffffff;
-        border: 1px solid #d8e2e8;
+        border-radius: 10px;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
     }
     .master-card:hover {
-        background: #f0f5f8;
-        border-color: #d8e2e8;
+        background: var(--bh-surface-2);
+        border-color: var(--bh-border-strong);
+        box-shadow: var(--bh-shadow-xs);
     }
     [data-bs-theme="dark"] .master-card {
-        background: rgba(255,255,255,0.05);
-        border-color: rgba(255,255,255,0.1);
+        background: var(--bh-surface);
+        border-color: var(--bh-border);
     }
     [data-bs-theme="dark"] .master-card:hover {
-        background: rgba(255,255,255,0.03);
-        border-color: rgba(255,255,255,0.1);
+        background: var(--bh-surface-2);
     }
     .master-card.active {
-        background: rgba(var(--master-accent-rgb), 0.2);
-        border-color: rgba(var(--master-accent-rgb), 0.5);
+        background: var(--bh-brand-50);
+        border-color: var(--bh-brand-500);
+        box-shadow: inset 3px 0 0 var(--bh-brand-500);
+    }
+    [data-bs-theme="dark"] .master-card.active {
+        background: rgba(46, 147, 181, 0.14);
     }
     .master-card-name {
         font-weight: 600;
@@ -297,30 +315,61 @@
     }
     .empty-hint {
         text-align: center;
-        color: var(--master-text-dim);
+        color: var(--bh-ink-400);
         font-size: 0.85rem;
-        padding: 2rem 0;
+        padding: 1.75rem 0.75rem;
+        border: 1px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius);
+        background: var(--bh-surface-2);
     }
     .master-main {
         flex: 1;
         display: flex;
         flex-direction: column;
         min-width: 0;
+        min-height: 0;
     }
     .master-empty {
-        flex: 1;
+        flex: 0 0 auto;
+        width: 100%;
+        max-width: 560px;
+        margin: auto;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        color: var(--master-text-dim);
+        gap: 10px;
+        text-align: center;
+        padding: 48px 32px;
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        background: linear-gradient(180deg, var(--bh-surface) 0%, var(--bh-surface-2) 100%);
+        box-shadow: var(--bh-shadow-xs);
+        color: var(--bh-ink-400);
     }
     .empty-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: var(--bh-brand-50);
+        font-size: 1.85rem;
+        margin-bottom: 2px;
+    }
+    .empty-title {
+        font-size: 1.02rem;
+        font-weight: 650;
+        color: var(--bh-ink-900);
     }
     .empty-text {
-        font-size: 1rem;
+        font-size: 0.9rem;
+        color: var(--bh-ink-400);
+        max-width: 30rem;
+    }
+    .master-empty .btn {
+        margin-top: 8px;
     }
     .master-header {
         display: flex;

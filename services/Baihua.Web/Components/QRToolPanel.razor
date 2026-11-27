@@ -485,42 +485,49 @@
 
 <style>
     .qr-tool-container {
-        max-width: 600px;
-        margin-top: 1.5rem;
+        max-width: 660px;
+        margin-top: 0;
     }
 
+    /* 分段式标签：比"下划线 tab"更贴合卡片内部的圆角语言 */
     .qr-tabs {
         display: flex;
         gap: 4px;
-        border-bottom: 2px solid #e0e6ea;
-        margin-bottom: 0.75rem;
+        padding: 4px;
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: 11px;
+        margin-bottom: 0.9rem;
     }
 
     .qr-tab {
-        padding: 0.5rem 0.75rem;
+        flex: 1;
+        padding: 0.45rem 0.6rem;
         border: none;
         background: transparent;
-        color: #5a6a72;
-        font-size: 0.85rem;
+        color: var(--bh-ink-400);
+        font-size: 0.84rem;
         font-weight: 500;
         cursor: pointer;
-        border-bottom: 2px solid transparent;
-        margin-bottom: -2px;
-        transition: all 0.2s ease;
+        border-radius: 8px;
+        transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
         white-space: nowrap;
     }
 
     .qr-tab:hover {
-        color: #2e8baf;
+        color: var(--bh-brand-600);
+        background: rgba(46, 147, 181, 0.08);
     }
 
     .qr-tab.active {
-        color: #2e8baf;
-        border-bottom-color: #2e8baf;
+        background: var(--bh-surface);
+        color: var(--bh-brand-600);
+        font-weight: 600;
+        box-shadow: var(--bh-shadow-xs);
     }
 
     .qr-tab-content {
-        padding: 0.5rem 0;
+        padding: 0.25rem 0;
     }
     .form-group {
         margin-bottom: 1rem;
@@ -528,15 +535,24 @@
     .form-group label {
         display: block;
         margin-bottom: 0.35rem;
-        font-weight: 500;
+        font-weight: 550;
+        font-size: 0.85rem;
+        color: var(--bh-ink-500);
     }
     .form-control {
         width: 100%;
-        padding: 0.5rem;
-        border: 1px solid #c8d4dc;
-        border-radius: 4px;
-        font-size: 0.95rem;
-        font-family: monospace;
+        padding: 0.5rem 0.7rem;
+        border: 1px solid var(--bh-border-strong);
+        border-radius: 10px;
+        font-size: 0.9rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: var(--bh-surface);
+        color: var(--bh-ink-700);
+    }
+    .form-control:focus {
+        outline: none;
+        border-color: var(--bh-brand-500);
+        box-shadow: 0 0 0 3px rgba(46, 147, 181, 0.18);
     }
     .form-actions {
         display: flex;
@@ -544,25 +560,30 @@
         margin-bottom: 1rem;
     }
     .btn {
-        padding: 0.5rem 1rem;
+        padding: 0.45rem 1.1rem;
         border: none;
-        border-radius: 4px;
+        border-radius: 9px;
         cursor: pointer;
-        font-size: 0.9rem;
+        font-size: 0.88rem;
+        font-weight: 550;
     }
     .btn-primary {
-        background: #2e8baf;
+        background: var(--bh-brand-600);
         color: white;
+    }
+    .btn-primary:hover {
+        background: var(--bh-brand-700);
     }
     .btn-secondary {
-        background: #5a6a72;
-        color: white;
+        background: var(--bh-surface-3);
+        color: var(--bh-ink-500);
     }
     .qr-result {
-        margin-top: 1.5rem;
-        padding: 1.5rem;
-        background: #f5f8fa;
-        border-radius: 8px;
+        margin-top: 1.25rem;
+        padding: 1.25rem;
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
         text-align: center;
     }
     .qr-result.qr-hidden {
@@ -571,16 +592,16 @@
     .qr-code-wrapper {
         display: inline-block;
         padding: 1rem;
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: var(--bh-shadow-sm);
         min-height: 200px;
         min-width: 200px;
     }
     .qr-hint {
         margin-top: 1rem;
-        color: #666;
-        font-size: 0.9rem;
+        color: var(--bh-ink-400);
+        font-size: 0.86rem;
     }
     .alert-error {
         background: #e0ecf4;
@@ -591,9 +612,10 @@
         margin-bottom: 1rem;
     }
     .server-info {
-        background: #f5f8fa;
-        padding: 0.75rem;
-        border-radius: 6px;
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        padding: 0.7rem 0.85rem;
+        border-radius: 10px;
         font-size: 0.9rem;
     }
     .collapse-indicator {
@@ -660,7 +682,7 @@
         padding: 0.2rem 0;
     }
     .info-row + .info-row {
-        border-top: 1px solid #eee;
+        border-top: 1px solid var(--bh-border);
     }
     .info-label {
         flex-shrink: 0;
@@ -744,4 +766,14 @@
     }
     .name-save-msg.success { color: #3d6b45; background: #e0f0e5; }
     .name-save-msg.error { color: #4a2a30; background: #e0ecf4; }
+
+    /* 窄屏：二维码与信息改为上下堆叠，标签不换行但可横向滚动 */
+    @@media (max-width: 720px) {
+        .qr-tool-container { max-width: 100%; }
+        .qr-tabs { overflow-x: auto; }
+        .qr-tab { flex: 0 0 auto; }
+        .server-qr-compact { flex-direction: column; align-items: flex-start; }
+        .qr-zoom { align-self: center; }
+        .server-info-compact { width: 100%; }
+    }
 </style>

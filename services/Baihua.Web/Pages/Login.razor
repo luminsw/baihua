@@ -9,7 +9,7 @@
 <div class="login-page">
     <div class="login-card">
         <div class="login-header">
-            <img src="logo.png" alt="百花" class="logo-icon" />
+            <img src="favicon.png" alt="百花" class="logo-icon" />
             <h1>@L["Login_Title"]</h1>
             <p class="subtitle">@L["Login_Subtitle"]</p>
         </div>
@@ -43,86 +43,104 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: linear-gradient(135deg, #2e8baf 0%, #257a9e 100%);
-        padding: 1rem;
+        background:
+            radial-gradient(900px 480px at 15% 0%, rgba(74, 168, 200, 0.22), transparent 70%),
+            radial-gradient(700px 420px at 95% 100%, rgba(46, 147, 181, 0.18), transparent 70%),
+            linear-gradient(160deg, #102a37 0%, #14384a 55%, #102735 100%);
+        padding: 1.5rem;
     }
 
     .login-card {
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        padding: 2.5rem;
+        background: #ffffff;
+        border-radius: 20px;
+        box-shadow: 0 24px 64px rgba(8, 24, 32, 0.38);
+        padding: 2.5rem 2.25rem;
         width: 100%;
-        max-width: 400px;
-        animation: slideUp 0.3s ease-out;
+        max-width: 420px;
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        animation: slideUp 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
 
     @@keyframes slideUp {
         from {
             opacity: 0;
-            transform: translateY(20px);
+            transform: translateY(16px) scale(0.99);
         }
         to {
             opacity: 1;
-            transform: translateY(0);
+            transform: translateY(0) scale(1);
         }
     }
 
     .login-header {
         text-align: center;
-        margin-bottom: 2rem;
+        margin-bottom: 1.75rem;
     }
 
     .logo-icon {
-        height: 3rem;
-        width: auto;
+        height: 56px;
+        width: 56px;
+        object-fit: contain;
         display: block;
-        margin: 0 auto 0.5rem;
-        filter: sepia(100%) hue-rotate(170deg) saturate(300%) brightness(35%);
+        margin: 0 auto 0.75rem;
+        border-radius: 16px;
+        background: #fff5f7;
+        padding: 6px;
+        box-shadow: 0 6px 18px rgba(46, 147, 181, 0.16);
     }
 
     .login-header h1 {
-        font-size: 1.75rem;
-        font-weight: 700;
-        color: #333;
-        margin-bottom: 0.5rem;
+        font-size: 1.5rem;
+        font-weight: 680;
+        letter-spacing: -0.01em;
+        color: var(--bh-ink-900);
+        margin-bottom: 0.35rem;
     }
 
     .subtitle {
-        color: #666;
-        font-size: 1rem;
+        color: var(--bh-ink-400);
+        font-size: 0.92rem;
+        margin-bottom: 0;
     }
 
     .login-form {
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.25rem;
     }
 
     .code-block {
-        background: #f5f8fa;
-        border: 1px solid #e8eef2;
-        border-radius: 8px;
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: 10px;
         padding: 0.75rem 1rem;
         font-family: 'SF Mono', Monaco, Inconsolata, 'Fira Code', monospace;
         font-size: 0.95rem;
-        color: #1e3a4c;
+        color: var(--bh-brand-700);
         word-break: break-all;
+    }
+
+    .code-block code {
+        color: inherit;
+        background: transparent;
+        padding: 0;
+        font-size: inherit;
     }
 
     .login-footer {
         text-align: center;
-        padding-top: 1.5rem;
-        border-top: 1px solid #eee;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--bh-border);
     }
 
     .login-footer p {
-        color: #888;
-        font-size: 0.85rem;
+        color: var(--bh-ink-400);
+        font-size: 0.82rem;
         margin-bottom: 0.25rem;
     }
 
     .alert {
         margin-bottom: 1rem;
-        border-radius: 8px;
+        border-radius: 10px;
+        font-size: 0.88rem;
     }
 </style>
 

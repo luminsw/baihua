@@ -9,12 +9,14 @@
 
 <PageTitle>@L["Cards_PageTitle"]</PageTitle>
 
-<div class="container mt-4">
-    <h2 class="mb-4">🧠 @L["Cards_Title"]</h2>
+<div class="cards-page">
+    <div class="bh-page-header">
+        <h1 class="bh-page-title"><span class="bh-page-emoji">🧠</span>@L["Cards_Title"]</h1>
+    </div>
 
     <!-- 知识库选择 + 搜索 -->
     <div class="row mb-4">
-        <div class="col-md-6">
+        <div class="col-md-6 vault-select-block">
             <div class="input-group">
                 <span class="input-group-text">@L["Cards_Vault"]</span>
                 <select class="form-select" @onchange="OnVaultChanged">
@@ -46,30 +48,18 @@
     else
     {
         <!-- 统计卡片 -->
-        <div class="row g-3 mb-4">
-            <div class="col-md-3">
-                <div class="card text-center h-100">
-                    <div class="card-body">
-                        <div class="display-5 text-primary">@totalCards</div>
-                        <div class="text-muted">@L["Cards_TotalCards"]</div>
-                    </div>
-                </div>
+        <div class="stat-row mb-4">
+            <div class="stat-tile">
+                <span class="stat-value">@totalCards</span>
+                <span class="stat-label">@L["Cards_TotalCards"]</span>
             </div>
-            <div class="col-md-3">
-                <div class="card text-center h-100">
-                    <div class="card-body">
-                        <div class="display-5 text-success">@decks.Count</div>
-                        <div class="text-muted">@L["Cards_DeckCount"]</div>
-                    </div>
-                </div>
+            <div class="stat-tile">
+                <span class="stat-value">@decks.Count</span>
+                <span class="stat-label">@L["Cards_DeckCount"]</span>
             </div>
-            <div class="col-md-3">
-                <div class="card text-center h-100">
-                    <div class="card-body">
-                        <div class="display-5 text-info">@aiCards</div>
-                        <div class="text-muted">@L["Cards_AiGenerated"]</div>
-                    </div>
-                </div>
+            <div class="stat-tile">
+                <span class="stat-value">@aiCards</span>
+                <span class="stat-label">@L["Cards_AiGenerated"]</span>
             </div>
         </div>
 
@@ -299,3 +289,53 @@
         }
     }
 }
+
+<style>
+    .cards-page { max-width: 1180px; }
+
+    /* "知识库" 作为纯文字标签，别再画成一个输入框 */
+    .vault-select-block .input-group-text {
+        background: transparent;
+        border: none;
+        padding: 0 8px 0 0;
+        color: var(--bh-ink-400);
+        font-size: 0.8rem;
+        font-weight: 650;
+        letter-spacing: 0.02em;
+    }
+
+    .stat-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .stat-tile {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        padding: 14px 18px;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-left: 3px solid var(--bh-brand-500);
+        border-radius: var(--bh-radius);
+        box-shadow: var(--bh-shadow-xs);
+    }
+
+    .stat-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        line-height: 1.1;
+        color: var(--bh-ink-900);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .stat-label {
+        font-size: 0.82rem;
+        color: var(--bh-ink-400);
+    }
+
+    @@media (max-width: 640px) {
+        .stat-row { grid-template-columns: 1fr; }
+    }
+</style>

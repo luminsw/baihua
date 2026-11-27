@@ -14,7 +14,9 @@
 
 <PageTitle>@L["Search_PageTitle"]</PageTitle>
 
-<h1>@L["Search_Title"]</h1>
+<div class="bh-page-header">
+    <h1 class="bh-page-title"><span class="bh-page-emoji">🔍</span>@L["Search_Title"]</h1>
+</div>
 
 <div class="local-search">
         @if (isVaultsLoading)
@@ -27,7 +29,7 @@
         @if (vaults.Count > 0)
         {
             var industries = vaults.Select(v => v.Industry).Where(i => !string.IsNullOrWhiteSpace(i)).Distinct().OrderBy(i => i).ToList();
-            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+            <div class="search-filters">
                 @if (industries.Count > 1)
                 {
                     <label class="form-label mb-0 text-nowrap" style="font-size:0.9em">@L["Search_FilterIndustry"]</label>
@@ -526,3 +528,67 @@
         recentSearches = await SearchHistoryService.GetRecentSearches();
     }
 }
+
+<style>
+    .local-search { max-width: 1080px; }
+
+    /* 筛选条：两个下拉并排收窄，不再各自占满整行 */
+    .search-filters {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 12px;
+        margin-bottom: 12px;
+    }
+
+    .search-filters .form-label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--bh-ink-400);
+    }
+
+    .search-filters .enhanced-select-wrapper {
+        width: 200px;
+        max-width: 260px;
+    }
+
+    .search-box {
+        display: flex;
+        gap: 8px;
+        max-width: 760px;
+        margin-bottom: 8px;
+    }
+
+    .search-box .form-control {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .search-tips {
+        background: var(--bh-surface-2);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        padding: 16px 20px;
+        margin-top: 24px;
+        max-width: 760px;
+    }
+
+    .search-tips h3 {
+        margin: 0 0 8px;
+        font-size: 0.9rem;
+        font-weight: 650;
+        color: var(--bh-ink-700);
+    }
+
+    .search-tips ul {
+        margin: 0;
+        padding-left: 1.15rem;
+        color: var(--bh-ink-400);
+        font-size: 0.86rem;
+        line-height: 1.9;
+    }
+
+    @@media (max-width: 640px) {
+        .search-filters .enhanced-select-wrapper { width: 100%; max-width: none; }
+    }
+</style>

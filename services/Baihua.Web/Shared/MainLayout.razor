@@ -19,25 +19,33 @@
     </button>
     
     <nav class="sidebar">
-        <div class="sidebar-quick-links">
-            <NavLink href="/" class="quick-link">
+        <div class="sidebar-brand">
+            <img src="favicon.png" alt="百花" />
+            <div class="sidebar-brand-text">
+                <span class="sidebar-brand-name">百花</span>
+                <span class="sidebar-brand-sub">家庭知识港湾</span>
+            </div>
+        </div>
+
+        <div class="quick-grid" aria-label="常用入口">
+            <NavLink href="/" class="quick-link" title="花记设备">
                 <span class="quick-icon bi bi-phone"></span>
-                <span>花记设备</span>
+                <span>设备</span>
             </NavLink>
-            <NavLink href="generate" class="quick-link">
-                <span class="quick-icon bi bi-robot"></span>
-                <span>AI 生成知识库</span>
+            <NavLink href="generate" class="quick-link" title="AI 生成知识库">
+                <span class="quick-icon bi bi-stars"></span>
+                <span>AI 生成</span>
             </NavLink>
-            <NavLink href="server-messages" class="quick-link">
+            <NavLink href="server-messages" class="quick-link" title="服务器互联">
                 <span class="quick-icon bi bi-hdd-network"></span>
-                <span>服务器互联</span>
+                <span>互联</span>
             </NavLink>
-            <NavLink href="compute" class="quick-link">
+            <NavLink href="compute" class="quick-link" title="算力池">
                 <span class="quick-icon bi bi-lightning-charge"></span>
                 <span>算力池</span>
             </NavLink>
         </div>
-        
+
         <NavMenu />
     </nav>
 
@@ -51,19 +59,21 @@
                 <button class="btn btn-sm btn-outline-light ms-1" @onclick="DismissError">&times;</button>
             </div>
         }
-        <div class="top-row px-4">
+        <div class="top-row">
             <HeaderStatusBadge />
 
             <div class="ms-auto d-flex align-items-center">
                 <img src="logo.png" alt="百花" class="top-logo" />
-                <span class="top-row-subtitle">百花@(_serverDisplayName != null ? $"（{_serverDisplayName}）" : "") - 家庭知识港湾</span>
+                <span class="top-row-subtitle">百花@(_serverDisplayName != null ? $"（{_serverDisplayName}）" : "") · 家庭知识港湾</span>
 
-                <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="toggleTheme()" title="切换亮色/暗色模式">
-                    <i class="bi bi-moon-fill" id="theme-icon"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-secondary" onclick="logoutAndRedirect()" title="登出">
-                    <i class="bi bi-box-arrow-right"></i>
-                </button>
+                <div class="top-actions">
+                    <button type="button" class="btn" onclick="toggleTheme()" title="切换亮色/暗色模式" aria-label="切换亮色/暗色模式">
+                        <i class="bi bi-moon-fill" id="theme-icon"></i>
+                    </button>
+                    <button type="button" class="btn" onclick="logoutAndRedirect()" title="退出登录" aria-label="退出登录">
+                        <i class="bi bi-box-arrow-right"></i>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -91,58 +101,18 @@
 </div>
 
 <style>
-    /* 核心布局 */
+    /* 核心布局（视觉细节见 app.css「视觉刷新 v2」） */
     .page {
         display: flex;
         min-height: 100vh;
+        align-items: flex-start;
     }
 
     .sidebar {
-        width: 250px;
-        background: var(--layout-sidebar-gradient);
-        color: rgba(220, 235, 245, 0.9);
-        padding: 20px 0;
-        transition: transform 0.3s ease;
         flex-shrink: 0;
-    }
-
-    .sidebar-header {
-        text-align: center;
-        margin-bottom: 20px;
-    }
-
-    .sidebar-logo {
-        width: 200px;
-        height: auto;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    }
-
-    .sidebar-quick-links {
-        display: flex;
-        gap: 4px;
-        padding: 0 0.75rem;
-        margin-bottom: 1rem;
-    }
-
-    .quick-link {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 10px;
-        border-radius: 8px;
+        transition: transform 0.3s ease;
         color: rgba(220, 235, 245, 0.9);
-        text-decoration: none;
-        font-size: 0.8rem;
-        font-weight: 500;
-        transition: all 0.2s ease;
-        background: rgba(255, 255, 255, 0.06);
-    }
-
-    .quick-link:hover {
-        background: rgba(46, 139, 175, 0.3);
-        color: #fff;
+        background: var(--layout-sidebar-gradient);
     }
 
     .quick-icon {
@@ -150,11 +120,10 @@
     }
 
     .top-logo {
-        height: 70px;
+        height: 34px;
         width: auto;
-        border-radius: 6px;
-        margin-right: 8px;
-
+        border-radius: 8px;
+        margin-right: 10px;
     }
 
     .api-error-banner {
@@ -250,12 +219,14 @@
     .top-row {
         background: var(--layout-toprow-bg);
         border-bottom: 1px solid var(--layout-toprow-border);
-        padding: 15px 20px;
+        padding: 12px 24px;
         display: flex;
-        justify-content: flex-end;        align-items: center;
-        min-height: 56px;
+        justify-content: space-between;
+        align-items: center;
+        min-height: 60px;
         overflow: visible;
-        position: relative;
+        position: sticky;
+        top: 0;
         z-index: 100;
     }
 
@@ -265,7 +236,7 @@
     }
 
     .content {
-        padding: 20px;
+        padding: 24px clamp(16px, 2.2vw, 32px) 56px;
     }
 
     /* 移动端菜单按钮 */
@@ -365,16 +336,13 @@
         .mobile-menu-toggle {
             display: none !important;
         }
-
-        .top-row {
-            padding-left: 20px !important;
-        }
     }
 
     /* 移动端样式 */
     @@media (max-width: 768px) {
         .page {
             flex-direction: column;
+            align-items: stretch;
         }
 
         .sidebar {
@@ -393,7 +361,32 @@
         }
 
         .top-row {
-            padding-left: 60px !important;
+            padding: 8px 12px 8px 58px;
+            gap: 8px;
+            min-height: 54px;
+        }
+
+        .top-logo {
+            display: none;
+        }
+
+        .top-actions {
+            flex-shrink: 0;
+        }
+
+        .top-actions .btn {
+            width: 28px;
+            height: 28px;
+        }
+
+        .ai-status-badge {
+            max-width: 170px;
+            min-width: 0;
+            padding: 0.3rem 0.6rem;
+        }
+
+        .ai-model {
+            max-width: 100px;
         }
 
         main {

@@ -100,7 +100,7 @@
                     <h3>@L["Devices_PendingDevices"]</h3>
                     @if (pendingDevices.Count > 0)
                     {
-                        <span class="badge bg-warning text-dark">@pendingDevices.Count</span>
+                        <span class="badge count-badge">@pendingDevices.Count</span>
                     }
                 </div>
                 <div class="card-body">
@@ -154,7 +154,7 @@
             <div class="card device-card">
                 <div class="card-header">
                     <h3>@L["Devices_AuthorizedDevicesTitle"]</h3>
-                    <span class="badge bg-success">@authorizedDevices.Count</span>
+                    <span class="badge count-badge">@authorizedDevices.Count</span>
                 </div>
                 <div class="card-body">
                     @if (isLoadingDevices)
@@ -216,42 +216,25 @@
     }
 
     .core-value-banner {
-        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-        border-radius: 12px;
-        padding: 1rem 1.5rem;
-        margin-bottom: 1.5rem;
-        text-align: center;
-        box-shadow: 0 4px 12px rgba(17, 153, 142, 0.25);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--bh-brand-50);
+        border: 1px solid var(--bh-brand-100);
+        border-left: 3px solid var(--bh-brand-500);
+        border-radius: 10px;
+        padding: 0.55rem 1rem;
+        margin-bottom: 1.25rem;
+        text-align: left;
         position: relative;
         overflow: hidden;
     }
 
-    .core-value-banner::before {
-        content: '"';
-        position: absolute;
-        left: 10px;
-        top: -10px;
-        font-size: 4rem;
-        color: rgba(255, 255, 255, 0.15);
-        font-family: Georgia, serif;
-    }
-
-    .core-value-banner::after {
-        content: '"';
-        position: absolute;
-        right: 10px;
-        bottom: -30px;
-        font-size: 4rem;
-        color: rgba(255, 255, 255, 0.15);
-        font-family: Georgia, serif;
-    }
-
     .core-value-text {
-        color: white;
-        font-size: 1.3rem;
-        font-weight: 600;
-        letter-spacing: 2px;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        color: var(--bh-ink-500);
+        font-size: 0.9rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
         position: relative;
         z-index: 1;
     }
@@ -259,76 +242,89 @@
     .config-alerts {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
-        margin-bottom: 2rem;
+        gap: 0.85rem;
+        margin-bottom: 1.5rem;
     }
 
     .config-alert {
-        border-radius: 16px;
-        padding: 1.5rem;
-        color: white;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        border-radius: 12px;
+        border: 1px solid var(--bh-border);
+        border-left: 3px solid var(--bh-ink-300);
+        background: var(--bh-surface);
+        padding: 0.95rem 1.15rem;
+        color: var(--bh-ink-700);
+        box-shadow: var(--bh-shadow-xs);
     }
 
     .api-alert {
-        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
-        box-shadow: 0 4px 12px rgba(238, 90, 111, 0.3);
+        background: var(--bh-warning-bg);
+        border-left-color: var(--bh-warning);
     }
 
     .status-alert {
-        background: linear-gradient(135deg, #8e9eab 0%, #6b7f8f 100%);
-        box-shadow: 0 4px 12px rgba(107, 127, 143, 0.3);
+        background: var(--bh-surface-2);
+        border-left-color: var(--bh-ink-300);
     }
 
     .vault-alert {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+        background: var(--bh-brand-50);
+        border-left-color: var(--bh-brand-500);
     }
 
     .alert-header {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
-        margin-bottom: 1rem;
+        gap: 0.55rem;
+        margin-bottom: 0.5rem;
     }
 
     .alert-icon {
-        font-size: 1.5rem;
+        font-size: 1.05rem;
+        line-height: 1;
     }
 
     .alert-title {
-        font-size: 1.25rem;
+        font-size: 0.98rem;
         font-weight: 600;
+        color: var(--bh-ink-900);
     }
 
     .alert-content p {
-        margin: 0 0 1rem;
-        opacity: 0.95;
+        margin: 0 0 0.6rem;
+        color: var(--bh-ink-500);
+        font-size: 0.9rem;
     }
 
     .alert-advice {
-        background: rgba(255, 255, 255, 0.15);
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        font-size: 0.9rem;
-        line-height: 1.6;
+        background: rgba(255, 255, 255, 0.65);
+        border: 1px solid var(--bh-border);
+        border-radius: 10px;
+        padding: 0.7rem 0.9rem;
+        margin-bottom: 0.75rem;
+        font-size: 0.85rem;
+        line-height: 1.7;
+        color: var(--bh-ink-500);
+    }
+
+    [data-bs-theme="dark"] .alert-advice {
+        background: rgba(255, 255, 255, 0.04);
     }
 
     .alert-button {
-        background: white;
-        color: #ee5a6f;
+        background: var(--bh-brand-600);
+        color: #fff;
         border: none;
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
+        padding: 0.45rem 0.95rem;
+        border-radius: 9px;
+        font-size: 0.85rem;
         font-weight: 600;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: background 0.16s ease, box-shadow 0.16s ease;
     }
 
     .alert-button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        background: var(--bh-brand-700);
+        box-shadow: 0 4px 12px rgba(29, 127, 158, 0.25);
     }
 
     .section {
@@ -336,11 +332,14 @@
     }
 
     .section-title {
-        margin: 0 0 0.75rem;
-        padding: 0.5rem 0.75rem;
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: #1e3a4c;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin: 0 0 0.85rem;
+        padding: 0;
+        font-size: 1.02rem;
+        font-weight: 650;
+        color: var(--bh-ink-900);
     }
 
     .device-stack {
@@ -350,30 +349,32 @@
     }
 
     .card {
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-        cursor: pointer;
-        transition: all 0.2s ease;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        box-shadow: var(--bh-shadow-xs);
+        cursor: default;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease;
         overflow: hidden;
     }
 
     .card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        border-color: var(--bh-border-strong);
+        box-shadow: var(--bh-shadow-sm);
     }
 
     .card-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1rem 1.25rem 0;
+        padding: 0.95rem 1.25rem 0;
     }
 
     .card-header h3 {
         margin: 0;
-        font-size: 1rem;
-        color: #1e3a4c;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--bh-ink-900);
     }
 
     .card-body {
@@ -412,13 +413,23 @@
     }
 
     .qr-card .card-body {
-        padding: 0.75rem;
+        padding: 1rem 1.25rem 1.25rem;
         min-height: 200px;
     }
 
     .badge {
         font-size: 0.75rem;
         padding: 0.25em 0.6em;
+    }
+
+    /* 卡片头部的计数徽章：中性胶囊，不与内容里的状态色抢注意力 */
+    .count-badge {
+        background: var(--bh-surface-3);
+        color: var(--bh-ink-500);
+        border: 1px solid var(--bh-border);
+        border-radius: 999px;
+        font-weight: 600;
+        min-width: 1.7em;
     }
 
     .section-loading {

@@ -19,7 +19,7 @@
 <PageTitle>@L["BrowseVault_PageTitle"]</PageTitle>
 
 <div class="container mt-4">
-    <h2 class="mb-4">@L["BrowseVault_Title"]</h2>
+    <h1 class="mb-4">@L["BrowseVault_Title"]</h1>
 
     <!-- 最近浏览 -->
     @if (!isLoadingRecentNotes && recentNotes?.Any() == true)
@@ -56,15 +56,14 @@
         <!-- 行业过滤栏 -->
         @if (allIndustries.Count > 0)
         {
-            <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-                <span class="text-muted small">@L["BrowseVault_IndustryLabel"]</span>
-                <button class="btn btn-sm @(selectedIndustries.Count == 0 ? "btn-primary" : "btn-outline-secondary")" @onclick="ClearIndustryFilter">
+            <div class="filter-bar">
+                <span class="filter-label">@L["BrowseVault_IndustryLabel"]</span>
+                <button class="filter-chip @(selectedIndustries.Count == 0 ? "active" : "")" @onclick="ClearIndustryFilter">
                     @L["BrowseVault_AllIndustries"]
                 </button>
                 @foreach (var industry in allIndustries)
                 {
-                    <button class="btn btn-sm @(selectedIndustries.Contains(industry) ? "btn-success" : "btn-outline-success")" @onclick="() => ToggleIndustryFilter(industry)"
-                    style="font-size: 0.8em; padding: 0.2em 0.6em;">
+                    <button class="filter-chip @(selectedIndustries.Contains(industry) ? "active" : "")" @onclick="() => ToggleIndustryFilter(industry)">
                         @industry
                     </button>
                 }
@@ -74,16 +73,14 @@
         <!-- 标签过滤栏 -->
         @if (allTags.Count > 0)
         {
-            <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-                <span class="text-muted small">@L["BrowseVault_TagLabel"]</span>
-                <button class="btn btn-sm @(selectedTags.Count == 0 ? "btn-primary" : "btn-outline-secondary")" @onclick="ClearTagFilter">
+            <div class="filter-bar">
+                <span class="filter-label">@L["BrowseVault_TagLabel"]</span>
+                <button class="filter-chip @(selectedTags.Count == 0 ? "active" : "")" @onclick="ClearTagFilter">
                     @L["BrowseVault_AllTags"]
                 </button>
                 @foreach (var tag in allTags)
                 {
-                    <button class="btn btn-sm @(selectedTags.Contains(tag) ? "btn-info text-dark" : "btn-outline-info")" @onclick="() => ToggleTagFilter(tag)"
-                    style="font-size: 0.8em; padding: 0.2em 0.6em;"
-                    >
+                    <button class="filter-chip @(selectedTags.Contains(tag) ? "active" : "")" @onclick="() => ToggleTagFilter(tag)">
                         @tag
                     </button>
                 }
@@ -93,17 +90,20 @@
         <!-- 来源过滤栏 -->
         @if (allSources.Count > 0)
         {
-            <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-                <span class="text-muted small">@L["BrowseVault_SourceLabel"]</span>
-                <button class="btn btn-sm @(selectedSources.Count == 0 ? "btn-primary" : "btn-outline-secondary")" @onclick="ClearSourceFilter">
+            <div class="filter-bar">
+                <span class="filter-label">@L["BrowseVault_SourceLabel"]</span>
+                <button class="filter-chip @(selectedSources.Count == 0 ? "active" : "")" @onclick="ClearSourceFilter">
                     @L["BrowseVault_AllSources"]
                 </button>
                 @foreach (var source in allSources)
                 {
-                    <button class="btn btn-sm @(selectedSources.Contains(source) ? "btn-success" : "btn-outline-success")" @onclick="() => ToggleSourceFilter(source)"
-                    style="font-size: 0.8em; padding: 0.2em 0.6em;">
+                    <button class="filter-chip @(selectedSources.Contains(source) ? "active" : "")" @onclick="() => ToggleSourceFilter(source)">
                         @(source == "mobile" ? L["BrowseVault_MobilePush"] : L["BrowseVault_Local"])
                     </button>
+                }
+                @if (selectedIndustries.Count > 0 || selectedTags.Count > 0 || selectedSources.Count > 0)
+                {
+                    <button class="filter-clear" @onclick="ClearAllFilters">清除全部筛选</button>
                 }
             </div>
         }
@@ -136,11 +136,11 @@
                 <div class="col-md-3 col-sm-4 col-6">
                     <div class="card h-100 vault-folder-card position-relative @(selectedVaultIds.Contains(v.Id) ? "vault-card-selected" : "")">
                         <input type="checkbox" class="form-check-input vault-select-check"
-                               checked="selectedVaultIds.Contains(v.Id)"
+                               checked="@selectedVaultIds.Contains(v.Id)"
                                @onclick="() => ToggleVaultSelection(v.Id)"
                                title="@L["BrowseVault_SendToDevice"]" />
-                        <div class="card-body text-center py-4">
-                            <div class="fs-1 mb-2" @onclick="() => SelectVault(v.Id)" style="cursor:pointer;">📚</div>
+                        <div class="card-body text-center py-3">
+                            <div class="fs-2 mb-1 vault-card-icon" @onclick="() => SelectVault(v.Id)">📚</div>
                             <div class="fw-bold text-truncate" @onclick="() => SelectVault(v.Id)" style="cursor:pointer;">@v.Name</div>
                             <div class="mt-1 d-flex flex-wrap justify-content-center gap-1">
                                 @if (v.Source == "mobile")
@@ -473,36 +473,138 @@
 
 
 <style>
+    /* 筛选条：统一为一组中性 chip，选中态用品牌色，不再是绿/蓝/灰混搭 */
+    .filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .filter-label {
+        min-width: 2.4rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: var(--bh-ink-400);
+        margin-right: 2px;
+    }
+
+    .filter-chip {
+        border: 1px solid var(--bh-border-strong);
+        background: var(--bh-surface);
+        color: var(--bh-ink-500);
+        border-radius: 999px;
+        padding: 3px 12px;
+        font-size: 0.82rem;
+        line-height: 1.6;
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+
+    .filter-chip:hover {
+        border-color: var(--bh-brand-500);
+        color: var(--bh-brand-600);
+        background: var(--bh-brand-50);
+    }
+
+    .filter-chip.active {
+        background: var(--bh-brand-600);
+        border-color: var(--bh-brand-600);
+        color: #fff;
+        font-weight: 600;
+    }
+
+    .filter-clear {
+        margin-left: auto;
+        border: none;
+        background: transparent;
+        color: var(--bh-ink-400);
+        font-size: 0.8rem;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        cursor: pointer;
+    }
+
+    .filter-clear:hover { color: var(--bh-danger); }
+
     .vault-folder-card, .vault-note-card {
         cursor: pointer;
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-        border: 1px solid rgba(0,0,0,0.08);
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        box-shadow: var(--bh-shadow-xs);
     }
     .vault-select-check {
         position: absolute;
         top: 8px;
         right: 8px;
-        width: 1.15em;
-        height: 1.15em;
+        width: 1.05em;
+        height: 1.05em;
+        margin: 0;
         cursor: pointer;
         z-index: 1;
+        accent-color: var(--bh-brand-600);
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
+    /* 未悬停、未选中时隐藏勾选框，避免满屏蓝方块；悬停或已选中时出现 */
+    .vault-folder-card:hover .vault-select-check,
+    .vault-folder-card:focus-within .vault-select-check,
+    .vault-card-selected .vault-select-check,
+    .vault-select-check:checked {
+        opacity: 1;
+    }
+
+    .vault-card-icon {
+        cursor: pointer;
+        line-height: 1.15;
+    }
+
+    .vault-folder-card .btn-outline-primary {
+        border-color: var(--bh-brand-100);
+        color: var(--bh-brand-600);
+        border-radius: 999px;
+        font-size: 0.76rem;
+        padding: 1px 12px;
+    }
+
+    .vault-folder-card .btn-outline-primary:hover {
+        background: var(--bh-brand-600);
+        border-color: var(--bh-brand-600);
+        color: #fff;
+    }
+
+    /* 卡片内标签统一为柔和中性 chip，避免红/蓝/灰混杂 */
+    .vault-folder-card .badge,
+    .vault-note-card .badge {
+        background: var(--bh-surface-3) !important;
+        color: var(--bh-ink-500) !important;
+        border: 1px solid var(--bh-border) !important;
+        font-weight: 500;
+        border-radius: 6px;
     }
     .vault-card-selected {
-        border-color: #0d6efd;
-        box-shadow: 0 0 0 2px rgba(13,110,253,0.25);
+        border-color: var(--bh-brand-600);
+        box-shadow: 0 0 0 2px rgba(46, 147, 181, 0.22);
     }
     .send-toolbar {
-        background: rgba(13,110,253,0.08);
+        background: var(--bh-brand-50);
+        border: 1px solid var(--bh-brand-100);
     }
     [data-bs-theme="dark"] .send-toolbar {
-        background: rgba(13,110,253,0.15);
+        background: rgba(46, 147, 181, 0.12);
+        border-color: rgba(46, 147, 181, 0.25);
     }
     .vault-folder-card:hover, .vault-note-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        border-color: var(--bh-border-strong);
+        box-shadow: var(--bh-shadow-sm);
     }
     .vault-note-card {
-        background: #f5f8fa;
+        background: var(--bh-surface-2);
     }
     .note-markdown-content img {
         max-width: 100%;
@@ -880,6 +982,13 @@
     private void ClearIndustryFilter()
     {
         selectedIndustries.Clear();
+    }
+
+    private void ClearAllFilters()
+    {
+        selectedIndustries.Clear();
+        selectedTags.Clear();
+        selectedSources.Clear();
     }
 
     private void ToggleSourceFilter(string source)
