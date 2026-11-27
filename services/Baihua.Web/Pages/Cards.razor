@@ -11,7 +11,10 @@
 
 <div class="cards-page">
     <div class="bh-page-header">
-        <h1 class="bh-page-title"><span class="bh-page-emoji">🧠</span>@L["Cards_Title"]</h1>
+        <div>
+            <h1 class="bh-page-title"><span class="bh-page-emoji">🧠</span>@L["Cards_Title"]</h1>
+            <p class="bh-page-sub">按知识库或关键词筛选记忆卡片，点击牌组只看其中内容。</p>
+        </div>
     </div>
 
     <!-- 知识库选择 + 搜索 -->
@@ -131,13 +134,14 @@
             <div class="card-body p-0">
                 @if (filteredCards.Count == 0)
                 {
-                    <div class="text-center py-5 text-muted">
-                        <div class="fs-1">📝</div>
-                        <p>@L["Cards_NoCards"]</p>
+                    <div class="cards-empty">
+                        <div class="cards-empty-icon">📝</div>
+                        <p class="cards-empty-title">@L["Cards_NoCards"]</p>
                         @if (!string.IsNullOrWhiteSpace(selectedVaultId))
                         {
-                            <p class="small">@L["Cards_NoCardsHint"]</p>
+                            <p class="cards-empty-sub">@L["Cards_NoCardsHint"]</p>
                         }
+                        <a class="btn btn-sm btn-primary" href="/generate">去生成一批卡片</a>
                     </div>
                 }
                 else
@@ -338,4 +342,28 @@
     @@media (max-width: 640px) {
         .stat-row { grid-template-columns: 1fr; }
     }
+</style>
+
+<style>
+    /* ---------- 记忆卡片：空态卡 ---------- */
+    .cards-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 2.4rem 1.5rem;
+        text-align: center;
+    }
+
+    .cards-empty-icon {
+        width: 52px; height: 52px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.4rem;
+        background: var(--bh-brand-50);
+        border: 1px solid var(--bh-brand-100);
+        border-radius: 14px;
+    }
+
+    .cards-empty-title { margin: 0.2rem 0 0; font-size: 0.95rem; font-weight: 650; color: var(--bh-ink-900); }
+    .cards-empty-sub { margin: 0; font-size: 0.84rem; color: var(--bh-ink-400); }
 </style>

@@ -15,7 +15,10 @@
 <PageTitle>@L["Search_PageTitle"]</PageTitle>
 
 <div class="bh-page-header">
-    <h1 class="bh-page-title"><span class="bh-page-emoji">🔍</span>@L["Search_Title"]</h1>
+    <div>
+        <h1 class="bh-page-title"><span class="bh-page-emoji">🔍</span>@L["Search_Title"]</h1>
+        <p class="bh-page-sub">支持全文关键词与语义检索，可按行业或知识库缩小范围。</p>
+    </div>
 </div>
 
 <div class="local-search">
@@ -32,26 +35,31 @@
             <div class="search-filters">
                 @if (industries.Count > 1)
                 {
-                    <label class="form-label mb-0 text-nowrap" style="font-size:0.9em">@L["Search_FilterIndustry"]</label>
-                    <select class="form-select form-select-sm" @bind="selectedIndustry" @bind:after="OnIndustryChanged" style="max-width:150px">
-                        <option value="">@L["Search_All"]</option>
-                        @foreach (var industry in industries)
+                    <div class="search-filter-field">
+                        <label class="form-label mb-0">@L["Search_FilterIndustry"]</label>
+                        <select class="form-select form-select-sm" @bind="selectedIndustry" @bind:after="OnIndustryChanged">
+                            <option value="">@L["Search_All"]</option>
+                            @foreach (var industry in industries)
+                            {
+                                <option value="@industry">@industry</option>
+                            }
+                        </select>
+                    </div>
+                }
+                <div class="search-filter-field">
+                    <label class="form-label mb-0">@L["Search_FilterVault"]</label>
+                    <select class="form-select form-select-sm" @bind="selectedVaultId" @bind:after="OnVaultChanged">
+                        <option value="">@L["Search_AllVaults"]</option>
+                        @foreach (var vault in FilteredVaults)
                         {
-                            <option value="@industry">@industry</option>
+                            <option value="@vault.Id">@vault.Name</option>
                         }
                     </select>
-                }
-                <label class="form-label mb-0 text-nowrap" style="font-size:0.9em">@L["Search_FilterVault"]</label>
-                <select class="form-select form-select-sm" @bind="selectedVaultId" @bind:after="OnVaultChanged" style="max-width:300px">
-                    <option value="">@L["Search_AllVaults"]</option>
-                    @foreach (var vault in FilteredVaults)
-                    {
-                        <option value="@vault.Id">@vault.Name</option>
-                    }
-                </select>
+                </div>
             </div>
         }
         <div class="search-box">
+            <span class="search-box-icon">🔍</span>
             <input type="text" 
                    @bind="searchQuery" 
                    @bind:event="oninput"
@@ -182,7 +190,10 @@
             else
             {
                 <div class="search-tips">
-                    <h3>@L["Search_TipsTitle"]</h3>
+                    <div class="search-tips-head">
+                        <span class="search-tips-icon">💡</span>
+                        <h3>@L["Search_TipsTitle"]</h3>
+                    </div>
                     <ul>
                         <li>@L["Search_Tip1"]</li>
                         <li>@L["Search_Tip2"]</li>
@@ -590,5 +601,112 @@
 
     @@media (max-width: 640px) {
         .search-filters .enhanced-select-wrapper { width: 100%; max-width: none; }
+    }
+</style>
+
+<style>
+    /* ---------- 全文搜索：筛选行 + 大搜索框 + 提示卡 ---------- */
+    .local-search { max-width: 1000px; }
+
+    .local-search .search-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1rem;
+        align-items: flex-end;
+        margin-bottom: 0.85rem;
+    }
+
+    .local-search .search-filter-field { display: flex; flex-direction: column; gap: 0.3rem; }
+
+    .local-search .search-filter-field label {
+        font-size: 0.75rem;
+        font-weight: 650;
+        color: var(--bh-ink-400);
+        letter-spacing: 0.02em;
+    }
+
+    .local-search .search-filter-field select {
+        min-width: 170px;
+        border-radius: 9px;
+        border-color: var(--bh-border-strong);
+        font-size: 0.85rem;
+        color: var(--bh-ink-700);
+    }
+
+    .local-search .search-box {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        background: var(--bh-surface);
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius-lg);
+        box-shadow: var(--bh-shadow-xs);
+        padding: 0.45rem 0.5rem 0.45rem 0.85rem;
+        position: relative;
+    }
+
+    .local-search .search-box-icon { font-size: 0.95rem; opacity: 0.65; }
+
+    .local-search .search-box .form-control {
+        border: 0;
+        box-shadow: none;
+        background: transparent;
+        font-size: 0.92rem;
+        padding: 0.4rem 0.2rem;
+    }
+
+    .local-search .search-box .form-control:focus { box-shadow: none; }
+
+    .local-search .search-box .btn { border-radius: 10px; padding: 0.42rem 1.3rem; }
+
+    .local-search .search-tips {
+        margin-top: 1.25rem;
+        background: var(--bh-surface);
+        border: 1px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius-lg);
+        padding: 1.1rem 1.35rem;
+    }
+
+    .local-search .search-tips-head { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.55rem; }
+    .local-search .search-tips-icon { font-size: 0.95rem; }
+
+    .local-search .search-tips h3 {
+        font-size: 0.9rem;
+        font-weight: 650;
+        color: var(--bh-ink-900);
+        margin: 0;
+    }
+
+    .local-search .search-tips ul {
+        margin: 0;
+        padding-left: 1.15rem;
+        font-size: 0.85rem;
+        line-height: 1.95;
+        color: var(--bh-ink-500);
+    }
+
+    .local-search .search-chip {
+        border: 1px solid var(--bh-border);
+        border-radius: 999px;
+        background: var(--bh-surface);
+        padding: 0.2rem 0.6rem;
+        font-size: 0.8rem;
+        color: var(--bh-ink-500);
+    }
+
+    .local-search .search-chip:hover { border-color: var(--bh-brand-500); color: var(--bh-brand-700); }
+
+    .local-search .result-item {
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        background: var(--bh-surface);
+        padding: 0.85rem 1rem;
+        margin-bottom: 0.6rem;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .local-search .result-item:hover {
+        border-color: var(--bh-brand-100);
+        box-shadow: var(--bh-shadow-sm);
     }
 </style>

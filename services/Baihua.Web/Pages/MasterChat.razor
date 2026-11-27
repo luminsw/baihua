@@ -34,7 +34,7 @@
             }
             @if (masters.Count == 0)
             {
-                <div class="empty-hint">@L["MasterChat_EmptyHint"]</div>
+                <div class="empty-hint">拜师后师父会列在这里</div>
             }
         </div>
     </div>
@@ -1164,3 +1164,78 @@
         try { _chatCts?.Cancel(); _chatCts?.Dispose(); } catch { }
     }
 }
+
+<style>
+    /* ---------- 师父对话：侧栏与空态卡 ---------- */
+    .master-layout .sidebar-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding-bottom: 0.7rem;
+        border-bottom: 1px solid var(--bh-border);
+        margin-bottom: 0.7rem;
+    }
+
+    .master-layout .sidebar-header h3 {
+        font-size: 0.92rem;
+        font-weight: 650;
+        color: var(--bh-ink-900);
+        margin: 0;
+    }
+
+    .master-layout .sidebar-header .btn { border-radius: 8px; font-size: 0.78rem; }
+
+    .master-layout .master-card {
+        border: 1px solid var(--bh-border);
+        border-radius: var(--bh-radius);
+        background: var(--bh-surface);
+        padding: 0.65rem 0.75rem;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .master-layout .master-card:hover { border-color: var(--bh-brand-100); box-shadow: var(--bh-shadow-sm); }
+
+    .master-layout .master-card.active {
+        border-color: var(--bh-brand-500);
+        box-shadow: 0 0 0 3px rgba(46, 147, 181, 0.12);
+    }
+
+    .master-layout .master-card-name { font-size: 0.88rem; font-weight: 650; color: var(--bh-ink-900); }
+    .master-layout .master-card-goal { font-size: 0.78rem; color: var(--bh-ink-400); }
+
+    .master-layout .empty-hint {
+        font-size: 0.8rem;
+        color: var(--bh-ink-400);
+        background: var(--bh-surface-2);
+        border: 1px dashed var(--bh-border);
+        border-radius: var(--bh-radius);
+        padding: 0.7rem 0.75rem;
+    }
+
+    .master-layout .master-empty {
+        border: 1px dashed var(--bh-border-strong);
+        border-radius: var(--bh-radius-lg);
+        background: var(--bh-surface);
+        box-shadow: var(--bh-shadow-xs);
+        max-width: 520px;
+        margin: auto;
+        padding: 2.4rem 1.8rem;
+    }
+
+    .master-layout .master-empty .empty-icon {
+        width: 52px; height: 52px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.4rem;
+        background: var(--bh-brand-50);
+        border: 1px solid var(--bh-brand-100);
+        border-radius: 14px;
+        margin: 0 auto 0.6rem;
+    }
+
+    .master-layout .master-empty .empty-title { font-size: 1rem; font-weight: 650; color: var(--bh-ink-900); margin-bottom: 0.3rem; }
+    .master-layout .master-empty .empty-text { font-size: 0.85rem; color: var(--bh-ink-400); margin-bottom: 0.9rem; }
+    .master-layout .master-empty .btn { border-radius: 10px; }
+</style>
