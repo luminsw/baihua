@@ -2339,14 +2339,14 @@ select.form-select-sm + .enhanced-select-wrapper .enhanced-select-trigger {
 
     /* ---- 全局 cta-btn CTA 按钮（Dashboard/Checkin/GrowthTimeline/DashboardFirstScreen） ---- */
     /* 注：用 !important 确保覆盖 Dashboard.razor / Checkin.razor scoped 样式的亮色默认值 */
-    .cta-btn { background: #1e8f6f !important; color: #fff !important; }
+    .cta-btn { background: var(--bh-cta) !important; color: var(--bh-on-cta) !important; }
 
     /* ---- Dashboard 空提示 + GrowthTimeline 空态 ---- */
     .empty-hint { color: #91a0b0; }
     .empty-hint p { color: #91a0b0; }
 
     /* ---- Onboarding 向导 guide-button ---- */
-    .onboarding-wizard .guide-button { background: var(--bh-brand-500) !important; color: #fff !important; }
+    .onboarding-wizard .guide-button { background: var(--bh-cta) !important; color: var(--bh-on-cta) !important; }
 
     /* ---- KnowledgeGenerate 灵感主题卡片网格 ---- */
     /* 注：用 !important 确保覆盖 KnowledgeGenerate.razor scoped 样式亮色默认值 */
@@ -2456,9 +2456,14 @@ body.baihua-qr-fullscreen-open {
     --bh-brand-100: #dceef5;
     --bh-brand-50: #eff8fb;
 
+    /* 主行动色（按钮/CTA）：暗色下用更实的底色保证对比度 */
+    --bh-cta: #1d7f9e;
+    --bh-cta-hover: #14657f;
+    --bh-on-cta: #ffffff;
+
     /* 中性色 */
     --bh-ink-900: #10222d;
-    --bh-ink-700: var(--bh-ink-700);
+    --bh-ink-700: #1e3a4c;
     --bh-ink-500: #4f6572;
     --bh-ink-400: #738898;
     --bh-ink-300: #9aacb8;
@@ -2472,6 +2477,7 @@ body.baihua-qr-fullscreen-open {
 
     /* 语义色（柔和版） */
     --bh-success: #2f8f5b;
+    --bh-success-solid: #2f8f5b;
     --bh-success-bg: #eaf6ef;
     --bh-warning: #b3761b;
     --bh-warning-bg: #fdf4e3;
@@ -2504,6 +2510,10 @@ body.baihua-qr-fullscreen-open {
     --bh-brand-100: #1d3a46;
     --bh-brand-50: #16292f;
 
+    --bh-cta: #1d7f9e;
+    --bh-cta-hover: #16677f;
+    --bh-on-cta: #ffffff;
+
     --bh-ink-900: #eef4f7;
     --bh-ink-700: #d7e2e9;
     --bh-ink-500: #a7b8c3;
@@ -2517,6 +2527,7 @@ body.baihua-qr-fullscreen-open {
     --bh-border-strong: #3c4a5c;
 
     --bh-success: #6fc08e;
+    --bh-success-solid: #2f8f5b;
     --bh-success-bg: rgba(47, 143, 91, 0.16);
     --bh-warning: #e0aa55;
     --bh-warning-bg: rgba(179, 118, 27, 0.18);
@@ -2707,12 +2718,15 @@ hr { border-color: var(--bh-border); opacity: 1; }
 .btn-sm { border-radius: 8px; padding: 0.28rem 0.65rem; font-size: 0.85rem; }
 
 .btn-primary {
-    --bs-btn-bg: var(--bh-brand-600);
-    --bs-btn-border-color: var(--bh-brand-600);
-    --bs-btn-hover-bg: var(--bh-brand-700);
-    --bs-btn-hover-border-color: var(--bh-brand-700);
-    --bs-btn-active-bg: var(--bh-brand-700);
-    --bs-btn-active-border-color: var(--bh-brand-700);
+    --bs-btn-bg: var(--bh-cta);
+    --bs-btn-color: var(--bh-on-cta);
+    --bs-btn-border-color: var(--bh-cta);
+    --bs-btn-hover-bg: var(--bh-cta-hover);
+    --bs-btn-hover-color: var(--bh-on-cta);
+    --bs-btn-hover-border-color: var(--bh-cta-hover);
+    --bs-btn-active-bg: var(--bh-cta-hover);
+    --bs-btn-active-color: var(--bh-on-cta);
+    --bs-btn-active-border-color: var(--bh-cta-hover);
     box-shadow: 0 1px 2px rgba(16, 34, 45, 0.12);
 }
 
@@ -3011,28 +3025,28 @@ hr { border-color: var(--bh-border); opacity: 1; }
 /* ===== 视觉刷新 v2 补丁：按钮语义色统一（2026-11-27） ===== */
 .btn-primary,
 .btn-primary:focus {
-    background-color: var(--bh-brand-600);
-    border-color: var(--bh-brand-600);
-    color: #fff;
+    background-color: var(--bh-cta);
+    border-color: var(--bh-cta);
+    color: var(--bh-on-cta);
 }
 .btn-primary:hover,
 .btn-primary:active,
 .btn-primary.active,
 .btn-primary:first-child:active {
-    background-color: var(--bh-brand-700);
-    border-color: var(--bh-brand-700);
-    color: #fff;
+    background-color: var(--bh-cta-hover);
+    border-color: var(--bh-cta-hover);
+    color: var(--bh-on-cta);
 }
 .btn-primary:disabled, .btn-primary.disabled {
-    background-color: var(--bh-brand-500);
-    border-color: var(--bh-brand-500);
-    color: #fff;
+    background-color: var(--bh-cta);
+    border-color: var(--bh-cta);
+    color: var(--bh-on-cta);
     opacity: .55;
 }
 .btn-success,
 .btn-success:focus {
-    background-color: var(--bh-success);
-    border-color: var(--bh-success);
+    background-color: var(--bh-success-solid);
+    border-color: var(--bh-success-solid);
     color: #fff;
 }
 .btn-success:hover, .btn-success:active, .btn-success.active {
